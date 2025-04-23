@@ -16,6 +16,7 @@ import Stripe from "stripe";
 import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
 import mobileAuthRoutes from "./routes/mobile-auth";
+import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
 // Initialize Stripe if key is available

@@ -41,9 +41,16 @@ export default function Sidebar() {
   
   // Define tools entries
   const tools = [
-    { name: "Metrics", icon: BarChartIcon, path: "/tools/metrics" },
-    { name: "Job Queue", icon: ListTodoIcon, path: "/tools/queue" },
-    { name: "Database", icon: DatabaseIcon, path: "/tools/database" }
+    { name: "Metrics", icon: BarChartIcon, path: "/metrics" },
+    { name: "Job Queue", icon: ListTodoIcon, path: "/jobs" },
+    { name: "Tools", icon: WrenchIcon, path: "/tools" },
+    { name: "Geocoding", icon: MapPinIcon, path: "/geocode" }
+  ];
+  
+  // Define field management entries
+  const fieldTools = [
+    { name: "Parcels", icon: LayersIcon, path: "/parcels" },
+    { name: "Field Map", icon: MapIcon, path: "/map" }
   ];
 
   return (
@@ -152,6 +159,29 @@ export default function Sidebar() {
               </div>
             </div>
 
+            {/* Field Management */}
+            <div>
+              <h3 className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
+                Field Management
+              </h3>
+              <div className="space-y-1">
+                {fieldTools.map((tool) => (
+                  <Link key={tool.name} href={tool.path} className={cn(
+                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
+                    location === tool.path 
+                      ? "bg-primary text-white" 
+                      : "text-gray-700 hover:bg-gray-100"
+                  )}>
+                    <tool.icon className={cn(
+                      "mr-3 h-5 w-5",
+                      location === tool.path ? "text-white" : "text-gray-500"
+                    )} />
+                    {tool.name}
+                  </Link>
+                ))}
+              </div>
+            </div>
+            
             {/* Tools */}
             <div>
               <h3 className="px-3 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wider">
