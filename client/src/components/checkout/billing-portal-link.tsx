@@ -1,44 +1,42 @@
-import React, { useState } from 'react';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import { useState } from 'react';
 import { apiRequest } from '@/lib/queryClient';
-import { CreditCardIcon, Loader2Icon } from 'lucide-react';
+import { Button, ButtonProps } from '@/components/ui/button';
+import { Loader2 } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
 
-interface BillingPortalLinkProps {
+interface BillingPortalLinkProps extends ButtonProps {
   buttonText?: string;
-  buttonVariant?: 'default' | 'destructive' | 'outline' | 'secondary' | 'ghost' | 'link';
-  className?: string;
 }
 
-/**
- * Button component that redirects to the Stripe Billing Portal
- */
-export function BillingPortalLink({
-  buttonText = 'Manage Subscription',
-  buttonVariant = 'outline',
-  className = '',
+export function BillingPortalLink({ 
+  buttonText = "Manage Billing", 
+  className,
+  variant = "default",
+  ...props 
 }: BillingPortalLinkProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
 
-  const handlePortalRedirect = async () => {
-    setIsLoading(true);
-
+  const handleClick = async () => {
     try {
-      const response = await apiRequest('POST', '/api/billing/create-portal-session', {});
-      const data = await response.json();
+      setIsLoading(true);
+      const response = await apiRequest('POST', '/api/billing/create-portal-session');
       
-      if (data.url) {
-        // Redirect to Stripe Billing Portal
-        window.location.href = data.url;
-      } else {
-        throw new Error('No portal URL returned');
+      if (!response.ok) {
+        const error = await response.json();
+        throw new Error(error.message || 'Failed to create billing portal session');
       }
-    } catch (error: any) {
+      
+      const { url } = await response.json();
+      
+      // Redirect to the Stripe Billing Portal
+      window.location.href = url;
+    } catch (error) {
+      console.error('Error creating billing portal session:', error);
       toast({
-        title: 'Error accessing billing portal',
-        description: error.message || 'Please try again later',
-        variant: 'destructive',
+        title: "Error",
+        description: error instanceof Error ? error.message : 'Failed to open billing portal',
+        variant: "destructive",
       });
       setIsLoading(false);
     }
@@ -46,21 +44,19 @@ export function BillingPortalLink({
 
   return (
     <Button
-      onClick={handlePortalRedirect}
+      onClick={handleClick}
       disabled={isLoading}
-      variant={buttonVariant}
       className={className}
+      variant={variant}
+      {...props}
     >
       {isLoading ? (
         <>
-          <Loader2Icon className="mr-2 h-4 w-4 animate-spin" />
+          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
           Loading...
         </>
       ) : (
-        <>
-          <CreditCardIcon className="mr-2 h-4 w-4" />
-          {buttonText}
-        </>
+        buttonText
       )}
     </Button>
   );

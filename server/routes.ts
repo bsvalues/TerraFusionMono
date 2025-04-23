@@ -492,6 +492,116 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Subscription management endpoint
+  app.post('/api/get-or-create-subscription', isAuthenticated, async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ message: 'Stripe is not configured' });
+      }
+
+      const user = req.user as any;
+      
+      // If user already has a subscription, return its details
+      if (user.stripeSubscriptionId) {
+        try {
+          const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+          
+          // Check if there's a payment intent associated with this subscription
+          const clientSecret = subscription.latest_invoice?.payment_intent?.client_secret;
+          
+          res.json({
+            subscriptionId: subscription.id,
+            clientSecret: clientSecret,
+            status: subscription.status,
+          });
+          return;
+        } catch (err) {
+          // Subscription may be deleted or invalid, continue to create a new one
+          console.warn(`Failed to retrieve subscription ${user.stripeSubscriptionId}:`, err);
+        }
+      }
+      
+      if (!user.email) {
+        return res.status(400).json({ message: 'User email is required for subscription' });
+      }
+
+      // Create or retrieve Stripe customer
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: user.username,
+          metadata: {
+            userId: String(user.id)
+          }
+        });
+        customerId = customer.id;
+        
+        // Update user with customer ID
+        await storage.updateStripeCustomerId(user.id, customerId);
+      }
+
+      // For this demo, we'll use a hard-coded price ID
+      // In production, this would be fetched from a product configuration
+      const priceId = process.env.STRIPE_PRICE_ID || 'price_1234567890';
+
+      // Create a subscription
+      const subscription = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{
+          price: priceId,
+        }],
+        payment_behavior: 'default_incomplete',
+        payment_settings: {
+          save_default_payment_method: 'on_subscription',
+        },
+        expand: ['latest_invoice.payment_intent'],
+      });
+
+      // Update the user's subscription ID
+      await storage.updateStripeSubscriptionId(user.id, subscription.id);
+      
+      // Return the subscription details with the client secret
+      res.json({
+        subscriptionId: subscription.id,
+        clientSecret: subscription.latest_invoice?.payment_intent?.client_secret,
+        status: subscription.status,
+      });
+    } catch (error: any) {
+      console.error('Subscription error:', error);
+      res.status(500).json({ message: `Error creating subscription: ${error.message}` });
+    }
+  });
+
+  // Payment Intent for one-time payments
+  app.post('/api/create-payment-intent', isAuthenticated, async (req, res) => {
+    try {
+      if (!stripe) {
+        return res.status(500).json({ message: 'Stripe is not configured' });
+      }
+
+      const { amount } = req.body;
+      
+      if (!amount || isNaN(Number(amount))) {
+        return res.status(400).json({ message: 'Valid amount is required' });
+      }
+      
+      // Create a payment intent
+      const paymentIntent = await stripe.paymentIntents.create({
+        amount: Math.round(Number(amount) * 100), // Convert to cents
+        currency: 'usd',
+        automatic_payment_methods: {
+          enabled: true,
+        },
+      });
+      
+      res.json({ clientSecret: paymentIntent.client_secret });
+    } catch (error: any) {
+      console.error('Payment intent error:', error);
+      res.status(500).json({ message: `Error creating payment intent: ${error.message}` });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

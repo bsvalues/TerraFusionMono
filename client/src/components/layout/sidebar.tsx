@@ -144,19 +144,17 @@ export default function Sidebar() {
               </h3>
               <div className="space-y-1">
                 {tools.map((tool) => (
-                  <Link key={tool.name} href={tool.path}>
-                    <a className={cn(
-                      "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                      location === tool.path 
-                        ? "bg-primary text-white" 
-                        : "text-gray-700 hover:bg-gray-100"
-                    )}>
-                      <tool.icon className={cn(
-                        "mr-3 h-5 w-5",
-                        location === tool.path ? "text-white" : "text-gray-500"
-                      )} />
-                      {tool.name}
-                    </a>
+                  <Link key={tool.name} href={tool.path} className={cn(
+                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
+                    location === tool.path 
+                      ? "bg-primary text-white" 
+                      : "text-gray-700 hover:bg-gray-100"
+                  )}>
+                    <tool.icon className={cn(
+                      "mr-3 h-5 w-5",
+                      location === tool.path ? "text-white" : "text-gray-500"
+                    )} />
+                    {tool.name}
                   </Link>
                 ))}
               </div>

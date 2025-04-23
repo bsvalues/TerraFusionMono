@@ -8,6 +8,8 @@ import Dashboard from "@/pages/dashboard";
 import Marketplace from "@/pages/marketplace";
 import BillingPage from "@/pages/billing";
 import OnboardingPage from "@/pages/onboarding";
+import Checkout from "@/pages/checkout";
+import Subscribe from "@/pages/subscribe";
 import MainLayout from "@/components/layout/main-layout";
 
 function Router() {
