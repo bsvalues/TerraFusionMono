@@ -175,8 +175,7 @@ export async function searchHandler(req: Request, res: Response) {
  */
 export async function getMetricsHandler(req: Request, res: Response) {
   try {
-    // Get user ID if authenticated, or use demo tenant ID
-    const userId = req.user?.id || 1; // Use tenant ID 1 if not authenticated
+    // Skip authentication check completely for demo purposes
     
     // Since we don't have any geocode calls in the DB yet, we'll use demo data
     // for display purposes that show typical usage patterns
