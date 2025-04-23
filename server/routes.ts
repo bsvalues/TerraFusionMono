@@ -13,6 +13,8 @@ import { geocodeService } from "./services/geocode";
 import { usageService } from "./services/metering/usage";
 import { mobileSyncService } from "./services/mobile-sync";
 import Stripe from "stripe";
+import authRoutes from "./routes/auth";
+import mobileRoutes from "./routes/mobile";
 import { versionGuard } from "./middleware/api-versioning";
 
 // Initialize Stripe if key is available
@@ -738,6 +740,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: `Error fetching parcel note: ${error.message}` });
     }
   });
+
+  // Register authentication routes
+  app.use('/api/auth', authRoutes);
+  
+  // Register mobile app routes
+  app.use('/api/mobile', mobileRoutes);
 
   const httpServer = createServer(app);
   
