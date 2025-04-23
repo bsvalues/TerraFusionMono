@@ -24,68 +24,77 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
 
   // Initialize WebSocket connection
   useEffect(() => {
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws`;
-    const newSocket = new WebSocket(wsUrl);
-
-    newSocket.onopen = () => {
-      console.log('WebSocket connected');
-    };
-
-    newSocket.onmessage = (event) => {
-      try {
-        const data = JSON.parse(event.data);
-        
-        // Listen for job updates
-        if (data.type === 'job_update' && jobId !== null && data.job.id === jobId) {
-          // Update progress
-          setProgress(data.job.progress || 0);
+    let newSocket: WebSocket | null = null;
+    
+    try {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host || 'localhost:5000';
+      const wsUrl = `${protocol}//${host}/ws`;
+      console.log("Connecting to WebSocket:", wsUrl);
+      
+      newSocket = new WebSocket(wsUrl);
+      
+      newSocket.onopen = () => {
+        console.log('WebSocket connected');
+      };
+      
+      newSocket.onmessage = (event) => {
+        try {
+          const data = JSON.parse(event.data);
           
-          // Update status message if available
-          if (data.job.statusMessage) {
-            setStatusMessage(data.job.statusMessage);
+          // Listen for job updates
+          if (data.type === 'job_update' && jobId !== null && data.job.id === jobId) {
+            // Update progress
+            setProgress(data.job.progress || 0);
+            
+            // Update status message if available
+            if (data.job.statusMessage) {
+              setStatusMessage(data.job.statusMessage);
+            }
+            
+            // Check job status
+            if (data.job.status === 'completed') {
+              setStatus('success');
+              // Invalidate the user plugins query to refresh the UI
+              queryClient.invalidateQueries({ queryKey: ['/api/user/plugins'] });
+              queryClient.invalidateQueries({ queryKey: ['/api/marketplace'] });
+              toast({
+                title: 'Installation complete',
+                description: 'Plugin has been successfully installed',
+                variant: 'default',
+              });
+              if (onSuccess) onSuccess();
+            } else if (data.job.status === 'failed') {
+              setStatus('error');
+              setError(data.job.error || 'Installation failed');
+              toast({
+                title: 'Installation failed',
+                description: data.job.error || 'An error occurred during installation',
+                variant: 'destructive',
+              });
+            }
           }
-          
-          // Check job status
-          if (data.job.status === 'completed') {
-            setStatus('success');
-            // Invalidate the user plugins query to refresh the UI
-            queryClient.invalidateQueries({ queryKey: ['/api/user/plugins'] });
-            queryClient.invalidateQueries({ queryKey: ['/api/marketplace'] });
-            toast({
-              title: 'Installation complete',
-              description: 'Plugin has been successfully installed',
-              variant: 'default',
-            });
-            if (onSuccess) onSuccess();
-          } else if (data.job.status === 'failed') {
-            setStatus('error');
-            setError(data.job.error || 'Installation failed');
-            toast({
-              title: 'Installation failed',
-              description: data.job.error || 'An error occurred during installation',
-              variant: 'destructive',
-            });
-          }
+        } catch (err) {
+          console.error('Error parsing WebSocket message:', err);
         }
-      } catch (err) {
-        console.error('Error parsing WebSocket message:', err);
-      }
-    };
-
-    newSocket.onerror = (error) => {
-      console.error('WebSocket error:', error);
-    };
-
-    newSocket.onclose = () => {
-      console.log('WebSocket disconnected');
-    };
-
-    setSocket(newSocket);
-
+      };
+      
+      newSocket.onerror = (error) => {
+        console.error('WebSocket error:', error);
+      };
+      
+      newSocket.onclose = () => {
+        console.log('WebSocket disconnected');
+      };
+      
+      setSocket(newSocket);
+    } catch (error) {
+      console.error("WebSocket connection error:", error);
+    }
+    
     // Clean up the WebSocket connection on component unmount
     return () => {
-      if (newSocket.readyState === WebSocket.OPEN) {
+      if (newSocket && newSocket.readyState === WebSocket.OPEN) {
         newSocket.close();
       }
     };
