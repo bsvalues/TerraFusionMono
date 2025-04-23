@@ -7,6 +7,7 @@ import { pluginService } from "./services/plugins";
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
+import { billingService } from "./services/billing";
 import Stripe from "stripe";
 
 // Initialize Stripe if key is available
@@ -272,6 +273,57 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: `Error creating payment intent: ${error.message}` });
     }
   });
+  
+  // Create checkout session for purchasing a plugin
+  app.post('/api/billing/create-checkout-session', isAuthenticated, async (req, res) => {
+    try {
+      const { priceId, mode = 'payment' } = req.body;
+      const user = req.user as any;
+      
+      if (!priceId) {
+        return res.status(400).json({ message: 'Price ID is required' });
+      }
+      
+      const checkoutSession = await billingService.createCheckoutSession(
+        user.id, 
+        priceId, 
+        mode as 'payment' | 'subscription'
+      );
+      
+      res.json(checkoutSession);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error creating checkout session: ${error.message}` });
+    }
+  });
+  
+  // Create a Stripe billing portal session for managing subscriptions
+  app.post('/api/billing/create-portal-session', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      const portalSession = await billingService.createBillingPortalSession(user.id);
+      res.json(portalSession);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error creating billing portal session: ${error.message}` });
+    }
+  });
+  
+  // Verify if a user has access to a product
+  app.get('/api/billing/verify-access/:productId', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { productId } = req.params;
+      
+      if (!productId) {
+        return res.status(400).json({ message: 'Product ID is required' });
+      }
+      
+      const hasAccess = await billingService.verifyAccess(user.id, productId);
+      res.json({ hasAccess });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error verifying access: ${error.message}` });
+    }
+  });
 
   // Complete a plugin purchase after successful payment
   app.post('/api/marketplace/complete-purchase', isAuthenticated, async (req, res) => {
@@ -301,51 +353,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           process.env.STRIPE_WEBHOOK_SECRET!
         );
         
-        // Process the event based on type
-        switch (event.type) {
-          case 'payment_intent.succeeded': {
-            const paymentIntent = event.data.object as Stripe.PaymentIntent;
-            
-            // Extract metadata to complete the purchase
-            if (paymentIntent.metadata?.userId && paymentIntent.metadata?.productId) {
-              try {
-                await marketplaceService.completePurchase(
-                  Number(paymentIntent.metadata.userId), 
-                  Number(paymentIntent.metadata.productId),
-                  paymentIntent.id
-                );
-                
-                // Log successful purchase
-                await storage.createLog({
-                  level: 'INFO',
-                  service: 'stripe-webhook',
-                  message: `Completed purchase for user ${paymentIntent.metadata.userId}, product ${paymentIntent.metadata.productId}`
-                });
-              } catch (error: any) {
-                await storage.createLog({
-                  level: 'ERROR',
-                  service: 'stripe-webhook',
-                  message: `Failed to complete purchase: ${error.message}`
-                });
-              }
-            }
-            break;
-          }
-          
-          case 'invoice.paid': {
-            // Handle subscription renewal
-            const invoice = event.data.object as Stripe.Invoice;
-            
-            // Implementation for subscription renewal would go here
-            await storage.createLog({
-              level: 'INFO',
-              service: 'stripe-webhook',
-              message: `Invoice paid: ${invoice.id}`
-            });
-            break;
-          }
-        }
+        // Use the billing service to handle all webhook events
+        await billingService.processWebhookEvent(event);
         
+        // Return a 200 response to acknowledge receipt of the event
         res.sendStatus(200);
       } catch (error: any) {
         await storage.createLog({
