@@ -1,0 +1,56 @@
+Here’s a clear path to keep momentum — and to monetize TerraFusion in a way that satisfies both county clients and future third-party developers.
+
+⸻
+
+Recommended Payment Mix
+
+Layer	Model	Why it Works
+Core SaaS (assessment, levy, GIS base)	Per-county subscription (annual, tiered by parcel count)	Predictable ARR and easy procurement for government buyers.
+Premium Feature Flags (AI Explain-Why, bulk‐export, auto-appeal triage)	Add-on subscription (toggle via Stripe customer portal)	Keeps core affordable; upsell power users.
+Marketplace Plug-ins	One-time license OR recurring fee — developer chooses	Encourages ecosystem growth; some GIS vendors prefer perpetual; others prefer SaaS.
+Usage-based APIs (geocoding, imagery)	Metered billing via Stripe Billing	Lets you pass through third-party costs while adding margin.
+
+
+
+⸻
+
+Implementation Roadmap (≈ 30 min Agent time)
+
+Step	Scope	Agent Prompt
+1	Create billing Nest module: Stripe webhooks (invoice.paid, checkout.session.completed).	“Generate Nest BillingModule with webhook route /billing/stripe; verify sig env STRIPE_WEBHOOK_SECRET.”
+2	Add Stripe Price IDs to .env: PRICE_CORE, PRICE_AI_ADDON, PRICE_EXAMPLE_PLUGIN.	(Manual - done once in Stripe dashboard)
+3	Subscription guard: Nest guard checks req.user.activeProducts[].	“Add SubscriptionGuard that injects BillingService.verify(customerId, productId).”
+4	Admin UI → Marketplace page: list plugins, show “Buy” or “Manage” button.	“Scaffold React page /marketplace; call /api/plugins for status; launch Stripe Checkout on buy.”
+5	One-time license flow: create Checkout session with mode=payment; on webhook, set plugin.enabled=true.	“Extend BillingService.handleCheckout(‘plugin’) to flip flag in DB.”
+6	Customer self-serve portal: link to Stripe billing portal for seat-count or card updates.	“Expose /billing/portal route that creates Stripe billing portal session.”
+7	Metered usage example (geocoding): record hits → Stripe usage record nightly.	“Add Cron job recordUsage(productId, qty) via Stripe Reporting API.”
+
+(Each prompt is one-liner for the Replit AI Agent; it writes code, commits, runs tests.)
+
+⸻
+
+UX Details
+
+View	What Users See
+Marketplace	Card grid with plug-in name, price badge (“$499 one-time” or “$99/mo”), “Learn More” ➜ modal, “Buy/Manage” CTA.
+Admin → Billing	Table of active subscriptions, next invoice date, buttons “Change plan”, “Download receipt”.
+In-app Upgrade Ribbon	When a user hits a premium route, guard redirects to /upgrade?feature=AI_EXPLAIN with marketing copy + Stripe Checkout.
+
+
+
+⸻
+
+Security & Compliance
+	•	Webhook verification already stubbed—add secret env var.
+	•	Cosign-signed plugin manifest still required after payment; payment toggles a DB flag, but PluginVerifier still checks signature & peerVersion.
+	•	Row-level security remains—subscription only unlocks code paths, not new tenants.
+
+⸻
+
+Quick Next Action
+
+Paste this first prompt into the Agent:
+
+Generate Nest BillingModule with webhook route /billing/stripe; verify signature using env STRIPE_WEBHOOK_SECRET; create BillingService with methods createCheckoutSession(customerId, priceId, mode) and verifySubscription(customerId, productId).
+
+Once the Agent commits & tests pass, proceed to the next prompt for the admin marketplace page. I’ll stay on standby to refine copy, UI, or webhook handler details.

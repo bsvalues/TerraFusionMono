@@ -173,6 +173,7 @@ export const userPlugins = pgTable("user_plugins", {
   expiryDate: timestamp("expiry_date"), // For subscriptions
   active: boolean("active").default(true).notNull(),
   stripePaymentId: text("stripe_payment_id"),
+  stripeProductId: text("stripe_product_id"),
 });
 
 export const insertUserPluginSchema = createInsertSchema(userPlugins).pick({
@@ -182,6 +183,7 @@ export const insertUserPluginSchema = createInsertSchema(userPlugins).pick({
   expiryDate: true,
   active: true,
   stripePaymentId: true,
+  stripeProductId: true,
 });
 
 // Types for database models

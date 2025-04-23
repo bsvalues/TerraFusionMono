@@ -330,6 +330,11 @@ export class DatabaseStorage implements IStorage {
     return await db.select().from(pluginProducts).where(eq(pluginProducts.pluginId, pluginId));
   }
   
+  async getPluginProductByStripeProductId(stripeProductId: string): Promise<PluginProduct | undefined> {
+    const [product] = await db.select().from(pluginProducts).where(eq(pluginProducts.stripeProductId, stripeProductId));
+    return product;
+  }
+  
   async createPluginProduct(product: InsertPluginProduct): Promise<PluginProduct> {
     const [newProduct] = await db
       .insert(pluginProducts)
@@ -393,8 +398,13 @@ export class DatabaseStorage implements IStorage {
     return this.updateUser(userId, { stripeCustomerId });
   }
   
-  async updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined> {
+  async updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string | null): Promise<User | undefined> {
     return this.updateUser(userId, { stripeSubscriptionId });
+  }
+  
+  async getUserIdByStripeSubscriptionId(stripeSubscriptionId: string): Promise<number | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.stripeSubscriptionId, stripeSubscriptionId));
+    return user?.id;
   }
 }
 
