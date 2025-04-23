@@ -190,7 +190,15 @@ class BillingService {
    */
   async processWebhookEvent(event: Stripe.Event): Promise<void> {
     try {
+      // Log all events for audit purposes
+      await storage.createLog({
+        level: 'INFO',
+        service: 'billing',
+        message: `Processing Stripe webhook event: ${event.type} (${event.id})`
+      });
+      
       switch (event.type) {
+        // Checkout session events
         case 'checkout.session.completed': {
           const session = event.data.object as Stripe.Checkout.Session;
           
@@ -250,6 +258,69 @@ class BillingService {
           break;
         }
         
+        case 'checkout.session.async_payment_succeeded': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await storage.createLog({
+            level: 'INFO',
+            service: 'billing',
+            message: `Async payment succeeded for checkout session: ${session.id}`
+          });
+          break;
+        }
+        
+        case 'checkout.session.async_payment_failed': {
+          const session = event.data.object as Stripe.Checkout.Session;
+          await storage.createLog({
+            level: 'WARN',
+            service: 'billing',
+            message: `Async payment failed for checkout session: ${session.id}`
+          });
+          break;
+        }
+        
+        // Payment intent events
+        case 'payment_intent.succeeded': {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          // Additional processing for standalone payment intents (not part of checkout)
+          if (paymentIntent.metadata.userId && paymentIntent.metadata.productId) {
+            // This is a direct payment for a product
+            const userId = parseInt(paymentIntent.metadata.userId);
+            const productId = parseInt(paymentIntent.metadata.productId);
+            
+            // Check if the user already has this plugin
+            const existingPlugin = await storage.checkUserHasPlugin(userId, productId);
+            
+            if (!existingPlugin) {
+              // Grant access to the plugin
+              await storage.createUserPlugin({
+                userId,
+                pluginId: productId,
+                status: 'active',
+                purchaseDate: new Date(),
+                stripePaymentId: paymentIntent.id
+              });
+            }
+          }
+          
+          await storage.createLog({
+            level: 'INFO',
+            service: 'billing',
+            message: `Payment intent succeeded: ${paymentIntent.id}`
+          });
+          break;
+        }
+        
+        case 'payment_intent.payment_failed': {
+          const paymentIntent = event.data.object as Stripe.PaymentIntent;
+          await storage.createLog({
+            level: 'WARN',
+            service: 'billing',
+            message: `Payment failed: ${paymentIntent.id}, reason: ${paymentIntent.last_payment_error?.message || 'Unknown'}`
+          });
+          break;
+        }
+        
+        // Invoice events
         case 'invoice.paid': {
           const invoice = event.data.object as Stripe.Invoice;
           
@@ -258,6 +329,9 @@ class BillingService {
             // Find user with this subscription
             const userId = await storage.getUserIdByStripeSubscriptionId(invoice.subscription as string);
             if (userId) {
+              // Update subscription status to active if needed
+              await storage.updateStripeSubscriptionStatus(userId, 'active');
+              
               // Log the renewal
               await storage.createLog({
                 level: 'INFO',
@@ -265,6 +339,70 @@ class BillingService {
                 message: `Subscription renewed for user ${userId}, invoice ${invoice.id}`,
               });
             }
+          }
+          
+          break;
+        }
+        
+        case 'invoice.payment_failed': {
+          const invoice = event.data.object as Stripe.Invoice;
+          
+          if (invoice.subscription) {
+            const userId = await storage.getUserIdByStripeSubscriptionId(invoice.subscription as string);
+            if (userId) {
+              // Update subscription status
+              await storage.updateStripeSubscriptionStatus(userId, 'past_due');
+              
+              // Log the failure
+              await storage.createLog({
+                level: 'WARN',
+                service: 'billing',
+                message: `Invoice payment failed for user ${userId}, subscription ${invoice.subscription}`
+              });
+            }
+          }
+          
+          break;
+        }
+        
+        // Subscription events
+        case 'customer.subscription.created': {
+          const subscription = event.data.object as Stripe.Subscription;
+          // This is usually handled by checkout.session.completed, but handle direct API-created subscriptions
+          
+          // Find the user by customer ID
+          const customerId = subscription.customer as string;
+          const users = await storage.getUserByStripeCustomerId(customerId);
+          
+          if (users && users.length > 0) {
+            const userId = users[0].id;
+            await storage.updateStripeSubscriptionId(userId, subscription.id);
+            await storage.updateStripeSubscriptionStatus(userId, subscription.status);
+            
+            await storage.createLog({
+              level: 'INFO',
+              service: 'billing',
+              message: `Subscription created for user ${userId}: ${subscription.id}`
+            });
+          }
+          
+          break;
+        }
+        
+        case 'customer.subscription.updated': {
+          const subscription = event.data.object as Stripe.Subscription;
+          
+          // Find user with this subscription
+          const userId = await storage.getUserIdByStripeSubscriptionId(subscription.id);
+          if (userId) {
+            // Update subscription status
+            await storage.updateStripeSubscriptionStatus(userId, subscription.status);
+            
+            await storage.createLog({
+              level: 'INFO',
+              service: 'billing',
+              message: `Subscription updated for user ${userId}: ${subscription.id}, status: ${subscription.status}`
+            });
           }
           
           break;
@@ -279,19 +417,60 @@ class BillingService {
             // Clear the subscription ID
             await storage.updateStripeSubscriptionId(userId, null);
             
+            // Update any plugins tied to this subscription
+            const userPlugins = await storage.getUserPlugins(userId);
+            for (const plugin of userPlugins) {
+              if (plugin.stripeSubscriptionId === subscription.id) {
+                await storage.updateUserPlugin(plugin.id, {
+                  status: 'inactive'
+                });
+              }
+            }
+            
             // Log the cancellation
             await storage.createLog({
               level: 'INFO',
               service: 'billing',
-              message: `Subscription cancelled for user ${userId}`,
+              message: `Subscription cancelled for user ${userId}: ${subscription.id}`,
             });
           }
           
           break;
         }
+        
+        // Customer events
+        case 'customer.created':
+        case 'customer.updated':
+        case 'customer.deleted': {
+          const customer = event.data.object as Stripe.Customer;
+          
+          // For audit purposes
+          await storage.createLog({
+            level: 'INFO',
+            service: 'billing',
+            message: `Customer ${event.type.split('.')[1]}: ${customer.id}`
+          });
+          
+          break;
+        }
+        
+        default:
+          // Log unhandled event types
+          await storage.createLog({
+            level: 'INFO',
+            service: 'billing',
+            message: `Unhandled webhook event type: ${event.type}`
+          });
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error(`Error processing webhook event ${event.type}:`, error);
+      
+      await storage.createLog({
+        level: 'ERROR',
+        service: 'billing',
+        message: `Error processing webhook event ${event.type}: ${error.message}`
+      });
+      
       throw error;
     }
   }

@@ -78,6 +78,7 @@ export interface IStorage {
   updateStripeCustomerId(userId: number, stripeCustomerId: string): Promise<User | undefined>;
   updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined>;
   updateStripeSubscriptionStatus(userId: number, stripeSubscriptionStatus: string): Promise<User | undefined>;
+  getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]>;
 }
 
 // Database-backed storage implementation
@@ -410,6 +411,10 @@ export class DatabaseStorage implements IStorage {
   async getUserIdByStripeSubscriptionId(stripeSubscriptionId: string): Promise<number | undefined> {
     const [user] = await db.select().from(users).where(eq(users.stripeSubscriptionId, stripeSubscriptionId));
     return user?.id;
+  }
+  
+  async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]> {
+    return await db.select().from(users).where(eq(users.stripeCustomerId, stripeCustomerId));
   }
 }
 
