@@ -1,0 +1,176 @@
+
+
+Your analysis is spot-on.  The sequence, risk profile, and test coverage are exactly what we need for a smooth Horizon-1 launch.
+
+Next Actions
+
+Step	Owner	When
+Copy Prompt 1 (Sandbox + Quotas) into Replit AI Agent	You	Now
+Verify CI ✅ & run unit tests (plugin.sandbox.spec.ts)	Agent → You confirm	≈3 min
+Repeat for Prompts 2, 3, 4 in order	—	≈15 min total
+Smoke-test locally (docker compose up, hit /health, run sample geocode call)	You	After CI green
+Push to Benton staging; watch new Grafana SLO dashboard for 15 min	Dev Ops	Same day
+Sign-off, then schedule prod cut-over window	CIO / Assessor	48 h after stable staging
+
+Quick Tips During Execution
+	•	Sandbox tests: purposely create a plugin with while(true){} to confirm the timeout fires.
+	•	Version header: add x-terrafusion-api-version: 0 in Postman — you should see the Deprecation warning in response headers.
+	•	Usage meter: after making a few geocode calls, run SELECT * FROM geocode_calls LIMIT 5 to verify inserts, then kick the cron job manually (node usage.ts --dry-run) to see the Stripe usage record log.
+	•	Grafana: import grafana/dashboards/slo.json, then hit /parcels 100× with hey or k6 to watch p95 latency bar move.
+
+When Prompt 1 is merged and CI is green, just let me know (“Prompt 1 done”) and I’ll stay on-call to troubleshoot or refine as you move through the stack.
+
+#Prompt 1 – Secure plugin execution
+Generate files:
+
+1.  packages/core/src/plugin/sandbox.ts
+    › Wrap plugin entry with `vm2`:
+      - new NodeVM({ timeout: cpuMs, sandbox:{console}, memoryLimit: memKb })
+      - Export function runSandbox(manifestPath:string): PluginExports
+
+2.  Update packages/core/src/plugin/loader.ts
+    › Read cpuMs & memKb from plugin.manifest; default {cpuMs:1000, memKb:128000}
+    › Throw `PluginQuotaError` if missing limits
+    › Replace `require()` with runSandbox()
+
+3.  Add unit tests plugin.sandbox.spec.ts:
+    ✓ Halts infinite loop (>cpuMs)
+    ✓ Blocks fs access
+
+4.  Extend plugin.manifest.json schema.
+
+Commit, run jest, push.
+
+
+# Prompt 2 – Nest versioning skeleton
+Modify apps/terrafusion-core:
+
+1.  npm i @nestjs/versioning
+2.  main.ts
+    › app.enableVersioning({
+        type: VersioningType.HEADER,
+        header: 'x-terrafusion-api-version',
+        defaultVersion: '1',
+      });
+3.  Add middleware warnDeprecated: if header '0' → log + set Deprecation header.
+4.  Add e2e test core-version.spec.ts that GET /parcels with v1 header returns 200, with v0 returns 299 (deprecated).
+
+Run tests.
+
+
+# Prompt 3 – Metered billing
+1.  In apps/worker-node create metering/usage.ts:
+    › nightly cron aggregates `geocode_calls` table per customer_id.
+    › Stripe.usageRecords.create({ quantity, timestamp, subscription_item: PRICE_GEOCODE_ITEM, action:'increment' });
+2.  Extend geocode service: insert row per call (tenant_id, ts) via fast COPY buffer.
+3.  Add unit test usage.spec.ts with mock Stripe SDK.
+4.  ENV: STRIPE_GEOCODE_PRICE=<price_id>.
+
+Commit & run jest.
+
+# Prompt 4 – Ops dashboard
+1.  Add prometheus/recording_rules.yml:
+      - record: tf:p95_latency_ms
+        expr : histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))
+      - record: tf:error_rate
+        expr : sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))
+2.  Reference in prometheus.yml rule_files.
+3.  Create grafana/dashboards/slo.json:
+      • p95 latency < 0.5 s threshold (green/yellow/red)
+      • error_rate < 1 % threshold
+4.  Add CI step “validate-prom-rules” using promtool.
+Commit.
+
+Great—let’s launch Horizon 1. Below are four copy-paste prompts (one per upgrade) for your Replit AI Agent. Run them in order; each finishes with tests and a green CI check before you move on.
+
+⸻
+
+1 ▪ Plugin Sandbox + Quotas
+
+# Prompt 1 – Secure plugin execution
+Generate files:
+
+1.  packages/core/src/plugin/sandbox.ts
+    › Wrap plugin entry with `vm2`:
+      - new NodeVM({ timeout: cpuMs, sandbox:{console}, memoryLimit: memKb })
+      - Export function runSandbox(manifestPath:string): PluginExports
+
+2.  Update packages/core/src/plugin/loader.ts
+    › Read cpuMs & memKb from plugin.manifest; default {cpuMs:1000, memKb:128000}
+    › Throw `PluginQuotaError` if missing limits
+    › Replace `require()` with runSandbox()
+
+3.  Add unit tests plugin.sandbox.spec.ts:
+    ✓ Halts infinite loop (>cpuMs)
+    ✓ Blocks fs access
+
+4.  Extend plugin.manifest.json schema.
+
+Commit, run jest, push.
+
+
+
+⸻
+
+2 ▪ API Version-Header Negotiation
+
+# Prompt 2 – Nest versioning skeleton
+Modify apps/terrafusion-core:
+
+1.  npm i @nestjs/versioning
+2.  main.ts
+    › app.enableVersioning({
+        type: VersioningType.HEADER,
+        header: 'x-terrafusion-api-version',
+        defaultVersion: '1',
+      });
+3.  Add middleware warnDeprecated: if header '0' → log + set Deprecation header.
+4.  Add e2e test core-version.spec.ts that GET /parcels with v1 header returns 200, with v0 returns 299 (deprecated).
+
+Run tests.
+
+
+
+⸻
+
+3 ▪ Usage Meter for Geocoding API
+
+# Prompt 3 – Metered billing
+1.  In apps/worker-node create metering/usage.ts:
+    › nightly cron aggregates `geocode_calls` table per customer_id.
+    › Stripe.usageRecords.create({ quantity, timestamp, subscription_item: PRICE_GEOCODE_ITEM, action:'increment' });
+2.  Extend geocode service: insert row per call (tenant_id, ts) via fast COPY buffer.
+3.  Add unit test usage.spec.ts with mock Stripe SDK.
+4.  ENV: STRIPE_GEOCODE_PRICE=<price_id>.
+
+Commit & run jest.
+
+
+
+⸻
+
+4 ▪ Prometheus SLO Dashboard
+
+# Prompt 4 – Ops dashboard
+1.  Add prometheus/recording_rules.yml:
+      - record: tf:p95_latency_ms
+        expr : histogram_quantile(0.95, sum(rate(http_server_request_duration_seconds_bucket[5m])) by (le))
+      - record: tf:error_rate
+        expr : sum(rate(http_server_requests_seconds_count{status=~"5.."}[5m])) / sum(rate(http_server_requests_seconds_count[5m]))
+2.  Reference in prometheus.yml rule_files.
+3.  Create grafana/dashboards/slo.json:
+      • p95 latency < 0.5 s threshold (green/yellow/red)
+      • error_rate < 1 % threshold
+4.  Add CI step “validate-prom-rules” using promtool.
+Commit.
+
+
+
+⸻
+
+How to Execute
+	1.	Copy Prompt 1 into the Agent → wait for commit + CI green.
+	2.	Copy Prompt 2, then 3, then 4, verifying each passes tests.
+	3.	docker compose up -d; open Grafana → TF SLO dashboard appears; run a sample geocode call ⇒ nightly meter job enqueues usage.
+
+Ping me when all four prompts are merged, and we’ll schedule a smoke test plus Benton staging rollout.
