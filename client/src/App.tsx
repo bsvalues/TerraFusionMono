@@ -7,6 +7,7 @@ import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Marketplace from "@/pages/marketplace";
 import BillingPage from "@/pages/billing";
+import OnboardingPage from "@/pages/onboarding";
 import MainLayout from "@/components/layout/main-layout";
 
 function Router() {
@@ -16,6 +17,7 @@ function Router() {
         <Route path="/" component={Dashboard} />
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/billing" component={BillingPage} />
+        <Route path="/onboarding" component={OnboardingPage} />
         {/* Add more routes here as the application grows */}
         {/* Fallback to 404 */}
         <Route component={NotFound} />

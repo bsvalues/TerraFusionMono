@@ -173,10 +173,10 @@ export default function PluginManifestStep({ pluginData, updatePluginData }: Plu
             </p>
           </div>
 
-          <Alert className="mt-6" variant="warning">
-            <AlertTriangle className="h-4 w-4" />
-            <AlertTitle>Resource Quotas</AlertTitle>
-            <AlertDescription>
+          <Alert className="mt-6 bg-yellow-50 border-yellow-200">
+            <AlertTriangle className="h-4 w-4 text-yellow-600" />
+            <AlertTitle className="text-yellow-800">Resource Quotas</AlertTitle>
+            <AlertDescription className="text-yellow-700">
               <p className="mb-2">
                 Higher resource quotas are available through premium subscriptions.
               </p>
