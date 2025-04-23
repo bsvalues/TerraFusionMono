@@ -523,4 +523,79 @@ router.get('/sync/crdt/:parcelId', async (req: Request, res: Response) => {
   }
 });
 
+/**
+ * @route POST /api/mobile/sync/crdt/test
+ * @desc Testing endpoint to create a new Yjs document with sample data
+ * @access Private
+ */
+router.post('/sync/crdt/test', async (req: Request, res: Response) => {
+  // For development testing only
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (!isDevelopment) {
+    return res.status(403).json({ message: 'This endpoint is only available in development mode' });
+  }
+  
+  try {
+    // Get request parameters
+    const parcelId = req.body.parcelId || `test-parcel-${Date.now()}`;
+    const text = req.body.text || `Test note created at ${new Date().toISOString()}`;
+    const operation = req.body.operation || 'create'; // 'create' or 'update'
+    
+    // Create a new Y.Doc with sample text
+    const Y = await import('yjs');
+    const doc = new Y.Doc();
+    const yText = doc.getText('notes');
+    
+    // If we're updating an existing document, first get it from the database
+    if (operation === 'update') {
+      try {
+        // Get existing document
+        const { mobileSyncService } = await import('../services/mobile-sync');
+        const existingNote = await mobileSyncService.getParcelNote(parcelId);
+        
+        // If it exists and has CRDT data, apply that first
+        if (existingNote && existingNote.yDocData) {
+          // Apply existing state
+          const existingUpdate = Buffer.from(existingNote.yDocData, 'base64');
+          Y.applyUpdate(doc, existingUpdate);
+          
+          console.log('Loaded existing document for update, current text:', yText.toString());
+        }
+      } catch (e) {
+        console.log('No existing document found, creating new one');
+      }
+    }
+    
+    // Add new text at end of document
+    yText.insert(yText.length, '\n' + text);
+    
+    // Encode the document state
+    const updateBuffer = Y.encodeStateAsUpdate(doc);
+    const base64Update = Buffer.from(updateBuffer).toString('base64');
+    
+    // Save to database using the same service as the main endpoint
+    const { mobileSyncService } = await import('../services/mobile-sync');
+    const result = await mobileSyncService.syncParcelNote(
+      parcelId,
+      base64Update,
+      1 // Use user ID 1 for testing
+    );
+    
+    res.json({
+      success: true,
+      parcelId,
+      operation,
+      text: yText.toString(),
+      update: result.update,
+      timestamp: result.timestamp
+    });
+  } catch (error) {
+    console.error('Test CRDT creation/update error:', error);
+    res.status(500).json({ 
+      message: 'Error processing CRDT document',
+      error: error.message
+    });
+  }
+});
+
 export default router;
