@@ -15,6 +15,7 @@ import { mobileSyncService } from "./services/mobile-sync";
 import Stripe from "stripe";
 import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
+import mobileAuthRoutes from "./routes/mobile-auth";
 import { versionGuard } from "./middleware/api-versioning";
 
 // Initialize Stripe if key is available
@@ -743,6 +744,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // Register authentication routes
   app.use('/api/auth', authRoutes);
+  
+  // Register mobile authentication routes
+  app.use('/api/mobile/auth', mobileAuthRoutes);
   
   // Register mobile app routes
   app.use('/api/mobile', mobileRoutes);

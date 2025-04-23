@@ -1,83 +1,70 @@
-import { Platform } from 'react-native';
+/**
+ * TerraField Mobile Configuration
+ * Contains environment-specific settings and feature flags for the mobile app
+ */
 
-// App configuration
 const Config = {
-  // App version - update this when releasing a new version
+  // App version information
   VERSION: '1.0.0',
   
-  // API URL - development vs production
-  API_URL: __DEV__ 
-    ? Platform.select({
-        // When running in development mode
-        ios: 'http://localhost:5000/api', // For iOS simulator
-        android: 'http://10.0.2.2:5000/api', // For Android emulator
-        default: 'http://localhost:5000/api',
-      })
-    : 'https://api.terrafusion.com/api', // Production API
+  // API configuration
+  API_URL: process.env.API_URL || 'https://api.terrafusion.io',
   
   // Authentication settings
   AUTH: {
-    // Token expiration time in days
-    TOKEN_EXPIRATION_DAYS: 30,
-    
-    // Minimum password length
+    TOKEN_EXPIRATION_DAYS: 7,
     MIN_PASSWORD_LENGTH: 8,
   },
   
-  // Map configuration
+  // Map settings
   MAP: {
-    // Default map center coordinates
-    DEFAULT_CENTER: {
-      latitude: 39.8283,
-      longitude: -98.5795,
-    },
-    
-    // Default zoom level
-    DEFAULT_ZOOM: 4,
-    
-    // Map style - can be 'standard', 'satellite', 'hybrid'
+    DEFAULT_CENTER: { latitude: 37.7749, longitude: -122.4194 }, // San Francisco
+    DEFAULT_ZOOM: 12,
     DEFAULT_MAP_TYPE: 'standard',
-    
-    // Parcel marker colors
-    PARCEL_MARKER_COLOR: '#4CAF50', // Green for normal parcels
-    SELECTED_PARCEL_MARKER_COLOR: '#2196F3', // Blue for selected parcels
+    PARCEL_MARKER_COLOR: '#4CAF50',
+    SELECTED_PARCEL_MARKER_COLOR: '#FFA000',
   },
   
-  // Sync configuration
+  // Sync settings
   SYNC: {
-    // How often to attempt sync in milliseconds (5 minutes)
-    SYNC_INTERVAL: 5 * 60 * 1000,
-    
-    // Maximum number of sync retries
-    MAX_SYNC_RETRIES: 3,
-    
-    // Delay between sync retries in milliseconds (30 seconds)
-    SYNC_RETRY_DELAY: 30 * 1000,
+    INTERVAL: 5 * 60 * 1000, // 5 minutes
+    RETRY_DELAY: 30 * 1000, // 30 seconds
+    MAX_RETRY_COUNT: 3,
+    CONNECTION_TIMEOUT: 10 * 1000, // 10 seconds
   },
   
   // Feature flags
   FEATURES: {
-    // Enable offline mode
     OFFLINE_MODE: true,
-    
-    // Enable debug logging
-    DEBUG_LOGGING: __DEV__,
-    
-    // Enable crash reporting
-    CRASH_REPORTING: !__DEV__,
-    
-    // Enable analytics
-    ANALYTICS: !__DEV__,
+    LOCATION_TRACKING: true,
+    DOCUMENT_SCANNING: true,
+    OFFLINE_MAPS: true,
+    COLLABORATIVE_EDITING: true,
+    PHOTO_UPLOAD: true,
+    DARK_MODE: true,
   },
   
-  // Storage keys
-  STORAGE_KEYS: {
-    AUTH_TOKEN: 'auth_token',
-    USER_SETTINGS: 'user_settings',
-    LAST_SYNC_TIME: 'last_sync_time',
-    CACHED_PARCELS: 'cached_parcels',
+  // Storage configuration
+  STORAGE: {
+    MAX_OFFLINE_STORAGE_MB: 100, // 100 MB
+    CACHE_EXPIRATION_DAYS: 30,
+    ENCRYPTION_ENABLED: true,
+  },
+  
+  // Error reporting
+  ERROR_REPORTING: {
+    ENABLED: true,
+    INCLUDE_USER_INFO: false,
+    AUTO_SEND: true,
+  },
+  
+  // Development flags (should be false in production)
+  DEV: {
+    MOCK_LOCATION: false,
+    VERBOSE_LOGGING: true,
+    DISABLE_ENCRYPTION: false,
+    FORCE_OFFLINE: false,
   }
 };
 
-// Export the configuration
 export default Config;
