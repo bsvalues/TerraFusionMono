@@ -1,66 +1,94 @@
-import { BehaviorSubject } from 'rxjs';
-import Config from '../config';
+import { Platform } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
-interface AuthState {
-  isAuthenticated: boolean;
-  userId?: number;
-  username?: string;
-}
+// Storage keys
+const TOKEN_KEY = 'terrafield_auth_token';
+const USER_KEY = 'terrafield_user';
 
-interface LoginData {
-  username: string;
-  password: string;
-}
-
-interface RegisterData {
-  username: string;
-  email: string;
-  password: string;
-}
-
-interface UserData {
+// User interface
+export interface User {
   id: number;
   username: string;
   email: string;
   role: string;
-  createdAt: string;
+  firstName?: string;
+  lastName?: string;
+  organization?: string;
 }
 
-interface AuthTokens {
-  token: string;
-  refreshToken: string;
-  expiresAt: number;
-}
-
-/**
- * Authentication service for managing user authentication state
- */
+// Auth service for user authentication
 class AuthService {
-  private _authState = new BehaviorSubject<AuthState>({ isAuthenticated: false });
-  private _tokens: AuthTokens | null = null;
-  private _currentUser: UserData | null = null;
-
+  private token: string | null = null;
+  private user: User | null = null;
+  private apiUrl = 'https://api.terrafusion.example/v1';
+  
   /**
-   * Observable for auth state changes
+   * Initialize the auth service by loading saved credentials
    */
-  public get authState$() {
-    return this._authState.asObservable();
+  async initialize(): Promise<boolean> {
+    try {
+      const token = await AsyncStorage.getItem(TOKEN_KEY);
+      const userJson = await AsyncStorage.getItem(USER_KEY);
+      
+      if (token && userJson) {
+        this.token = token;
+        this.user = JSON.parse(userJson);
+        return true;
+      }
+      
+      return false;
+    } catch (error) {
+      console.error('Error initializing auth service:', error);
+      return false;
+    }
   }
-
+  
+  /**
+   * Get the current authentication token
+   */
+  getToken(): string | null {
+    return this.token;
+  }
+  
+  /**
+   * Get the current authenticated user
+   */
+  getUser(): User | null {
+    return this.user;
+  }
+  
+  /**
+   * Check if the user is authenticated
+   */
+  isAuthenticated(): boolean {
+    return !!this.token && !!this.user;
+  }
+  
+  /**
+   * Get the headers for API requests
+   */
+  getAuthHeaders(): HeadersInit {
+    return {
+      'Content-Type': 'application/json',
+      'Accept': 'application/json',
+      'User-Agent': `TerraField-Mobile/${Platform.OS}`,
+      ...(this.token ? { 'Authorization': `Bearer ${this.token}` } : {}),
+    };
+  }
+  
   /**
    * Login with username and password
    */
-  public async login(data: LoginData): Promise<UserData> {
+  async login(username: string, password: string): Promise<User> {
     try {
-      // In a real implementation, this would make an API request
-      // For now, we'll simulate a successful login with mock data
-      
-      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/login`, {
+      const response = await fetch(`${this.apiUrl}/auth/login`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': `TerraField-Mobile/${Platform.OS}`,
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify({ username, password }),
       });
       
       if (!response.ok) {
@@ -68,48 +96,41 @@ class AuthService {
         throw new Error(errorData.message || 'Login failed');
       }
       
-      const responseData = await response.json();
+      const data = await response.json();
+      this.token = data.token;
+      this.user = data.user;
       
-      // Store authentication tokens
-      this._tokens = {
-        token: responseData.token,
-        refreshToken: responseData.refreshToken,
-        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
-      };
+      // Save to storage
+      await AsyncStorage.setItem(TOKEN_KEY, this.token);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(this.user));
       
-      // Store user information
-      this._currentUser = responseData.user;
-      
-      // Save tokens and user info to secure storage
-      await this.persistAuthState();
-      
-      // Update authentication state
-      this._authState.next({
-        isAuthenticated: true,
-        userId: responseData.user.id,
-        username: responseData.user.username,
-      });
-      
-      return responseData.user;
-    } catch (error: any) {
-      throw new Error(error.message || 'Login failed');
+      return this.user;
+    } catch (error) {
+      console.error('Login error:', error);
+      throw error;
     }
   }
-
+  
   /**
    * Register a new user
    */
-  public async register(data: RegisterData): Promise<UserData> {
+  async register(userData: {
+    username: string;
+    email: string;
+    password: string;
+    firstName?: string;
+    lastName?: string;
+    organization?: string;
+  }): Promise<User> {
     try {
-      // In a real implementation, this would make an API request
-      // For now, we'll simulate a successful registration with mock data
-      
-      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/register`, {
+      const response = await fetch(`${this.apiUrl}/auth/register`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': `TerraField-Mobile/${Platform.OS}`,
         },
-        body: JSON.stringify(data),
+        body: JSON.stringify(userData),
       });
       
       if (!response.ok) {
@@ -117,171 +138,135 @@ class AuthService {
         throw new Error(errorData.message || 'Registration failed');
       }
       
-      const responseData = await response.json();
+      const data = await response.json();
+      this.token = data.token;
+      this.user = data.user;
       
-      // Store authentication tokens
-      this._tokens = {
-        token: responseData.token,
-        refreshToken: responseData.refreshToken,
-        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
-      };
+      // Save to storage
+      await AsyncStorage.setItem(TOKEN_KEY, this.token);
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(this.user));
       
-      // Store user information
-      this._currentUser = responseData.user;
-      
-      // Save tokens and user info to secure storage
-      await this.persistAuthState();
-      
-      // Update authentication state
-      this._authState.next({
-        isAuthenticated: true,
-        userId: responseData.user.id,
-        username: responseData.user.username,
-      });
-      
-      return responseData.user;
-    } catch (error: any) {
-      throw new Error(error.message || 'Registration failed');
+      return this.user;
+    } catch (error) {
+      console.error('Registration error:', error);
+      throw error;
     }
   }
-
+  
   /**
    * Logout the current user
    */
-  public async logout(): Promise<void> {
+  async logout(): Promise<void> {
     try {
-      // In a real implementation, this might call an API endpoint
-      // to invalidate the token on the server
-      
-      // Clear auth state
-      this._tokens = null;
-      this._currentUser = null;
-      
-      // Clear persisted auth state
-      await this.clearAuthState();
-      
-      // Update authentication state
-      this._authState.next({ isAuthenticated: false });
-    } catch (error: any) {
-      console.error('Logout error:', error);
-      throw new Error(error.message || 'Logout failed');
-    }
-  }
-
-  /**
-   * Check if the user is authenticated
-   */
-  public isAuthenticated(): boolean {
-    if (!this._tokens) {
-      return false;
-    }
-    
-    // Check if token is expired
-    return Date.now() < this._tokens.expiresAt;
-  }
-
-  /**
-   * Get the current authentication token
-   */
-  public async getToken(): Promise<string | null> {
-    // If token is expired, try to refresh
-    if (this._tokens && Date.now() >= this._tokens.expiresAt) {
-      try {
-        await this.refreshToken();
-      } catch (error) {
-        return null;
+      if (this.token) {
+        // Attempt to notify server of logout (best effort)
+        try {
+          await fetch(`${this.apiUrl}/auth/logout`, {
+            method: 'POST',
+            headers: this.getAuthHeaders(),
+          });
+        } catch (e) {
+          // Ignore server errors on logout
+          console.log('Server logout error (ignoring):', e);
+        }
       }
-    }
-    
-    return this._tokens?.token || null;
-  }
-
-  /**
-   * Refresh the authentication token
-   */
-  public async refreshToken(): Promise<boolean> {
-    if (!this._tokens?.refreshToken) {
-      return false;
-    }
-    
-    try {
-      // In a real implementation, this would make an API request
-      // For now, we'll simulate a successful token refresh
       
-      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/refresh`, {
+      // Clear local state
+      this.token = null;
+      this.user = null;
+      
+      // Clear from storage
+      await AsyncStorage.removeItem(TOKEN_KEY);
+      await AsyncStorage.removeItem(USER_KEY);
+    } catch (error) {
+      console.error('Logout error:', error);
+      throw error;
+    }
+  }
+  
+  /**
+   * Reset password
+   */
+  async resetPassword(email: string): Promise<void> {
+    try {
+      const response = await fetch(`${this.apiUrl}/auth/reset-password`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'Accept': 'application/json',
+          'User-Agent': `TerraField-Mobile/${Platform.OS}`,
         },
-        body: JSON.stringify({
-          refreshToken: this._tokens.refreshToken,
-        }),
+        body: JSON.stringify({ email }),
       });
       
       if (!response.ok) {
-        // If refresh token is invalid, logout
-        await this.logout();
-        return false;
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Password reset failed');
       }
-      
-      const responseData = await response.json();
-      
-      // Update tokens
-      this._tokens = {
-        token: responseData.token,
-        refreshToken: responseData.refreshToken || this._tokens.refreshToken,
-        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
-      };
-      
-      // Save updated tokens
-      await this.persistAuthState();
-      
-      return true;
     } catch (error) {
-      console.error('Token refresh error:', error);
-      await this.logout();
-      return false;
+      console.error('Password reset error:', error);
+      throw error;
     }
   }
-
+  
   /**
-   * Get the current user data
+   * Update user profile information
    */
-  public getCurrentUser(): UserData | null {
-    return this._currentUser;
+  async updateProfile(updates: Partial<Omit<User, 'id'>>): Promise<User> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Not authenticated');
+    }
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/users/profile`, {
+        method: 'PATCH',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify(updates),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Profile update failed');
+      }
+      
+      const updatedUser = await response.json();
+      this.user = updatedUser;
+      
+      // Update storage
+      await AsyncStorage.setItem(USER_KEY, JSON.stringify(this.user));
+      
+      return this.user;
+    } catch (error) {
+      console.error('Profile update error:', error);
+      throw error;
+    }
   }
-
+  
   /**
-   * Save authentication state to secure storage
+   * Change password
    */
-  private async persistAuthState(): Promise<void> {
-    // In a real implementation, this would save tokens to secure storage
-    // and user data to regular storage
-    // For now, we'll just log that it would be saved
-    console.log('Would save auth state to secure storage');
-  }
-
-  /**
-   * Clear authentication state from secure storage
-   */
-  private async clearAuthState(): Promise<void> {
-    // In a real implementation, this would clear tokens from secure storage
-    // and user data from regular storage
-    // For now, we'll just log that it would be cleared
-    console.log('Would clear auth state from secure storage');
-  }
-
-  /**
-   * Load authentication state from secure storage
-   * Called during app initialization
-   */
-  public async loadAuthState(): Promise<boolean> {
-    // In a real implementation, this would load tokens from secure storage
-    // and user data from regular storage
-    // For now, we'll just return false (not authenticated)
-    return false;
+  async changePassword(currentPassword: string, newPassword: string): Promise<void> {
+    if (!this.isAuthenticated()) {
+      throw new Error('Not authenticated');
+    }
+    
+    try {
+      const response = await fetch(`${this.apiUrl}/auth/change-password`, {
+        method: 'POST',
+        headers: this.getAuthHeaders(),
+        body: JSON.stringify({ currentPassword, newPassword }),
+      });
+      
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Password change failed');
+      }
+    } catch (error) {
+      console.error('Password change error:', error);
+      throw error;
+    }
   }
 }
 
-const authService = new AuthService();
-export default authService;
+// Export a singleton instance
+export const authService = new AuthService();
