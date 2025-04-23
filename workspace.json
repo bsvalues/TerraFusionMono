@@ -1,0 +1,18 @@
+{
+  "version": 2,
+  "projects": {
+    "core-gateway": "apps/core-gateway",
+    "marketplace-ui": "apps/marketplace-ui",
+    "citizen-portal": "apps/citizen-portal",
+    "ui": "packages/ui",
+    "schema": "packages/schema",
+    "mcp": "packages/mcp",
+    "testing": "packages/testing",
+    "gis-hub": "plugins/gis-hub",
+    "levy-calc": "plugins/levy-calc",
+    "cost-approach": "plugins/cost-approach",
+    "eslint-config": "tools/eslint-config",
+    "plugin-scaffold": "tools/plugin-scaffold",
+    "dev-container": "tools/dev-container"
+  }
+}

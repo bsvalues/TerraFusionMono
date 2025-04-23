@@ -1,0 +1,16 @@
+{
+  "name": "@terrafusion/mcp",
+  "version": "1.0.0",
+  "description": "TerraFusion Marketplace Contract Protocol",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "keywords": ["terrafusion", "plugin", "contract", "marketplace"],
+  "author": "TerraFusion Team",
+  "license": "UNLICENSED",
+  "private": true
+}
