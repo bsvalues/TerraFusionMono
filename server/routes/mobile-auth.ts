@@ -67,7 +67,7 @@ router.post('/login', async (req: Request, res: Response) => {
     }
     
     // Check password
-    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(password, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ message: 'Invalid credentials' });
     }
@@ -76,7 +76,7 @@ router.post('/login', async (req: Request, res: Response) => {
     const tokens = generateTokens(user.id, user.username);
     
     // Return tokens and user data (excluding sensitive info)
-    const { passwordHash, ...userWithoutPassword } = user;
+    const { password: userPassword, ...userWithoutPassword } = user;
     res.json({
       ...tokens,
       user: userWithoutPassword,
@@ -120,7 +120,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const user = await storage.createUser({
       username,
       email,
-      passwordHash,
+      password: passwordHash, // Fixed: using password instead of passwordHash
       role: 'user',
       ...rest,
     });
@@ -129,7 +129,7 @@ router.post('/register', async (req: Request, res: Response) => {
     const tokens = generateTokens(user.id, user.username);
     
     // Return tokens and user data (excluding sensitive info)
-    const { passwordHash: _, ...userWithoutPassword } = user;
+    const { password: _, ...userWithoutPassword } = user;
     res.status(201).json({
       ...tokens,
       user: userWithoutPassword,
@@ -240,17 +240,17 @@ router.post('/change-password', async (req: Request, res: Response) => {
     }
     
     // Check current password
-    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.password);
     if (!isPasswordValid) {
       return res.status(401).json({ message: 'Current password is incorrect' });
     }
     
     // Hash new password
     const salt = await bcrypt.genSalt(10);
-    const passwordHash = await bcrypt.hash(newPassword, salt);
+    const hashedPassword = await bcrypt.hash(newPassword, salt);
     
     // Update user password
-    await storage.updateUser(user.id, { passwordHash });
+    await storage.updateUser(user.id, { password: hashedPassword });
     
     res.json({ message: 'Password updated successfully' });
   } catch (error) {
