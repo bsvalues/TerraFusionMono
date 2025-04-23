@@ -9,9 +9,6 @@ const Progress = React.forwardRef<
     indicatorClassName?: string;
   }
 >(({ className, value, indicatorClassName, ...props }, ref) => {
-  // Remove indicatorClassName from props to avoid passing it to the DOM
-  const progressProps = { ...props };
-  
   return (
     <ProgressPrimitive.Root
       ref={ref}
@@ -19,7 +16,7 @@ const Progress = React.forwardRef<
         "relative h-2 w-full overflow-hidden rounded-full bg-primary/20",
         className
       )}
-      {...progressProps}
+      {...props}
     >
       <ProgressPrimitive.Indicator
         className={cn(

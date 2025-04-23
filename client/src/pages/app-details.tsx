@@ -7,24 +7,37 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { ServerIcon, PlayIcon, SquareIcon, RefreshCwIcon, Settings2Icon, TerminalIcon, CodeIcon } from 'lucide-react';
 
+// Define types for app data
+interface AppData {
+  name: string;
+  status: string;
+  version: string;
+  lastStarted: string;
+  cpu: string;
+  memory: string;
+}
+
 export default function AppDetailsPage() {
   const [, params] = useRoute('/apps/:name');
   const appName = params?.name || 'unknown';
 
   // Fetch app details
-  const { data: app, isLoading } = useQuery({
+  const { data: appData, isLoading } = useQuery({
     queryKey: [`/api/services/${appName}`],
-    select: (data: any) => {
-      return data || {
-        name: appName,
-        status: 'unknown',
-        version: '1.0.0',
-        lastStarted: new Date().toISOString(),
-        cpu: '0%',
-        memory: '0MB',
-      };
-    },
+    retry: false,
   });
+
+  // Use default values if the API response is empty or undefined
+  const defaultApp: AppData = {
+    name: appName,
+    status: 'unknown',
+    version: '1.0.0',
+    lastStarted: new Date().toISOString(),
+    cpu: '0%',
+    memory: '0MB',
+  };
+  
+  const app: AppData = appData ? { ...defaultApp, ...appData } : defaultApp;
 
   // Get the appropriate icon for this app
   const getAppIcon = () => {

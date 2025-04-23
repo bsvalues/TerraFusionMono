@@ -17,26 +17,41 @@ import {
   FileTextIcon
 } from 'lucide-react';
 
+// Define types for plugin data
+interface PluginData {
+  name: string;
+  status: string;
+  version: string;
+  author: string;
+  description: string;
+  lastUpdated: string;
+  documentationUrl: string;
+  usageCount: number;
+}
+
 export default function PluginDetailsPage() {
   const [, params] = useRoute('/plugins/:name');
   const pluginName = params?.name || 'unknown';
 
   // Fetch plugin details
-  const { data: plugin, isLoading } = useQuery({
+  const { data: pluginData, isLoading } = useQuery({
     queryKey: [`/api/plugins/by-name/${pluginName}`],
-    select: (data: any) => {
-      return data || {
-        name: pluginName,
-        status: 'active',
-        version: '1.0.0',
-        author: 'TerraFusion',
-        description: 'Plugin description not available',
-        lastUpdated: new Date().toISOString(),
-        documentationUrl: '#',
-        usageCount: 0,
-      };
-    },
+    retry: false,
   });
+
+  // Use default values if the API response is empty or undefined
+  const defaultPlugin: PluginData = {
+    name: pluginName,
+    status: 'active',
+    version: '1.0.0',
+    author: 'TerraFusion',
+    description: 'Plugin description not available',
+    lastUpdated: new Date().toISOString(),
+    documentationUrl: '#',
+    usageCount: 0,
+  };
+  
+  const plugin: PluginData = pluginData ? { ...defaultPlugin, ...pluginData } : defaultPlugin;
 
   if (isLoading) {
     return (

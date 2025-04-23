@@ -1,0 +1,50 @@
+Warning: React does not recognize the &#x60;indicatorColor&#x60; prop on a DOM element. If you intentionally want it to appear in the DOM as a custom attribute, spell it as lowercase &#x60;indicatorcolor&#x60; instead. If you accidentally passed it from a parent component, remove it from the DOM element.
+    at div
+    at https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-AXMZZQ2X.js?v=5af8b5f8:42:13
+    at Provider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-UBQ2LXDH.js?v=5af8b5f8:22:15)
+    at https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-progress.js?v=5af8b5f8:30:7
+    at _c (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/ui/progress.tsx:20:43)
+    at div
+    at div
+    at div
+    at div
+    at _c9 (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/ui/card.tsx:114:12)
+    at div
+    at _c (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/ui/card.tsx:20:11)
+    at div
+    at div
+    at StatusOverview (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/dashboard/status-overview.tsx:21:42)
+    at div
+    at div
+    at Dashboard (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/pages/dashboard.tsx:28:64)
+    at Route (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5af8b5f8:323:16)
+    at Switch (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5af8b5f8:379:17)
+    at main
+    at div
+    at div
+    at MainLayout (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/layout/main-layout.tsx:19:38)
+    at Router
+    at Provider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-UBQ2LXDH.js?v=5af8b5f8:22:15)
+    at TooltipProvider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5af8b5f8:62:5)
+    at QueryClientProvider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5af8b5f8:2805:3)
+    at App
+Cannot read properties of undefined (reading 'name')
+Cannot read properties of undefined (reading 'name')
+The above error occurred in the <AppDetailsPage> component:
+
+    at AppDetailsPage (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/pages/app-details.tsx:27:22)
+    at Route (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5af8b5f8:323:16)
+    at Switch (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/wouter.js?v=5af8b5f8:379:17)
+    at main
+    at div
+    at div
+    at MainLayout (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/src/components/layout/main-layout.tsx:19:38)
+    at Router
+    at Provider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/chunk-UBQ2LXDH.js?v=5af8b5f8:22:15)
+    at TooltipProvider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@radix-ui_react-tooltip.js?v=5af8b5f8:62:5)
+    at QueryClientProvider (https://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/@fs/home/runner/workspace/node_modules/.vite/deps/@tanstack_react-query.js?v=5af8b5f8:2805:3)
+    at App
+
+Consider adding an error boundary to your tree to customize error handling behavior.
+Visit https://reactjs.org/link/error-boundaries to learn more about error boundaries.
+Cannot read properties of undefined (reading 'name')

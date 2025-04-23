@@ -72,7 +72,7 @@ export default function StatusOverview({ metrics, isLoading }: StatusOverviewPro
                   {isLoading ? (
                     <Skeleton className="h-2 w-full" />
                   ) : (
-                    <Progress value={cpuUsage} className="h-2 bg-gray-200" indicatorColor="bg-warning" />
+                    <Progress value={cpuUsage} className="h-2 bg-gray-200" indicatorClassName="bg-warning" />
                   )}
                 </div>
               </div>

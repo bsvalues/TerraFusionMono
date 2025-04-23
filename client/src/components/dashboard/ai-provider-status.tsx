@@ -96,7 +96,7 @@ export default function AiProviderStatus({ providers, isLoading }: AiProviderSta
                     <Progress 
                       value={provider.apiRate} 
                       className="h-2 bg-gray-200"
-                      indicatorColor={provider.apiRate > 90 ? "bg-success" : "bg-warning"}
+                      indicatorClassName={provider.apiRate > 90 ? "bg-success" : "bg-warning"}
                     />
                   </div>
                 </div>
