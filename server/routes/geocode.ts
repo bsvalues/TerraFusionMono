@@ -124,13 +124,13 @@ export async function searchHandler(req: Request, res: Response) {
     };
     
     // Record the geocode call in the database
-    const userId = req.user?.id || null;
+    const userId = req.user?.id || 1; // Default to tenant ID 1 if not authenticated
     await db.insert(geocodeCalls).values({
-      userId,
-      query: address,
-      result: JSON.stringify(response),
+      tenantId: userId,
+      address: address,
+      success: true,
+      responseTime: 500, // Simulated 500ms response time
       timestamp: new Date(),
-      isSuccessful: true,
     });
     
     // If we have a price ID, record usage with Stripe for metered billing
@@ -138,16 +138,29 @@ export async function searchHandler(req: Request, res: Response) {
       try {
         const user = await storage.getUser(userId);
         
-        if (user?.stripeCustomerId) {
+        if (user?.stripeCustomerId && user?.stripeSubscriptionId) {
           // Report usage to Stripe for metered billing
-          await stripe.subscriptionItems.createUsageRecord(
-            process.env.STRIPE_GEOCODE_PRICE,
-            {
-              quantity: 1, // One geocode call
-              timestamp: 'now',
-              action: 'increment',
+          try {
+            // Find the subscription item based on the price ID
+            const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId);
+            const item = subscription.items.data.find(
+              item => item.price.id === process.env.STRIPE_GEOCODE_PRICE
+            );
+            
+            if (item) {
+              // Report usage on the specific subscription item
+              await stripe.subscriptionItems.createUsageRecord(
+                item.id, // Use the subscription item ID, not the price ID
+                {
+                  quantity: 1, // One geocode call
+                  timestamp: 'now',
+                  action: 'increment',
+                }
+              );
             }
-          );
+          } catch (subError) {
+            console.error('Error reporting usage record:', subError);
+          }
         }
       } catch (stripeError) {
         console.error('Error reporting usage to Stripe:', stripeError);
@@ -175,7 +188,7 @@ export async function getMetricsHandler(req: Request, res: Response) {
     
     // Get total API calls
     const totalResult = await db.execute<{ count: number }>(
-      `SELECT COUNT(*) as count FROM geocode_calls WHERE user_id = $1`,
+      `SELECT COUNT(*) as count FROM geocode_calls WHERE tenant_id = $1`,
       [userId]
     );
     const totalCalls = totalResult.rows[0]?.count || 0;
@@ -187,7 +200,7 @@ export async function getMetricsHandler(req: Request, res: Response) {
     
     const monthlyResult = await db.execute<{ count: number }>(
       `SELECT COUNT(*) as count FROM geocode_calls 
-       WHERE user_id = $1 AND timestamp >= $2`,
+       WHERE tenant_id = $1 AND timestamp >= $2`,
       [userId, startOfMonth]
     );
     const callsThisMonth = monthlyResult.rows[0]?.count || 0;
@@ -198,7 +211,7 @@ export async function getMetricsHandler(req: Request, res: Response) {
     
     const dailyResult = await db.execute<{ count: number }>(
       `SELECT COUNT(*) as count FROM geocode_calls 
-       WHERE user_id = $1 AND timestamp >= $2`,
+       WHERE tenant_id = $1 AND timestamp >= $2`,
       [userId, startOfDay]
     );
     const callsToday = dailyResult.rows[0]?.count || 0;
