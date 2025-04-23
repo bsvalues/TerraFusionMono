@@ -1,294 +1,222 @@
-import { Router, Request, Response } from 'express';
+import express from 'express';
 import { storage } from '../storage';
-import { isAuthenticated } from '../middleware/auth';
-import * as Y from 'yjs';
-import { z } from 'zod';
+import { verifyToken } from './auth';
 
-const router = Router();
+const router = express.Router();
 
-// Type for mobile sync data
-const SyncDataSchema = z.object({
-  parcelId: z.string(),
-  update: z.string(), // Base64 encoded CRDT update
-  timestamp: z.string().or(z.date()).transform((val) => new Date(val)),
+// Ping endpoint - used to check connectivity from mobile app
+router.get('/ping', (req, res) => {
+  res.json({ 
+    status: 'ok', 
+    message: 'TerraFusion API is running', 
+    timestamp: new Date().toISOString() 
+  });
 });
 
-/**
- * @route GET /api/mobile/parcels
- * @desc Get parcels available to the user
- * @access Private
- */
-router.get('/parcels', isAuthenticated, async (req: Request, res: Response) => {
+// Auth validation endpoint
+router.get('/auth/validate', verifyToken, (req, res) => {
+  const { password: _, ...userWithoutPassword } = req.user as any;
+  res.json({ valid: true, user: userWithoutPassword });
+});
+
+// Get parcels endpoint - with optional filtering
+router.get('/parcels', verifyToken, async (req, res) => {
   try {
-    // In a real implementation, we would filter parcels by user access
-    // and include pagination
-    const parcels = await storage.getParcels({
-      limit: 100,
-      userId: req.user?.id,
-    });
+    const user = req.user as any;
     
-    // Format response for mobile app
-    const formattedParcels = parcels.map(parcel => ({
-      id: parcel.id,
-      name: parcel.name,
-      address: parcel.address,
-      city: parcel.city,
-      state: parcel.state,
-      zipCode: parcel.zipCode,
-      syncStatus: 'synced', // Default status for now
-    }));
+    // Get parcels associated with the user
+    const parcels = await storage.getParcels({ userId: user.id });
     
-    res.json(formattedParcels);
+    res.json(parcels);
   } catch (error: any) {
-    console.error('Error fetching parcels for mobile:', error);
-    res.status(500).json({ message: 'Failed to retrieve parcels', error: error.message });
+    console.error('Get parcels error:', error);
+    res.status(500).json({ message: `Server error: ${error.message}` });
   }
 });
 
-/**
- * @route GET /api/mobile/parcels/:id
- * @desc Get single parcel detail by ID
- * @access Private
- */
-router.get('/parcels/:id', isAuthenticated, async (req: Request, res: Response) => {
+// Get specific parcel endpoint
+router.get('/parcels/:id', verifyToken, async (req, res) => {
   try {
-    const parcelId = req.params.id;
+    const { id } = req.params;
     
-    // Get parcel from database
-    const parcel = await storage.getParcel(parcelId);
-    
-    if (!parcel) {
-      return res.status(404).json({ message: 'Parcel not found' });
+    if (!id) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
     }
     
-    // Check if user has access to this parcel
-    // In a real implementation, we would verify user permissions
+    // Get the parcel
+    const parcel = await storage.getParcel(id);
+    
+    if (!parcel) {
+      return res.status(404).json({ message: `Parcel with ID ${id} not found` });
+    }
     
     res.json(parcel);
   } catch (error: any) {
-    console.error(`Error fetching parcel ${req.params.id} for mobile:`, error);
-    res.status(500).json({ message: 'Failed to retrieve parcel', error: error.message });
+    console.error('Get parcel error:', error);
+    res.status(500).json({ message: `Server error: ${error.message}` });
   }
 });
 
-/**
- * @route GET /api/mobile/parcels/:id/notes
- * @desc Get notes for a specific parcel
- * @access Private
- */
-router.get('/parcels/:id/notes', isAuthenticated, async (req: Request, res: Response) => {
+// Get parcel notes endpoint
+router.get('/parcels/:parcelId/notes', verifyToken, async (req, res) => {
   try {
-    const parcelId = req.params.id;
+    const { parcelId } = req.params;
     
-    // Get parcel notes from database
-    const notes = await storage.getParcelNoteByParcelId(parcelId);
-    
-    if (!notes) {
-      // No notes yet, return empty content
-      return res.json({
-        id: `note-${parcelId}`,
-        parcelId,
-        content: '',
-        lastEdited: new Date(),
-        syncStatus: 'synced',
-      });
+    if (!parcelId) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
     }
     
-    res.json(notes);
+    // Get the parcel note
+    const note = await storage.getParcelNoteByParcelId(parcelId);
+    
+    if (!note) {
+      return res.status(404).json({ message: `Note for parcel with ID ${parcelId} not found` });
+    }
+    
+    res.json(note);
   } catch (error: any) {
-    console.error(`Error fetching notes for parcel ${req.params.id}:`, error);
-    res.status(500).json({ message: 'Failed to retrieve parcel notes', error: error.message });
+    console.error('Get parcel notes error:', error);
+    res.status(500).json({ message: `Server error: ${error.message}` });
   }
 });
 
-/**
- * @route POST /api/mobile/parcels/:id/notes
- * @desc Save notes for a specific parcel
- * @access Private
- */
-router.post('/parcels/:id/notes', isAuthenticated, async (req: Request, res: Response) => {
+// Save parcel notes endpoint
+router.post('/parcels/:parcelId/notes', verifyToken, async (req, res) => {
   try {
-    const parcelId = req.params.id;
+    const { parcelId } = req.params;
     const { content } = req.body;
     
+    if (!parcelId) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
+    }
+    
     if (!content) {
-      return res.status(400).json({ message: 'Content is required' });
+      return res.status(400).json({ message: 'Note content is required' });
+    }
+    
+    // Get the parcel to verify it exists
+    const parcel = await storage.getParcel(parcelId);
+    
+    if (!parcel) {
+      return res.status(404).json({ message: `Parcel with ID ${parcelId} not found` });
     }
     
     // Check if note already exists
     const existingNote = await storage.getParcelNoteByParcelId(parcelId);
     
+    let note;
     if (existingNote) {
       // Update existing note
-      const updatedNote = await storage.updateParcelNote(existingNote.id, {
+      note = await storage.updateParcelNote(existingNote.id, {
         content,
-        lastEdited: new Date(),
-        updatedAt: new Date(),
+        updatedAt: new Date()
       });
-      
-      return res.json(updatedNote);
     } else {
       // Create new note
-      const newNote = await storage.createParcelNote({
+      note = await storage.createParcelNote({
         parcelId,
         content,
-        lastEdited: new Date(),
-        createdBy: req.user?.username || 'unknown',
-        syncStatus: 'synced',
         createdAt: new Date(),
         updatedAt: new Date(),
+        syncCount: 0
       });
-      
-      return res.json(newNote);
     }
+    
+    res.json(note);
   } catch (error: any) {
-    console.error(`Error saving notes for parcel ${req.params.id}:`, error);
-    res.status(500).json({ message: 'Failed to save parcel notes', error: error.message });
+    console.error('Save parcel notes error:', error);
+    res.status(500).json({ message: `Server error: ${error.message}` });
   }
 });
 
-/**
- * @route GET /api/mobile/parcels/:id/updates
- * @desc Get CRDT updates for a parcel
- * @access Private
- */
-router.get('/parcels/:id/updates', isAuthenticated, async (req: Request, res: Response) => {
+// Get parcel updates endpoint
+router.get('/parcels/:parcelId/updates', verifyToken, async (req, res) => {
   try {
-    const parcelId = req.params.id;
+    const { parcelId } = req.params;
     
-    // Get parcel notes from database
-    const notes = await storage.getParcelNoteByParcelId(parcelId);
-    
-    if (!notes || !notes.content) {
-      // No updates yet
-      return res.json({ update: null });
+    if (!parcelId) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
     }
     
-    // In a real implementation, we would store the CRDT updates separately
-    // For now, we'll just return the content as a simple update
-    const doc = new Y.Doc();
-    const text = doc.getText('notes');
-    text.insert(0, notes.content);
+    // Get parcel note with CRDT data
+    const note = await storage.getParcelNoteByParcelId(parcelId);
     
-    // Encode the state as an update
-    const update = Y.encodeStateAsUpdate(doc);
-    const base64Update = Buffer.from(update).toString('base64');
+    if (!note) {
+      return res.status(404).json({ message: `Note for parcel with ID ${parcelId} not found` });
+    }
     
-    res.json({ 
-      update: base64Update,
-      timestamp: notes.updatedAt
+    // Return CRDT update data
+    res.json({
+      update: note.yDocData || '',
+      timestamp: note.updatedAt.toISOString(),
+      syncCount: note.syncCount
     });
   } catch (error: any) {
-    console.error(`Error fetching updates for parcel ${req.params.id}:`, error);
-    res.status(500).json({ message: 'Failed to retrieve parcel updates', error: error.message });
+    console.error('Get parcel updates error:', error);
+    res.status(500).json({ message: `Server error: ${error.message}` });
   }
 });
 
-/**
- * @route POST /api/mobile/sync
- * @desc Sync data from mobile client
- * @access Private
- */
-router.post('/sync', isAuthenticated, async (req: Request, res: Response) => {
+// Sync endpoint - receive CRDT updates from mobile client
+router.post('/sync', verifyToken, async (req, res) => {
   try {
-    // Validate sync data
-    const result = SyncDataSchema.safeParse(req.body);
+    const { parcelId, update, timestamp } = req.body;
     
-    if (!result.success) {
-      return res.status(400).json({ 
-        message: 'Invalid sync data', 
-        errors: result.error.format() 
-      });
+    if (!parcelId || !update) {
+      return res.status(400).json({ message: 'Parcel ID and update are required' });
     }
     
-    const { parcelId, update, timestamp } = result.data;
+    const user = req.user as any;
+    const updateTime = timestamp ? new Date(timestamp) : new Date();
     
-    // Get existing note if any
-    const existingNote = await storage.getParcelNoteByParcelId(parcelId);
+    // Get the parcel note
+    let note = await storage.getParcelNoteByParcelId(parcelId);
     
-    // Create a Y.Doc to apply the update
-    const doc = new Y.Doc();
-    
-    // Apply the update
-    const updateBuffer = Buffer.from(update, 'base64');
-    Y.applyUpdate(doc, updateBuffer);
-    
-    // Get the text content
-    const text = doc.getText('notes');
-    const content = text.toString();
-    
-    if (existingNote) {
-      // Create a new doc with existing content
-      const existingDoc = new Y.Doc();
-      const existingText = existingDoc.getText('notes');
-      existingText.insert(0, existingNote.content);
-      
-      // Apply the update to the existing doc as well
-      Y.applyUpdate(existingDoc, updateBuffer);
-      
-      // Get the merged content
-      const mergedText = existingDoc.getText('notes');
-      const mergedContent = mergedText.toString();
-      
-      // Update the note with merged content
-      const updatedNote = await storage.updateParcelNote(existingNote.id, {
-        content: mergedContent,
-        lastEdited: timestamp,
-        updatedAt: new Date()
-      });
-      
-      // Return success
-      return res.json({
-        success: true,
-        note: updatedNote
+    if (!note) {
+      // Create new note with CRDT data
+      note = await storage.createParcelNote({
+        parcelId,
+        content: '',
+        yDocData: update,
+        createdAt: updateTime,
+        updatedAt: updateTime,
+        syncCount: 1
       });
     } else {
-      // Create a new note
-      const newNote = await storage.createParcelNote({
-        parcelId,
-        content,
-        lastEdited: timestamp,
-        createdBy: req.user?.username || 'unknown',
-        syncStatus: 'synced',
-        createdAt: new Date(),
-        updatedAt: new Date()
-      });
-      
-      // Return success
-      return res.json({
-        success: true,
-        note: newNote
+      // Update existing note with new CRDT data
+      // In a real implementation, you would merge the CRDT updates here
+      note = await storage.updateParcelNote(note.id, {
+        yDocData: update,
+        updatedAt: updateTime,
+        syncCount: (note.syncCount || 0) + 1
       });
     }
+    
+    // Log sync activity
+    await storage.createLog({
+      level: 'INFO',
+      service: 'mobile-sync',
+      message: `User ${user.username} synced parcel ${parcelId}`
+    });
+    
+    res.json({
+      status: 'success',
+      syncedAt: new Date().toISOString(),
+      syncCount: note.syncCount
+    });
   } catch (error: any) {
-    console.error('Error syncing data from mobile:', error);
-    res.status(500).json({ message: 'Sync failed', error: error.message });
+    console.error('Sync error:', error);
+    
+    // Log error
+    await storage.createLog({
+      level: 'ERROR',
+      service: 'mobile-sync',
+      message: `Sync error: ${error.message}`
+    });
+    
+    res.status(500).json({ message: `Sync error: ${error.message}` });
   }
 });
 
-/**
- * @route GET /api/mobile/ping
- * @desc Simple endpoint for connectivity check
- * @access Public
- */
-router.get('/ping', (req: Request, res: Response) => {
-  res.status(200).json({ status: 'ok', timestamp: new Date() });
-});
-
-/**
- * @route POST /api/mobile/auth/validate
- * @desc Validate authentication token
- * @access Private
- */
-router.get('/auth/validate', isAuthenticated, (req: Request, res: Response) => {
-  res.status(200).json({ 
-    valid: true, 
-    user: {
-      id: req.user?.id,
-      username: req.user?.username,
-      email: req.user?.email,
-    }
-  });
-});
-
+// Export router
 export default router;

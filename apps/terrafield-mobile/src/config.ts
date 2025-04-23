@@ -1,68 +1,83 @@
 import { Platform } from 'react-native';
 
-// Base URL for API calls
-// In development, use localhost for iOS and 10.0.2.2 for Android emulator
-export const apiBaseUrl = __DEV__ 
-  ? Platform.OS === 'ios' 
-    ? 'http://localhost:3000' 
-    : 'http://10.0.2.2:3000'
-  : 'https://api.terrafusion.io';
-
-// App Configuration
-export const appConfig = {
-  // App information
-  name: 'TerraField',
-  version: '1.0.0',
-  build: '1',
-  company: 'TerraFusion, Inc.',
-  // Sync settings
-  sync: {
-    // Sync interval in milliseconds (default: 5 minutes)
-    interval: 5 * 60 * 1000,
-    // Retry interval for failed syncs in milliseconds (default: 30 seconds)
-    retryInterval: 30 * 1000,
-    // Maximum number of sync retries before giving up
-    maxRetries: 3,
-    // Minimum battery level for automatic sync (to save battery)
-    minBatteryLevel: 0.2,
+// App configuration
+const Config = {
+  // App version - update this when releasing a new version
+  VERSION: '1.0.0',
+  
+  // API URL - development vs production
+  API_URL: __DEV__ 
+    ? Platform.select({
+        // When running in development mode
+        ios: 'http://localhost:5000/api', // For iOS simulator
+        android: 'http://10.0.2.2:5000/api', // For Android emulator
+        default: 'http://localhost:5000/api',
+      })
+    : 'https://api.terrafusion.com/api', // Production API
+  
+  // Authentication settings
+  AUTH: {
+    // Token expiration time in days
+    TOKEN_EXPIRATION_DAYS: 30,
+    
+    // Minimum password length
+    MIN_PASSWORD_LENGTH: 8,
   },
   
-  // Offline settings
-  offline: {
-    // Maximum storage size for offline data in bytes (default: 100MB)
-    maxStorageSize: 100 * 1024 * 1024,
-    // How long to keep parcel data in offline cache (default: 30 days)
-    maxCacheAge: 30 * 24 * 60 * 60 * 1000,
-  },
-  
-  // Map settings
-  map: {
-    // Default zoom level
-    defaultZoom: 15,
-    // Default map center (San Francisco)
-    defaultCenter: {
-      latitude: 37.7749,
-      longitude: -122.4194,
+  // Map configuration
+  MAP: {
+    // Default map center coordinates
+    DEFAULT_CENTER: {
+      latitude: 39.8283,
+      longitude: -98.5795,
     },
-    // Maximum number of offline map tiles to cache
-    maxOfflineTiles: 5000,
+    
+    // Default zoom level
+    DEFAULT_ZOOM: 4,
+    
+    // Map style - can be 'standard', 'satellite', 'hybrid'
+    DEFAULT_MAP_TYPE: 'standard',
+    
+    // Parcel marker colors
+    PARCEL_MARKER_COLOR: '#4CAF50', // Green for normal parcels
+    SELECTED_PARCEL_MARKER_COLOR: '#2196F3', // Blue for selected parcels
   },
   
-  // UI settings
-  ui: {
-    // Theme setting (light, dark, system)
-    theme: 'system',
-    // List view items per page
-    itemsPerPage: 20,
+  // Sync configuration
+  SYNC: {
+    // How often to attempt sync in milliseconds (5 minutes)
+    SYNC_INTERVAL: 5 * 60 * 1000,
+    
+    // Maximum number of sync retries
+    MAX_SYNC_RETRIES: 3,
+    
+    // Delay between sync retries in milliseconds (30 seconds)
+    SYNC_RETRY_DELAY: 30 * 1000,
   },
   
-  // Development settings
-  dev: {
-    // Enable detailed logging
-    verboseLogging: __DEV__,
-    // Log network requests
-    logNetworkRequests: __DEV__,
-    // Show development menu
-    showDevMenu: __DEV__,
+  // Feature flags
+  FEATURES: {
+    // Enable offline mode
+    OFFLINE_MODE: true,
+    
+    // Enable debug logging
+    DEBUG_LOGGING: __DEV__,
+    
+    // Enable crash reporting
+    CRASH_REPORTING: !__DEV__,
+    
+    // Enable analytics
+    ANALYTICS: !__DEV__,
   },
+  
+  // Storage keys
+  STORAGE_KEYS: {
+    AUTH_TOKEN: 'auth_token',
+    USER_SETTINGS: 'user_settings',
+    LAST_SYNC_TIME: 'last_sync_time',
+    CACHED_PARCELS: 'cached_parcels',
+  }
 };
+
+// Export the configuration
+export default Config;
