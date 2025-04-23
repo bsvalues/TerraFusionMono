@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import { WebSocketServer, WebSocket } from "ws";
 import { storage } from "./storage";
 import { coreService } from "./services/core";
 import { jobService } from "./services/jobs";
@@ -606,5 +607,47 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   const httpServer = createServer(app);
+  
+  // Set up the WebSocket server for real-time updates
+  const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Store active connections
+  const clients = new Set<WebSocket>();
+  
+  wss.on('connection', (ws) => {
+    clients.add(ws);
+    
+    // Send a welcome message
+    ws.send(JSON.stringify({
+      type: 'connected',
+      message: 'Connected to TerraFusion WebSocket Server'
+    }));
+    
+    // Handle disconnection
+    ws.on('close', () => {
+      clients.delete(ws);
+    });
+    
+    // Handle messages
+    ws.on('message', (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        console.log('WebSocket message received:', data);
+      } catch (error) {
+        console.error('Invalid WebSocket message:', error);
+      }
+    });
+  });
+  
+  // Add a broadcast function to global for services to use
+  (global as any).broadcastWebSocketMessage = (message: any) => {
+    const messageStr = JSON.stringify(message);
+    for (const client of clients) {
+      if (client.readyState === WebSocket.OPEN) {
+        client.send(messageStr);
+      }
+    }
+  };
+  
   return httpServer;
 }

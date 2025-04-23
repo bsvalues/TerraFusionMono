@@ -38,26 +38,55 @@ class JobService {
     setTimeout(async () => {
       try {
         // Update job to processing status
-        await storage.updateJob(jobId, { 
+        const updatedJob = await storage.updateJob(jobId, { 
           status: "processing", 
           startedAt: new Date(),
           progress: 0
         });
+        
+        // Broadcast job started via WebSocket
+        if ((global as any).broadcastWebSocketMessage && updatedJob) {
+          (global as any).broadcastWebSocketMessage({
+            type: 'job_update',
+            job: updatedJob
+          });
+        }
         
         // Simulate progress updates
         let progress = 0;
         const progressInterval = setInterval(async () => {
           progress += 10;
           
+          // Update job progress
+          const progressUpdatedJob = await storage.updateJob(jobId, { 
+            progress 
+          });
+          
+          // Broadcast progress update
+          if ((global as any).broadcastWebSocketMessage && progressUpdatedJob) {
+            (global as any).broadcastWebSocketMessage({
+              type: 'job_update',
+              job: progressUpdatedJob
+            });
+          }
+          
           if (progress >= 100) {
             clearInterval(progressInterval);
             
             // Complete the job
-            await storage.updateJob(jobId, { 
+            const completedJob = await storage.updateJob(jobId, { 
               status: "completed", 
               progress: 100,
               completedAt: new Date()
             });
+            
+            // Broadcast job completed
+            if ((global as any).broadcastWebSocketMessage && completedJob) {
+              (global as any).broadcastWebSocketMessage({
+                type: 'job_update',
+                job: completedJob
+              });
+            }
             
             // Log the completion
             await storage.createLog({
