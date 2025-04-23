@@ -3,16 +3,14 @@ import Stripe from 'stripe';
 import { storage } from '../storage';
 import { z } from 'zod';
 import { db } from '../db';
-import { insertGeocodeCallSchema } from '@shared/schema';
+import { geocodeCalls } from '@shared/schema';
 
 // Initialize Stripe
 if (!process.env.STRIPE_SECRET_KEY) {
   throw new Error('Missing required environment variable: STRIPE_SECRET_KEY');
 }
 
-const stripe = new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: '2023-10-16',
-});
+const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
 
 // Schema for geocode search
 const geocodeSearchSchema = z.object({
@@ -127,7 +125,7 @@ export async function searchHandler(req: Request, res: Response) {
     
     // Record the geocode call in the database
     const userId = req.user?.id || null;
-    await db.insert(insertGeocodeCallSchema).values({
+    await db.insert(geocodeCalls).values({
       userId,
       query: address,
       result: JSON.stringify(response),

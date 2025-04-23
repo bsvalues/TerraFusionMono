@@ -20,9 +20,7 @@ import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
 // Initialize Stripe if key is available
-const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
-  apiVersion: "2023-10-16",
-}) : undefined;
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : undefined;
 
 // Middleware to check if user is authenticated
 const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
@@ -752,6 +750,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register mobile app routes
   app.use('/api/mobile', mobileRoutes);
 
+  // Register geocoding API endpoints
+  app.post('/api/geocode/search', isAuthenticated, async (req, res) => {
+    await searchHandler(req, res);
+  });
+  
+  app.get('/api/geocode/metrics', isAuthenticated, async (req, res) => {
+    await getMetricsHandler(req, res);
+  });
+  
   const httpServer = createServer(app);
   
   // Set up the WebSocket server for real-time updates
