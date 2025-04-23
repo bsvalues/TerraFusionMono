@@ -10,6 +10,11 @@ export const apiBaseUrl = __DEV__
 
 // App Configuration
 export const appConfig = {
+  // App information
+  name: 'TerraField',
+  version: '1.0.0',
+  build: '1',
+  company: 'TerraFusion, Inc.',
   // Sync settings
   sync: {
     // Sync interval in milliseconds (default: 5 minutes)
