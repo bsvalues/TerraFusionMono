@@ -8,7 +8,10 @@ import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
 import { billingService } from "./services/billing";
+import { geocodeService } from "./services/geocode";
+import { usageService } from "./services/metering/usage";
 import Stripe from "stripe";
+import { versionGuard } from "./middleware/api-versioning";
 
 // Initialize Stripe if key is available
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
@@ -125,6 +128,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(metrics);
     } catch (error: any) {
       res.status(500).json({ message: `Error fetching metrics: ${error.message}` });
+    }
+  });
+
+  // Prometheus metrics endpoint
+  app.get('/api/metrics/prometheus', async (req, res) => {
+    try {
+      const metrics = await metricsService.getPrometheusMetrics();
+      res.setHeader('Content-Type', 'text/plain');
+      res.send(metrics);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching Prometheus metrics: ${error.message}` });
     }
   });
 
@@ -368,6 +382,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
     });
   }
+
+  // Geocoding API endpoints with versioning
+  app.post('/api/geocode', isAuthenticated, versionGuard(['1']), async (req, res) => {
+    try {
+      const { address } = req.body;
+      const user = req.user as any;
+      
+      if (!address) {
+        return res.status(400).json({ message: 'Address is required' });
+      }
+      
+      // Check if user has access to geocoding service
+      if (!process.env.GEOCODE_PRODUCT_ID) {
+        console.warn('GEOCODE_PRODUCT_ID environment variable is not set');
+      } else {
+        const hasAccess = await billingService.verifyAccess(
+          user.id, 
+          process.env.GEOCODE_PRODUCT_ID
+        );
+        
+        if (!hasAccess) {
+          return res.status(403).json({ 
+            message: 'Access denied: You need to subscribe to the geocoding service',
+            subscriptionRequired: true
+          });
+        }
+      }
+      
+      // Process the geocoding request
+      const result = await geocodeService.geocodeAddress(user.id, address);
+      res.json(result);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error geocoding address: ${error.message}` });
+    }
+  });
+  
+  // Route for accessing geocoding usage statistics (admin only)
+  app.get('/api/admin/geocode/usage', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      // Only admin can access usage statistics
+      if (user.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Admin access required' });
+      }
+      
+      const tenantId = req.query.tenantId ? Number(req.query.tenantId) : undefined;
+      
+      if (tenantId) {
+        // Get usage for a specific tenant
+        const usage = await usageService.getTenantUsageStats(tenantId);
+        res.json(usage);
+      } else {
+        // Run aggregation in dry-run mode to get usage stats without recording
+        const aggregation = await usageService.aggregateGeocodeUsage(true);
+        res.json(aggregation);
+      }
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching geocode usage: ${error.message}` });
+    }
+  });
+  
+  // Route for running the usage aggregation (admin only)
+  app.post('/api/admin/geocode/aggregate-usage', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      
+      // Only admin can run usage aggregation
+      if (user.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Admin access required' });
+      }
+      
+      const dryRun = req.query.dry_run === 'true';
+      const result = await usageService.aggregateGeocodeUsage(dryRun);
+      
+      res.json({
+        ...result,
+        timestamp: new Date().toISOString(),
+        dryRun
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error aggregating geocode usage: ${error.message}` });
+    }
+  });
+
+  // Legacy geocoding endpoint with deprecation warning
+  app.post('/api/geocode-legacy', isAuthenticated, versionGuard(['0']), async (req, res) => {
+    try {
+      const { address } = req.body;
+      const user = req.user as any;
+      
+      if (!address) {
+        return res.status(400).json({ message: 'Address is required' });
+      }
+      
+      // Process the geocoding request
+      const result = await geocodeService.geocodeAddress(user.id, address);
+      
+      // Add deprecation notice in the response
+      const response = {
+        ...result,
+        deprecationNotice: 'This endpoint is deprecated and will be removed on December 31, 2025. Please use /api/geocode with the x-terrafusion-api-version header set to "1".'
+      };
+      
+      res.json(response);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error geocoding address: ${error.message}` });
+    }
+  });
 
   const httpServer = createServer(app);
   return httpServer;

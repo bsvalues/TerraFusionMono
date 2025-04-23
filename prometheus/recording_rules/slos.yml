@@ -1,0 +1,41 @@
+groups:
+  - name: terrafusion_slos
+    rules:
+      # Calculate request success rate as SLI
+      - record: job:http_request_success_rate:ratio_rate5m
+        expr: sum(rate(http_requests_total{status_code=~"2.."}[5m])) / sum(rate(http_requests_total[5m]))
+
+      # Calculate API latency percentiles
+      - record: job:http_request_latency:p50
+        expr: histogram_quantile(0.5, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+      
+      - record: job:http_request_latency:p90
+        expr: histogram_quantile(0.9, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+      
+      - record: job:http_request_latency:p95
+        expr: histogram_quantile(0.95, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+      
+      - record: job:http_request_latency:p99
+        expr: histogram_quantile(0.99, sum(rate(http_request_duration_seconds_bucket[5m])) by (le))
+
+      # Calculate geocode calls metrics
+      - record: job:geocode_calls:sum_rate5m
+        expr: sum(rate(geocode_calls_total[5m]))
+      
+      - record: job:geocode_calls_by_tenant:sum_rate5m
+        expr: sum(rate(geocode_calls_total[5m])) by (tenant_id)
+      
+      # Calculate API availability over a longer window (30d SLO)
+      - record: job:slo:availability:ratio_30d
+        expr: sum_over_time(job:http_request_success_rate:ratio_rate5m[30d]) / count_over_time(job:http_request_success_rate:ratio_rate5m[30d])
+      
+      # Calculate geocode latency percentiles
+      - record: job:geocode_latency:p50
+        expr: histogram_quantile(0.5, sum(rate(geocode_latency_seconds_bucket[5m])) by (le))
+      
+      - record: job:geocode_latency:p95
+        expr: histogram_quantile(0.95, sum(rate(geocode_latency_seconds_bucket[5m])) by (le))
+      
+      # Calculate error budget consumption
+      - record: job:error_budget:consumption_rate5m
+        expr: (1 - job:http_request_success_rate:ratio_rate5m) / (1 - 0.995) # 99.5% availability target
