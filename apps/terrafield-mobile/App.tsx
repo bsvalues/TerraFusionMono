@@ -1,29 +1,40 @@
 import React, { useEffect } from 'react';
-import { StatusBar } from 'expo-status-bar';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-import { AppNavigation } from './src/navigation';
-import { syncService } from './src/services/sync.service';
+import { StyleSheet, SafeAreaView, LogBox, StatusBar, Platform } from 'react-native';
+import Navigation from './src/navigation';
+import { parcelService } from './src/services/parcel.service';
+
+// Ignore yellow warning boxes in development (would fix in production)
+LogBox.ignoreLogs([
+  'ViewPropTypes will be removed',
+  'Require cycle:',
+  'new NativeEventEmitter',
+  'Possible Unhandled Promise Rejection',
+]);
 
 export default function App() {
-  // Initialize services on app startup
+  // Set up demo user
   useEffect(() => {
-    const initializeServices = async () => {
-      // Initialize sync service
-      await syncService.initialize();
-    };
+    // Set token for demo user
+    parcelService.setToken('demo-token');
     
-    initializeServices();
-    
-    // Cleanup on unmount (though this is unlikely to be called in a real app)
-    return () => {
-      syncService.destroy();
-    };
+    // In a real app, would check authentication state
+    // and redirect to login if needed
   }, []);
 
   return (
-    <SafeAreaProvider>
-      <AppNavigation />
-      <StatusBar style="auto" />
-    </SafeAreaProvider>
+    <SafeAreaView style={styles.container}>
+      <StatusBar
+        barStyle={Platform.OS === 'ios' ? 'dark-content' : 'light-content'}
+        backgroundColor="#0066cc"
+      />
+      <Navigation />
+    </SafeAreaView>
   );
 }
+
+const styles = StyleSheet.create({
+  container: {
+    flex: 1,
+    backgroundColor: '#f8f9fa',
+  },
+});
