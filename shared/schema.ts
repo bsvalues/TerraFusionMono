@@ -243,6 +243,51 @@ export const insertGeocodeCallSchema = createInsertSchema(geocodeCalls).pick({
 export type GeocodeCall = typeof geocodeCalls.$inferSelect;
 export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
 
+// Land parcels (fields) data
+export const parcels = pgTable("parcels", {
+  id: serial("id").primaryKey(),
+  externalId: varchar("external_id", { length: 50 }).notNull().unique(), // External reference ID
+  name: text("name").notNull(),
+  description: text("description"),
+  // Geospatial data
+  boundary: json("boundary"), // GeoJSON polygon of the property boundary
+  centerLat: decimal("center_lat", { precision: 10, scale: 6 }),
+  centerLng: decimal("center_lng", { precision: 10, scale: 6 }),
+  areaHectares: decimal("area_hectares", { precision: 10, scale: 2 }),
+  // Agricultural data
+  soilType: text("soil_type"),
+  soilPh: decimal("soil_ph", { precision: 4, scale: 2 }),
+  soilOrganicMatter: decimal("soil_organic_matter", { precision: 5, scale: 2 }), // Percentage
+  currentCrop: text("current_crop"),
+  previousCrop: text("previous_crop"),
+  plantingDate: timestamp("planting_date"),
+  harvestDate: timestamp("harvest_date"),
+  // Irrigation data
+  irrigationType: text("irrigation_type"), // drip, sprinkler, flood, none
+  irrigationSchedule: json("irrigation_schedule"),
+  waterSource: text("water_source"),
+  // Management data
+  ownerId: integer("owner_id").notNull(), // Reference to user
+  accessRights: json("access_rights"), // Who can see/edit this parcel
+  status: text("status").default("active").notNull(), // active, inactive, archived
+  // Timestamps
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  lastVisited: timestamp("last_visited"),
+  // Mobile sync data
+  syncStatus: text("sync_status").default("pending"),
+  lastSynced: timestamp("last_synced"),
+  version: integer("version").default(1).notNull(),
+});
+
+export const insertParcelSchema = createInsertSchema(parcels)
+  .omit({ id: true, createdAt: true, updatedAt: true })
+  .extend({
+    boundary: z.any().optional(),
+    accessRights: z.any().optional(),
+    irrigationSchedule: z.any().optional(),
+  });
+
 // Parcel notes for mobile sync
 export const parcelNotes = pgTable("parcel_notes", {
   id: serial("id").primaryKey(),
@@ -253,17 +298,59 @@ export const parcelNotes = pgTable("parcel_notes", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   userId: integer("user_id").notNull(), // User who last updated
   syncCount: integer("sync_count").default(0), // Number of times synced
+  // Additional note fields
+  category: text("category").default("general"), // general, soil, irrigation, pest, harvest, etc.
+  weatherConditions: json("weather_conditions"), // Temperature, humidity, etc. at time of note
+  attachments: json("attachments"), // References to photos, documents, etc.
+  location: json("location"), // GPS coordinates where note was taken (might differ from parcel center)
+  isImportant: boolean("is_important").default(false),
 });
 
-export const insertParcelNoteSchema = createInsertSchema(parcelNotes).pick({
-  parcelId: true,
-  content: true,
-  yDocData: true,
-  userId: true,
-  createdAt: true,
-  updatedAt: true,
-  syncCount: true,
+export const insertParcelNoteSchema = createInsertSchema(parcelNotes)
+  .pick({
+    parcelId: true,
+    content: true,
+    yDocData: true,
+    userId: true,
+    category: true,
+    weatherConditions: true,
+    attachments: true,
+    location: true,
+    isImportant: true,
+  })
+  .extend({
+    weatherConditions: z.any().optional(),
+    attachments: z.any().optional(),
+    location: z.any().optional(),
+  });
+
+// Parcel measurements for tracking field data
+export const parcelMeasurements = pgTable("parcel_measurements", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  userId: integer("user_id").notNull(),
+  measurementType: text("measurement_type").notNull(), // soil, crop, water, pest, etc.
+  value: decimal("value", { precision: 10, scale: 2 }),
+  unit: text("unit").notNull(),
+  location: json("location"), // Specific location within the parcel
+  notes: text("notes"),
+  deviceId: text("device_id"), // ID of the device used for measurement
+  syncStatus: text("sync_status").default("pending"),
 });
+
+export const insertParcelMeasurementSchema = createInsertSchema(parcelMeasurements)
+  .omit({ id: true })
+  .extend({
+    location: z.any().optional(),
+  });
+
+// Export types for all new schemas
+export type Parcel = typeof parcels.$inferSelect;
+export type InsertParcel = z.infer<typeof insertParcelSchema>;
 
 export type ParcelNote = typeof parcelNotes.$inferSelect;
 export type InsertParcelNote = z.infer<typeof insertParcelNoteSchema>;
+
+export type ParcelMeasurement = typeof parcelMeasurements.$inferSelect;
+export type InsertParcelMeasurement = z.infer<typeof insertParcelMeasurementSchema>;
