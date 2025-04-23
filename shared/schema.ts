@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, json, boolean, varchar } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -135,6 +135,55 @@ export const insertMetricSchema = createInsertSchema(systemMetrics).pick({
   unit: true,
 });
 
+// Plugin Marketplace
+export const pluginProducts = pgTable("plugin_products", {
+  id: serial("id").primaryKey(),
+  pluginId: integer("plugin_id").notNull(), // Reference to the plugin
+  name: text("name").notNull(),
+  description: text("description"),
+  price: decimal("price", { precision: 10, scale: 2 }).notNull(),
+  stripePriceId: text("stripe_price_id"),
+  stripeProductId: text("stripe_product_id"),
+  type: text("type").default("one-time").notNull(), // one-time, subscription
+  active: boolean("active").default(true).notNull(),
+  features: json("features"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPluginProductSchema = createInsertSchema(pluginProducts).pick({
+  pluginId: true,
+  name: true,
+  description: true,
+  price: true,
+  stripePriceId: true,
+  stripeProductId: true,
+  type: true,
+  active: true,
+  features: true,
+});
+
+// User plugin purchases
+export const userPlugins = pgTable("user_plugins", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull(),
+  pluginId: integer("plugin_id").notNull(),
+  productId: integer("product_id").notNull(),
+  purchaseDate: timestamp("purchase_date").defaultNow().notNull(),
+  expiryDate: timestamp("expiry_date"), // For subscriptions
+  active: boolean("active").default(true).notNull(),
+  stripePaymentId: text("stripe_payment_id"),
+});
+
+export const insertUserPluginSchema = createInsertSchema(userPlugins).pick({
+  userId: true,
+  pluginId: true,
+  productId: true,
+  expiryDate: true,
+  active: true,
+  stripePaymentId: true,
+});
+
 // Types for database models
 export type User = typeof users.$inferSelect;
 export type InsertUser = z.infer<typeof insertUserSchema>;
@@ -158,3 +207,9 @@ export type InsertAiProvider = z.infer<typeof insertAiProviderSchema>;
 
 export type SystemMetric = typeof systemMetrics.$inferSelect;
 export type InsertMetric = z.infer<typeof insertMetricSchema>;
+
+export type PluginProduct = typeof pluginProducts.$inferSelect;
+export type InsertPluginProduct = z.infer<typeof insertPluginProductSchema>;
+
+export type UserPlugin = typeof userPlugins.$inferSelect;
+export type InsertUserPlugin = z.infer<typeof insertUserPluginSchema>;

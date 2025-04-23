@@ -6,7 +6,9 @@ import {
   systemLogs, type SystemLog, type InsertLog,
   aiProviders, type AiProvider, type InsertAiProvider,
   systemMetrics, type SystemMetric, type InsertMetric,
-  snapshotMetadata, type SnapshotMetadata
+  snapshotMetadata, type SnapshotMetadata,
+  pluginProducts, type PluginProduct, type InsertPluginProduct,
+  userPlugins, type UserPlugin, type InsertUserPlugin
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
@@ -17,6 +19,7 @@ export interface IStorage {
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
+  updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   
   // Service operations
   getServices(): Promise<Service[]>;
@@ -56,6 +59,24 @@ export interface IStorage {
   // Snapshot operations
   getSnapshots(limit?: number): Promise<SnapshotMetadata[]>;
   createSnapshot(lsn: string, checksum: string): Promise<SnapshotMetadata>;
+  
+  // Plugin Marketplace operations
+  getPluginProducts(): Promise<PluginProduct[]>;
+  getPluginProduct(id: number): Promise<PluginProduct | undefined>;
+  getPluginProductsByPluginId(pluginId: number): Promise<PluginProduct[]>;
+  createPluginProduct(product: InsertPluginProduct): Promise<PluginProduct>;
+  updatePluginProduct(id: number, updates: Partial<PluginProduct>): Promise<PluginProduct | undefined>;
+  
+  // User Plugin operations
+  getUserPlugins(userId: number): Promise<UserPlugin[]>;
+  getUserPlugin(id: number): Promise<UserPlugin | undefined>;
+  checkUserHasPlugin(userId: number, pluginId: number): Promise<boolean>;
+  createUserPlugin(userPlugin: InsertUserPlugin): Promise<UserPlugin>;
+  updateUserPlugin(id: number, updates: Partial<UserPlugin>): Promise<UserPlugin | undefined>;
+  
+  // Stripe specific operations
+  updateStripeCustomerId(userId: number, stripeCustomerId: string): Promise<User | undefined>;
+  updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined>;
 }
 
 // Database-backed storage implementation
@@ -283,6 +304,97 @@ export class DatabaseStorage implements IStorage {
       .values({ lsn, checksum })
       .returning();
     return snapshot;
+  }
+  
+  // User methods
+  async updateUser(id: number, updates: Partial<User>): Promise<User | undefined> {
+    const [updatedUser] = await db
+      .update(users)
+      .set(updates)
+      .where(eq(users.id, id))
+      .returning();
+    return updatedUser;
+  }
+
+  // Plugin Product operations
+  async getPluginProducts(): Promise<PluginProduct[]> {
+    return await db.select().from(pluginProducts);
+  }
+  
+  async getPluginProduct(id: number): Promise<PluginProduct | undefined> {
+    const [product] = await db.select().from(pluginProducts).where(eq(pluginProducts.id, id));
+    return product;
+  }
+  
+  async getPluginProductsByPluginId(pluginId: number): Promise<PluginProduct[]> {
+    return await db.select().from(pluginProducts).where(eq(pluginProducts.pluginId, pluginId));
+  }
+  
+  async createPluginProduct(product: InsertPluginProduct): Promise<PluginProduct> {
+    const [newProduct] = await db
+      .insert(pluginProducts)
+      .values(product)
+      .returning();
+    return newProduct;
+  }
+  
+  async updatePluginProduct(id: number, updates: Partial<PluginProduct>): Promise<PluginProduct | undefined> {
+    const [updatedProduct] = await db
+      .update(pluginProducts)
+      .set(updates)
+      .where(eq(pluginProducts.id, id))
+      .returning();
+    return updatedProduct;
+  }
+  
+  // User Plugin operations
+  async getUserPlugins(userId: number): Promise<UserPlugin[]> {
+    return await db.select().from(userPlugins).where(eq(userPlugins.userId, userId));
+  }
+  
+  async getUserPlugin(id: number): Promise<UserPlugin | undefined> {
+    const [userPlugin] = await db.select().from(userPlugins).where(eq(userPlugins.id, id));
+    return userPlugin;
+  }
+  
+  async checkUserHasPlugin(userId: number, pluginId: number): Promise<boolean> {
+    const result = await db
+      .select()
+      .from(userPlugins)
+      .where(
+        and(
+          eq(userPlugins.userId, userId),
+          eq(userPlugins.pluginId, pluginId),
+          eq(userPlugins.active, true)
+        )
+      );
+    return result.length > 0;
+  }
+  
+  async createUserPlugin(userPlugin: InsertUserPlugin): Promise<UserPlugin> {
+    const [newUserPlugin] = await db
+      .insert(userPlugins)
+      .values(userPlugin)
+      .returning();
+    return newUserPlugin;
+  }
+  
+  async updateUserPlugin(id: number, updates: Partial<UserPlugin>): Promise<UserPlugin | undefined> {
+    const [updatedUserPlugin] = await db
+      .update(userPlugins)
+      .set(updates)
+      .where(eq(userPlugins.id, id))
+      .returning();
+    return updatedUserPlugin;
+  }
+  
+  // Stripe specific operations
+  async updateStripeCustomerId(userId: number, stripeCustomerId: string): Promise<User | undefined> {
+    return this.updateUser(userId, { stripeCustomerId });
+  }
+  
+  async updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined> {
+    return this.updateUser(userId, { stripeSubscriptionId });
   }
 }
 
