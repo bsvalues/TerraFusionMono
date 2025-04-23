@@ -247,7 +247,9 @@ export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
 export const parcelNotes = pgTable("parcel_notes", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull().unique(),
-  yDocData: text("y_doc_data").notNull(), // Base64 encoded Y.Doc update
+  content: text("content").default(""), // Plain text content
+  yDocData: text("y_doc_data"), // Base64 encoded Y.Doc update (CRDT)
+  createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   userId: integer("user_id").notNull(), // User who last updated
   syncCount: integer("sync_count").default(0), // Number of times synced
@@ -255,8 +257,12 @@ export const parcelNotes = pgTable("parcel_notes", {
 
 export const insertParcelNoteSchema = createInsertSchema(parcelNotes).pick({
   parcelId: true,
+  content: true,
   yDocData: true,
   userId: true,
+  createdAt: true,
+  updatedAt: true,
+  syncCount: true,
 });
 
 export type ParcelNote = typeof parcelNotes.$inferSelect;

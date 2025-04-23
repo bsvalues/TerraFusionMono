@@ -1,117 +1,134 @@
 import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
-
-type ConnectionListener = (isConnected: boolean) => void;
-
-// Network connection state
-const connectionState = {
-  isConnected: true,
-  type: 'unknown',
-  isInternetReachable: true,
-  lastChecked: new Date()
-};
-
-// List of connection state change listeners
-const listeners: ConnectionListener[] = [];
+import { Subject, Observable } from 'rxjs';
 
 /**
- * Initialize the network service
+ * Network service to monitor and manage connectivity status
+ * Tracks the device's network connection state and provides events for changes
  */
-export function initNetworkService() {
-  // Subscribe to network state changes
-  const unsubscribe = NetInfo.addEventListener(state => {
-    updateConnectionState(state);
-  });
+export class NetworkService {
+  private static instance: NetworkService;
   
-  // Initial check
-  NetInfo.fetch().then(state => {
-    updateConnectionState(state);
-  });
+  // Observable for network state changes
+  private networkStateSubject = new Subject<NetworkStatus>();
+  public networkState$: Observable<NetworkStatus> = this.networkStateSubject.asObservable();
   
-  // Return cleanup function
-  return unsubscribe;
-}
-
-/**
- * Update connection state and notify listeners
- */
-function updateConnectionState(state: NetInfoState) {
-  const previouslyConnected = connectionState.isConnected;
-  
-  // Update state
-  connectionState.isConnected = state.isConnected === true;
-  connectionState.type = state.type;
-  connectionState.isInternetReachable = state.isInternetReachable === true;
-  connectionState.lastChecked = new Date();
-  
-  // Notify listeners only if connection state changed
-  if (previouslyConnected !== connectionState.isConnected) {
-    listeners.forEach(listener => {
-      try {
-        listener(connectionState.isConnected);
-      } catch (error) {
-        console.error('Error in network listener:', error);
-      }
-    });
-  }
-}
-
-/**
- * Add a listener for connection state changes
- */
-export function addConnectionListener(listener: ConnectionListener): () => void {
-  listeners.push(listener);
-  
-  // Call immediately with current state
-  try {
-    listener(connectionState.isConnected);
-  } catch (error) {
-    console.error('Error in network listener:', error);
-  }
-  
-  // Return unsubscribe function
-  return () => {
-    const index = listeners.indexOf(listener);
-    if (index > -1) {
-      listeners.splice(index, 1);
-    }
+  // Current network state
+  private _currentStatus: NetworkStatus = { 
+    isConnected: false, 
+    isInternetReachable: false,
+    type: 'unknown',
+    details: null
   };
-}
 
-/**
- * Check if the device is currently connected
- */
-export function isConnected(): boolean {
-  return connectionState.isConnected;
-}
+  // Prevent direct instantiation
+  private constructor() {
+    // Initialize network monitoring
+    this.startNetworkMonitoring();
+  }
 
-/**
- * Get the current connection state
- */
-export function getConnectionState() {
-  return { ...connectionState };
-}
+  /**
+   * Get the singleton instance
+   */
+  public static getInstance(): NetworkService {
+    if (!NetworkService.instance) {
+      NetworkService.instance = new NetworkService();
+    }
+    return NetworkService.instance;
+  }
 
-/**
- * Force a connection check
- */
-export async function checkConnection(): Promise<boolean> {
-  try {
+  /**
+   * Set up network state monitoring
+   */
+  private startNetworkMonitoring(): void {
+    // Start listening for network changes
+    NetInfo.addEventListener(this.handleNetworkChange);
+    
+    // Initial network state check
+    this.checkNetworkStatus();
+  }
+
+  /**
+   * Handle network state changes
+   */
+  private handleNetworkChange = (state: NetInfoState): void => {
+    const newStatus: NetworkStatus = {
+      isConnected: state.isConnected ?? false,
+      isInternetReachable: state.isInternetReachable ?? false,
+      type: state.type,
+      details: state.details
+    };
+    
+    // Update current status
+    this._currentStatus = newStatus;
+    
+    // Emit the new state to subscribers
+    this.networkStateSubject.next(newStatus);
+    
+    console.log('Network status changed:', JSON.stringify(newStatus));
+  };
+
+  /**
+   * Check the current network status
+   */
+  public async checkNetworkStatus(): Promise<NetworkStatus> {
     const state = await NetInfo.fetch();
-    updateConnectionState(state);
-    return connectionState.isConnected;
-  } catch (error) {
-    console.error('Error checking connection:', error);
-    return false;
+    
+    const newStatus: NetworkStatus = {
+      isConnected: state.isConnected ?? false,
+      isInternetReachable: state.isInternetReachable ?? false,
+      type: state.type,
+      details: state.details
+    };
+    
+    // Update current status
+    this._currentStatus = newStatus;
+    
+    // Emit the new state to subscribers
+    this.networkStateSubject.next(newStatus);
+    
+    return newStatus;
+  }
+
+  /**
+   * Get the current network status
+   */
+  public get currentStatus(): NetworkStatus {
+    return this._currentStatus;
+  }
+
+  /**
+   * Check if the device is online
+   */
+  public isOnline(): boolean {
+    return this._currentStatus.isConnected && this._currentStatus.isInternetReachable;
+  }
+
+  /**
+   * Check if the device is on WiFi
+   */
+  public isWifi(): boolean {
+    return this._currentStatus.type === 'wifi';
+  }
+
+  /**
+   * Check if the device is on cellular network
+   */
+  public isCellular(): boolean {
+    return this._currentStatus.type === 'cellular';
   }
 }
 
-// Export as a service object
-export const NetworkService = {
-  init: initNetworkService,
-  addListener: addConnectionListener,
-  isConnected,
-  getState: getConnectionState,
-  checkConnection
-};
+/**
+ * Network status interface
+ */
+export interface NetworkStatus {
+  isConnected: boolean;
+  isInternetReachable: boolean;
+  type: string;
+  details: any;
+}
 
-export default NetworkService;
+// Export the singleton instance
+export const networkService = NetworkService.getInstance();
+
+export default networkService;
