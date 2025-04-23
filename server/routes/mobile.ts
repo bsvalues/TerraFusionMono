@@ -46,8 +46,22 @@ const authenticateJWT = async (req: Request, res: Response, next: NextFunction) 
   }
 };
 
+// Create development bypass middleware
+const developmentAuthBypass = (req: Request, res: Response, next: NextFunction) => {
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment && req.path.includes('/sync/crdt')) {
+    // Skip authentication in development mode for CRDT routes only
+    console.log('Development mode: Bypassing authentication for CRDT endpoint');
+    req.user = { id: 1 }; // Mock user for development
+    next();
+  } else {
+    // Use normal authentication
+    authenticateJWT(req, res, next);
+  }
+};
+
 // Apply authentication middleware to all routes in this router
-router.use(authenticateJWT);
+router.use(developmentAuthBypass);
 
 /**
  * @route GET /api/mobile/user

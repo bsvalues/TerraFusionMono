@@ -2,6 +2,7 @@ import { eq } from 'drizzle-orm';
 import { storage } from '../storage';
 import { parcelNotes } from '../../shared/schema';
 import * as Y from 'yjs';
+import { encodeStateAsUpdate, applyUpdate } from 'yjs';
 
 // This would normally be in a shared package, but we're simplifying for this example
 function applyEncodedUpdate(doc: Y.Doc, base64Update: string): void {
