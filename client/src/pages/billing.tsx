@@ -30,7 +30,7 @@ export default function BillingPage() {
   });
 
   // Fetch user's active plugins
-  const { data: plugins, isLoading: pluginsLoading } = useQuery({
+  const { data: plugins = [], isLoading: pluginsLoading } = useQuery<any[]>({
     queryKey: ['/api/marketplace/user-plugins'],
   });
 
@@ -222,17 +222,26 @@ export default function BillingPage() {
             <TableBody>
               {plugins.map((plugin) => (
                 <TableRow key={plugin.id}>
-                  <TableCell className="font-medium">{plugin.name}</TableCell>
+                  <TableCell className="font-medium">{plugin.pluginName || `Plugin #${plugin.pluginId}`}</TableCell>
                   <TableCell>
-                    <Badge variant={plugin.type === 'subscription' ? 'default' : 'outline'}>
-                      {plugin.type === 'subscription' ? 'Subscription' : 'One-time'}
+                    <Badge variant={plugin.stripeSubscriptionId ? 'default' : 'outline'}>
+                      {plugin.stripeSubscriptionId ? 'Subscription' : 'One-time'}
                     </Badge>
                   </TableCell>
                   <TableCell>{format(new Date(plugin.purchaseDate), 'MMM d, yyyy')}</TableCell>
                   <TableCell>
                     <span className="flex items-center">
-                      <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
-                      Active
+                      {plugin.active ? (
+                        <>
+                          <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                          Active
+                        </>
+                      ) : (
+                        <>
+                          <AlertCircle className="mr-2 h-4 w-4 text-amber-500" />
+                          Inactive
+                        </>
+                      )}
                     </span>
                   </TableCell>
                 </TableRow>

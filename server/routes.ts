@@ -367,6 +367,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
           process.env.STRIPE_WEBHOOK_SECRET!
         );
         
+        // Log the webhook event
+        console.log(`Received Stripe webhook: ${event.type} (${event.id})`);
+          
         // Use the billing service to handle all webhook events
         await billingService.processWebhookEvent(event);
         

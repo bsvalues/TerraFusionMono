@@ -282,7 +282,7 @@ class BillingService {
         case 'payment_intent.succeeded': {
           const paymentIntent = event.data.object as Stripe.PaymentIntent;
           // Additional processing for standalone payment intents (not part of checkout)
-          if (paymentIntent.metadata.userId && paymentIntent.metadata.productId) {
+          if (paymentIntent.metadata && paymentIntent.metadata.userId && paymentIntent.metadata.productId) {
             // This is a direct payment for a product
             const userId = parseInt(paymentIntent.metadata.userId);
             const productId = parseInt(paymentIntent.metadata.productId);
@@ -291,15 +291,42 @@ class BillingService {
             const existingPlugin = await storage.checkUserHasPlugin(userId, productId);
             
             if (!existingPlugin) {
-              // Grant access to the plugin
-              await storage.createUserPlugin({
-                userId,
-                pluginId: productId,
-                productId: productId, // Using the plugin ID as product ID as fallback
-                active: true,
-                purchaseDate: new Date(),
-                stripePaymentId: paymentIntent.id
-              });
+              try {
+                // Look up the plugin product to get the actual product ID
+                const pluginProducts = await storage.getPluginProductsByPluginId(productId);
+                if (pluginProducts && pluginProducts.length > 0) {
+                  // Get the first matching product (we could be more specific with price matching)
+                  const product = pluginProducts[0];
+                  
+                  // Grant access to the plugin
+                  await storage.createUserPlugin({
+                    userId,
+                    pluginId: productId,
+                    productId: product.id,
+                    active: true,
+                    stripePaymentId: paymentIntent.id,
+                    stripeProductId: product.stripeProductId || null
+                  });
+                  
+                  await storage.createLog({
+                    level: 'INFO',
+                    service: 'billing',
+                    message: `User ${userId} granted access to plugin ${productId} via payment intent ${paymentIntent.id}`
+                  });
+                } else {
+                  await storage.createLog({
+                    level: 'ERROR',
+                    service: 'billing',
+                    message: `No product found for plugin ${productId} when processing payment intent ${paymentIntent.id}`
+                  });
+                }
+              } catch (error: any) {
+                await storage.createLog({
+                  level: 'ERROR',
+                  service: 'billing',
+                  message: `Error granting access to plugin ${productId}: ${error.message}`
+                });
+              }
             }
           }
           
@@ -326,12 +353,35 @@ class BillingService {
           const invoice = event.data.object as Stripe.Invoice;
           
           // Handle subscription renewal
-          if (invoice.subscription) {
+          const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : null;
+          if (subscriptionId) {
             // Find user with this subscription
-            const userId = await storage.getUserIdByStripeSubscriptionId(invoice.subscription as string);
+            const userId = await storage.getUserIdByStripeSubscriptionId(subscriptionId);
             if (userId) {
               // Update subscription status to active if needed
               await storage.updateStripeSubscriptionStatus(userId, 'active');
+              
+              // Ensure all associated plugins are active
+              try {
+                const userPlugins = await storage.getUserPlugins(userId);
+                for (const plugin of userPlugins) {
+                  if (!plugin.active) {
+                    await storage.updateUserPlugin(plugin.id, { active: true });
+                    
+                    await storage.createLog({
+                      level: 'INFO',
+                      service: 'billing',
+                      message: `Reactivated plugin ${plugin.pluginId} for user ${userId} after invoice payment`
+                    });
+                  }
+                }
+              } catch (error: any) {
+                await storage.createLog({
+                  level: 'ERROR',
+                  service: 'billing',
+                  message: `Error updating plugins for user ${userId}: ${error.message}`
+                });
+              }
               
               // Log the renewal
               await storage.createLog({
@@ -348,8 +398,9 @@ class BillingService {
         case 'invoice.payment_failed': {
           const invoice = event.data.object as Stripe.Invoice;
           
-          if (invoice.subscription) {
-            const userId = await storage.getUserIdByStripeSubscriptionId(invoice.subscription as string);
+          const subscriptionId = typeof invoice.subscription === 'string' ? invoice.subscription : null;
+          if (subscriptionId) {
+            const userId = await storage.getUserIdByStripeSubscriptionId(subscriptionId);
             if (userId) {
               // Update subscription status
               await storage.updateStripeSubscriptionStatus(userId, 'past_due');
@@ -358,7 +409,7 @@ class BillingService {
               await storage.createLog({
                 level: 'WARN',
                 service: 'billing',
-                message: `Invoice payment failed for user ${userId}, subscription ${invoice.subscription}`
+                message: `Invoice payment failed for user ${userId}, subscription ${subscriptionId}`
               });
             }
           }
