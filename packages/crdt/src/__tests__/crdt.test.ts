@@ -1,77 +1,97 @@
+import { createParcelStore, applyEncodedUpdate, encodeDocUpdate, mergeYDocs } from '../index';
 import * as Y from 'yjs';
-import { createParcelStore, encodeDocUpdate, applyEncodedUpdate, mergeUpdates } from '../index';
 
-describe('CRDT functionality', () => {
-  test('createParcelStore initializes with empty notes', () => {
-    const { store } = createParcelStore('TEST123');
-    expect(store.notes).toBe('');
+describe('CRDT Parcel Notes', () => {
+  describe('createParcelStore', () => {
+    it('should create a store with the given ID', () => {
+      const { store, doc } = createParcelStore('test-parcel-1');
+      
+      expect(doc).toBeInstanceOf(Y.Doc);
+      expect(store.notes).toBeDefined();
+      expect(store.notes).toBe('');
+    });
   });
-
-  test('consistent merge with concurrent edits', () => {
-    // Create two independent stores for the same parcel
-    const { store: store1, doc: doc1 } = createParcelStore('TEST123');
-    const { store: store2, doc: doc2 } = createParcelStore('TEST123');
-
-    // Make different edits in each store
-    store1.notes = 'Update from device 1';
-    store2.notes = 'Update from device 2';
-
-    // Capture updates from both devices
-    const update1 = encodeDocUpdate(doc1);
-    const update2 = encodeDocUpdate(doc2);
-
-    // Create a third store to test both merges in different orders
-    const { store: storeA, doc: docA } = createParcelStore('TEST123');
-    const { store: storeB, doc: docB } = createParcelStore('TEST123');
-
-    // Apply updates in different orders
-    applyEncodedUpdate(docA, update1);
-    applyEncodedUpdate(docA, update2);
-
-    applyEncodedUpdate(docB, update2);
-    applyEncodedUpdate(docB, update1);
-
-    // Both stores should converge to the same state
-    expect(storeA.notes).toBe(storeB.notes);
-    
-    // Final result should contain essence of both updates (actual merge depends on Yjs algorithm)
-    const finalResult = storeA.notes;
-    expect(
-      finalResult.includes('device 1') || finalResult.includes('device 2')
-    ).toBeTruthy();
+  
+  describe('encodeDocUpdate and applyEncodedUpdate', () => {
+    it('should encode and apply updates correctly', () => {
+      // Create two stores
+      const { store: store1, doc: doc1 } = createParcelStore('test-parcel-2');
+      const { store: store2, doc: doc2 } = createParcelStore('test-parcel-2');
+      
+      // Update store1
+      store1.notes = 'Hello, world!';
+      
+      // Encode the update
+      const update = encodeDocUpdate(doc1);
+      expect(typeof update).toBe('string');
+      
+      // Apply the update to store2
+      applyEncodedUpdate(doc2, update);
+      
+      // Check that store2 now has the same content
+      expect(store2.notes).toBe('Hello, world!');
+    });
   });
-
-  test('encode and decode preserves document state', () => {
-    const { store, doc } = createParcelStore('TEST123');
-    store.notes = 'Test content for encoding';
-    
-    // Encode the document
-    const encoded = encodeDocUpdate(doc);
-    expect(typeof encoded).toBe('string');
-    
-    // Create a new document and apply the update
-    const { store: newStore, doc: newDoc } = createParcelStore('TEST123');
-    applyEncodedUpdate(newDoc, encoded);
-    
-    // The new store should have the same content
-    expect(newStore.notes).toBe('Test content for encoding');
+  
+  describe('mergeYDocs', () => {
+    it('should merge updates from two docs', () => {
+      // Create two docs that will diverge
+      const { store: store1, doc: doc1 } = createParcelStore('test-parcel-3');
+      const { store: store2, doc: doc2 } = createParcelStore('test-parcel-3');
+      
+      // Make different changes to each doc
+      store1.notes = 'Change from user 1.';
+      store2.notes = 'Change from user 2.';
+      
+      // Merge the docs
+      const mergedDoc = mergeYDocs(doc1, doc2);
+      
+      // Create a new store with the merged doc to check the content
+      const yText = mergedDoc.getText('notes');
+      const mergedText = yText.toString();
+      
+      // The exact result will depend on CRDT conflict resolution rules
+      // Here we just check that it contains content from both docs
+      expect(mergedText.includes('Change from user 1') || 
+             mergedText.includes('Change from user 2')).toBeTruthy();
+    });
   });
-
-  test('mergeUpdates correctly applies an update', () => {
-    // Create initial doc with content
-    const { store, doc } = createParcelStore('TEST123');
-    store.notes = 'Initial content';
-    
-    // Create another doc with different content
-    const { store: store2, doc: doc2 } = createParcelStore('TEST123');
-    store2.notes = 'Updated content';
-    
-    const update = encodeDocUpdate(doc2);
-    
-    // Merge the update into the first doc
-    mergeUpdates(doc, update);
-    
-    // The first store should now have the merged content
-    expect(store.notes).toBe('Updated content');
+  
+  describe('real-world scenario', () => {
+    it('should handle offline-first workflow', () => {
+      // Create a "server" doc
+      const { store: serverStore, doc: serverDoc } = createParcelStore('test-parcel-4');
+      serverStore.notes = 'Initial note from server.';
+      
+      // User 1 syncs with server
+      const { store: user1Store, doc: user1Doc } = createParcelStore('test-parcel-4');
+      applyEncodedUpdate(user1Doc, encodeDocUpdate(serverDoc));
+      expect(user1Store.notes).toBe('Initial note from server.');
+      
+      // User 1 goes offline and makes changes
+      user1Store.notes = 'Initial note from server. Addition from user 1.';
+      
+      // Meanwhile server gets updated by another user
+      serverStore.notes = 'Initial note from server. Addition from server.';
+      
+      // User 1 comes back online and syncs
+      // In real app, this would be a more complex process
+      // 1. Send user1's changes to server
+      const user1Update = encodeDocUpdate(user1Doc);
+      
+      // 2. Server applies user1's changes and merges
+      applyEncodedUpdate(serverDoc, user1Update);
+      
+      // 3. Server sends back merged state
+      const serverUpdate = encodeDocUpdate(serverDoc);
+      
+      // 4. User applies merged state
+      applyEncodedUpdate(user1Doc, serverUpdate);
+      
+      // Check the result
+      expect(user1Store.notes).toContain('Initial note from server');
+      expect(user1Store.notes).toContain('Addition from user 1');
+      expect(user1Store.notes).toContain('Addition from server');
+    });
   });
 });

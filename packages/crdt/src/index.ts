@@ -1,5 +1,5 @@
 import * as Y from 'yjs';
-import { SyncedStore } from '@syncedstore/core';
+import { syncedStore } from '@syncedstore/core';
 
 /**
  * Interface for parcel store type
@@ -18,7 +18,7 @@ export function createParcelStore(id: string) {
   const doc = new Y.Doc();
   
   // Create a synced store using the Y.Doc
-  const store = SyncedStore.create<ParcelStore>({
+  const store = syncedStore<ParcelStore>({
     notes: 'text',
   }, doc);
   
