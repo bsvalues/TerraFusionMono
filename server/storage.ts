@@ -77,6 +77,7 @@ export interface IStorage {
   // Stripe specific operations
   updateStripeCustomerId(userId: number, stripeCustomerId: string): Promise<User | undefined>;
   updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined>;
+  updateStripeSubscriptionStatus(userId: number, stripeSubscriptionStatus: string): Promise<User | undefined>;
 }
 
 // Database-backed storage implementation
@@ -400,6 +401,10 @@ export class DatabaseStorage implements IStorage {
   
   async updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string | null): Promise<User | undefined> {
     return this.updateUser(userId, { stripeSubscriptionId });
+  }
+  
+  async updateStripeSubscriptionStatus(userId: number, stripeSubscriptionStatus: string): Promise<User | undefined> {
+    return this.updateUser(userId, { stripeSubscriptionStatus });
   }
   
   async getUserIdByStripeSubscriptionId(stripeSubscriptionId: string): Promise<number | undefined> {

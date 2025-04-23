@@ -9,7 +9,8 @@ import {
   BarChartIcon,
   ListTodoIcon,
   DatabaseIcon,
-  ShoppingCartIcon
+  ShoppingCartIcon,
+  CreditCardIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
