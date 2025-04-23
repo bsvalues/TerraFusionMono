@@ -18,6 +18,7 @@ export interface IStorage {
   // User operations
   getUser(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
+  getUserByEmail(email: string): Promise<User | undefined>;
   createUser(user: InsertUser): Promise<User>;
   updateUser(id: number, updates: Partial<User>): Promise<User | undefined>;
   
@@ -80,6 +81,12 @@ export interface IStorage {
   updateStripeSubscriptionStatus(userId: number, stripeSubscriptionStatus: string): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]>;
   
+  // Parcel operations
+  getParcels(options?: { limit?: number, userId?: number }): Promise<any[]>;
+  getParcel(id: string): Promise<any | undefined>;
+  createParcel(parcel: any): Promise<any>;
+  updateParcel(id: string, updates: any): Promise<any | undefined>;
+  
   // Parcel Note operations
   getParcelNotes(limit?: number): Promise<ParcelNote[]>;
   getParcelNote(id: number): Promise<ParcelNote | undefined>;
@@ -98,6 +105,11 @@ export class DatabaseStorage implements IStorage {
 
   async getUserByUsername(username: string): Promise<User | undefined> {
     const [user] = await db.select().from(users).where(eq(users.username, username));
+    return user;
+  }
+
+  async getUserByEmail(email: string): Promise<User | undefined> {
+    const [user] = await db.select().from(users).where(eq(users.email, email));
     return user;
   }
 
@@ -422,6 +434,72 @@ export class DatabaseStorage implements IStorage {
   
   async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.stripeCustomerId, stripeCustomerId));
+  }
+  
+  // Parcel operations
+  async getParcels(options?: { limit?: number; userId?: number }): Promise<any[]> {
+    // This is a placeholder implementation
+    // In a real app, this would be stored in a database with a schema
+    // For now, we'll return some demo parcels
+    return [
+      {
+        id: 'parcel-001',
+        name: 'Demo Parcel 1',
+        address: '123 Main St',
+        city: 'Springfield',
+        state: 'IL',
+        zipCode: '62701',
+        coordinates: {
+          latitude: 39.7817,
+          longitude: -89.6501
+        },
+        userId: options?.userId || 1,
+        status: 'active'
+      },
+      {
+        id: 'parcel-002',
+        name: 'Demo Parcel 2',
+        address: '456 Oak Ave',
+        city: 'Springfield',
+        state: 'IL',
+        zipCode: '62702',
+        coordinates: {
+          latitude: 39.7854,
+          longitude: -89.6443
+        },
+        userId: options?.userId || 1,
+        status: 'active'
+      }
+    ].slice(0, options?.limit || 100);
+  }
+  
+  async getParcel(id: string): Promise<any | undefined> {
+    // Simplified implementation for demo
+    const allParcels = await this.getParcels();
+    return allParcels.find(parcel => parcel.id === id);
+  }
+  
+  async createParcel(parcel: any): Promise<any> {
+    // Simplified implementation for demo
+    // In a real app, this would create a parcel in the database
+    return {
+      id: `parcel-${Math.floor(Math.random() * 1000)}`,
+      ...parcel,
+      createdAt: new Date(),
+      updatedAt: new Date()
+    };
+  }
+  
+  async updateParcel(id: string, updates: any): Promise<any | undefined> {
+    // Simplified implementation for demo
+    const parcel = await this.getParcel(id);
+    if (!parcel) return undefined;
+    
+    return {
+      ...parcel,
+      ...updates,
+      updatedAt: new Date()
+    };
   }
   
   // Parcel Note operations
