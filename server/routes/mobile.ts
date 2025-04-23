@@ -1,7 +1,17 @@
-import { Router, Request, Response } from 'express';
+import { Router, Request, Response, NextFunction } from 'express';
 import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
 import { z } from 'zod';
+
+// Add type augmentation for Express Request
+declare global {
+  namespace Express {
+    interface Request {
+      isAuthenticated(): boolean;
+      user?: any;
+    }
+  }
+}
 
 const router = Router();
 
@@ -9,7 +19,7 @@ const router = Router();
 const JWT_SECRET = process.env.JWT_SECRET || 'terrafield-dev-secret';
 
 // Middleware to verify JWT token
-const authenticateJWT = async (req: Request, res: Response, next: Function) => {
+const authenticateJWT = async (req: Request, res: Response, next: NextFunction) => {
   const authHeader = req.headers.authorization;
   
   if (!authHeader || !authHeader.startsWith('Bearer ')) {
@@ -423,7 +433,10 @@ router.post('/sync', async (req: Request, res: Response) => {
 router.post('/sync/crdt', async (req: Request, res: Response) => {
   // For development testing: bypass authentication
   const isDevelopment = process.env.NODE_ENV === 'development';
-  if (!req.isAuthenticated() && !isDevelopment) {
+  if (isDevelopment) {
+    // Skip authentication in development mode
+    req.user = { id: 1 }; // Mock user for development
+  } else if (!req.user) {
     return res.status(401).json({ message: 'Authentication required' });
   }
   try {
@@ -461,6 +474,14 @@ router.post('/sync/crdt', async (req: Request, res: Response) => {
  * @access Private
  */
 router.get('/sync/crdt/:parcelId', async (req: Request, res: Response) => {
+  // For development testing: bypass authentication
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (isDevelopment) {
+    // Skip authentication in development mode
+    req.user = { id: 1 }; // Mock user for development
+  } else if (!req.user) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
   try {
     const { parcelId } = req.params;
     
