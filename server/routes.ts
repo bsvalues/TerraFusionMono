@@ -121,6 +121,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: `Error updating plugin: ${error.message}` });
     }
   });
+  
+  // Plugin installation endpoint - creates a job to track progress
+  app.post('/api/plugins/:id/install', isAuthenticated, async (req, res) => {
+    try {
+      const pluginId = Number(req.params.id);
+      const user = req.user as any;
+      
+      // 1. Check if plugin exists
+      const plugin = await pluginService.getPlugin(pluginId);
+      if (!plugin) {
+        return res.status(404).json({ message: `Plugin with ID ${pluginId} not found` });
+      }
+      
+      // 2. Check if user has access to this plugin (either purchased or free)
+      const hasAccess = await marketplaceService.checkUserHasAccess(user.id, pluginId);
+      if (!hasAccess) {
+        return res.status(403).json({ 
+          message: 'Access denied: You need to purchase this plugin first',
+          purchaseRequired: true
+        });
+      }
+      
+      // 3. Create a job to track the installation process
+      const job = await jobService.createJob({
+        name: `Install plugin: ${plugin.name}`,
+        status: 'queued',
+        worker: 'plugin-installer'
+      });
+      
+      // 4. Return the job information for tracking progress
+      res.status(202).json({
+        message: `Installation of plugin ${plugin.name} has started`,
+        plugin,
+        job
+      });
+      
+    } catch (error: any) {
+      res.status(500).json({ message: `Error installing plugin: ${error.message}` });
+    }
+  });
 
   // Metrics endpoints
   app.get('/api/metrics', async (req, res) => {

@@ -198,6 +198,33 @@ class MarketplaceService {
   }
   
   /**
+   * Check if a user has access to a plugin either by purchase or free availability
+   */
+  async checkUserHasAccess(userId: number, pluginId: number): Promise<boolean> {
+    // First check if user has already purchased the plugin
+    const hasPlugin = await this.checkUserHasPlugin(userId, pluginId);
+    if (hasPlugin) {
+      return true;
+    }
+    
+    // If not purchased, check if the plugin is free (has any free products)
+    const products = await this.getPluginProductsByPluginId(pluginId);
+    const hasFreeProduct = products.some(product => Number(product.price) === 0);
+    
+    // For free plugins, grant access automatically
+    if (hasFreeProduct) {
+      // Auto-register the user for the free plugin
+      const freeProduct = products.find(product => Number(product.price) === 0);
+      if (freeProduct) {
+        await this.completePurchase(userId, freeProduct.id, 'free-plugin');
+      }
+      return true;
+    }
+    
+    return false;
+  }
+  
+  /**
    * Initialize sample marketplace products if none exist
    */
   async initializeSampleProducts(): Promise<void> {

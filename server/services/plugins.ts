@@ -21,6 +21,13 @@ class PluginService {
   }
   
   /**
+   * Get a specific plugin by ID
+   */
+  async getPlugin(pluginId: number): Promise<Plugin | undefined> {
+    return await storage.getPlugin(pluginId);
+  }
+  
+  /**
    * Enable a plugin
    */
   async enablePlugin(pluginId: number): Promise<Plugin | undefined> {
