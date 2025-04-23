@@ -1,20 +1,17 @@
 import React, { useState } from 'react';
 import { useQuery } from '@tanstack/react-query';
+import { Card } from "@/components/ui/card";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
+import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
 import {
-  Card,
-  Tabs,
-  TabsList,
-  TabsTrigger,
-  TabsContent,
-  Input,
-  Button,
-  Badge,
   Select,
   SelectContent,
   SelectItem,
   SelectTrigger,
   SelectValue,
-} from '@/components/ui';
+} from "@/components/ui/select";
 import { Search, Filter, ArrowDownUp, Package } from 'lucide-react';
 import PluginInstaller from '@/components/PluginInstaller';
 
@@ -250,7 +247,10 @@ export default function PluginMarketplacePage() {
                       <h3 className="text-xl font-bold">{plugin.name}</h3>
                       <p className="text-sm text-muted-foreground">{plugin.author} • v{plugin.version}</p>
                     </div>
-                    <Badge variant={plugin.status === 'active' ? 'success' : 'outline'}>
+                    <Badge 
+                      className={plugin.status === 'active' ? 'bg-green-100 text-green-800 hover:bg-green-100/80' : ''}
+                      variant={plugin.status === 'active' ? 'outline' : 'outline'}
+                    >
                       {plugin.status === 'active' ? 'Active' : 'Inactive'}
                     </Badge>
                   </div>

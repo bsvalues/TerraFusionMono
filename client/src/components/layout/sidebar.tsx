@@ -68,6 +68,17 @@ export default function Sidebar() {
               <ShoppingCartIcon className="mr-3 h-5 w-5" />
               Marketplace
             </Link>
+
+            {/* Plugin Marketplace */}
+            <Link href="/plugins" className={cn(
+              "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+              location === "/plugins" 
+                ? "bg-primary text-white" 
+                : "text-gray-700 hover:bg-gray-100"
+            )}>
+              <PuzzleIcon className="mr-3 h-5 w-5" />
+              Plugin Marketplace
+            </Link>
             
             {/* Billing */}
             <Link href="/billing" className={cn(
