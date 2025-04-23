@@ -1,0 +1,101 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  --background: 210 40% 98%;
+  --foreground: 222 47% 11%;
+  --muted: 210 40% 96%;
+  --muted-foreground: 215 16% 47%;
+  --popover: 0 0% 100%;
+  --popover-foreground: 222 47% 11%;
+  --card: 0 0% 100%;
+  --card-foreground: 222 47% 11%;
+  --border: 214.3 31.8% 91.4%;
+  --input: 214.3 31.8% 91.4%;
+  --primary: 220 79% 55%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 267 62% 52%;
+  --secondary-foreground: 0 0% 100%;
+  --accent: 35 92% 52%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 346 87% 61%;
+  --destructive-foreground: 210 40% 98%;
+  --warning: 35 92% 52%;
+  --warning-foreground: 210 40% 98%;
+  --success: 151 55% 42%;
+  --success-foreground: 210 40% 98%;
+  --ring: 215 20.2% 65.1%;
+  --radius: 0.5rem;
+  --tf-primary: 220 79% 55%;
+  --tf-bg: 210 100% 98%;
+  --tf-space-1: 4px;
+  --tf-space-2: 8px;
+  
+  /* Sidebar Colors */
+  --sidebar-background: 0 0% 100%;
+  --sidebar-foreground: 222 47% 11%;
+  --sidebar-primary: 220 79% 55%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 210 40% 96%;
+  --sidebar-accent-foreground: 222 47% 11%;
+  --sidebar-border: 214.3 31.8% 91.4%;
+  --sidebar-ring: 222 47% 11%;
+  
+  /* Chart Colors */
+  --chart-1: 220 79% 55%;
+  --chart-2: 267 62% 52%;
+  --chart-3: 35 92% 52%;
+  --chart-4: 151 55% 42%;
+  --chart-5: 346 87% 61%;
+}
+
+.dark {
+  --background: 222 47% 11%;
+  --foreground: 210 40% 98%;
+  --muted: 217 33% 17%;
+  --muted-foreground: 215 20.2% 65.1%;
+  --popover: 222 47% 11%;
+  --popover-foreground: 210 40% 98%;
+  --card: 222 47% 11%;
+  --card-foreground: 210 40% 98%;
+  --border: 217 33% 17%;
+  --input: 217 33% 17%;
+  --primary: 220 79% 55%;
+  --primary-foreground: 210 40% 98%;
+  --secondary: 267 62% 52%;
+  --secondary-foreground: 210 40% 98%;
+  --accent: 35 92% 52%;
+  --accent-foreground: 210 40% 98%;
+  --destructive: 346 87% 61%;
+  --destructive-foreground: 210 40% 98%;
+  --warning: 35 92% 52%;
+  --warning-foreground: 210 40% 98%;
+  --success: 151 55% 42%;
+  --success-foreground: 210 40% 98%;
+  --ring: 215 20.2% 65.1%;
+  
+  /* Sidebar Colors */
+  --sidebar-background: 222 47% 11%;
+  --sidebar-foreground: 210 40% 98%;
+  --sidebar-primary: 220 79% 55%;
+  --sidebar-primary-foreground: 210 40% 98%;
+  --sidebar-accent: 217 33% 17%;
+  --sidebar-accent-foreground: 210 40% 98%;
+  --sidebar-border: 217 33% 17%;
+  --sidebar-ring: 215 20.2% 65.1%;
+}
+
+@layer base {
+  * {
+    @apply border-border;
+  }
+
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+  }
+}
+
+body {
+  background-color: hsl(var(--tf-bg));
+}
