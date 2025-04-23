@@ -9,10 +9,12 @@ import {
   snapshotMetadata, type SnapshotMetadata,
   pluginProducts, type PluginProduct, type InsertPluginProduct,
   userPlugins, type UserPlugin, type InsertUserPlugin,
-  parcelNotes, type ParcelNote, type InsertParcelNote
+  parcels, type Parcel, type InsertParcel,
+  parcelNotes, type ParcelNote, type InsertParcelNote,
+  parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement
 } from "@shared/schema";
 import { db } from "./db";
-import { eq, desc, and, gte, lte } from "drizzle-orm";
+import { eq, desc, and, gte, lte, gt, inArray } from "drizzle-orm";
 
 // Storage interface with all necessary CRUD operations
 export interface IStorage {
@@ -83,13 +85,22 @@ export interface IStorage {
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]>;
   
   // Parcel operations
-  getParcels(options?: { limit?: number, userId?: number }): Promise<any[]>;
-  getParcel(id: string): Promise<any | undefined>;
-  createParcel(parcel: any): Promise<any>;
-  updateParcel(id: string, updates: any): Promise<any | undefined>;
+  getParcels(options?: { limit?: number, userId?: number, status?: string, updatedSince?: Date }): Promise<Parcel[]>;
+  getParcel(id: number): Promise<Parcel | undefined>;
+  getParcelByExternalId(externalId: string): Promise<Parcel | undefined>;
+  createParcel(parcel: InsertParcel): Promise<Parcel>;
+  updateParcel(id: number, updates: Partial<Parcel>): Promise<Parcel | undefined>;
+  updateParcelByExternalId(externalId: string, updates: Partial<Parcel>): Promise<Parcel | undefined>;
+  deleteParcel(id: number): Promise<boolean>;
+  
+  // Parcel Measurement operations
+  getParcelMeasurements(options?: { parcelId?: string, userId?: number, measurementType?: string, limit?: number, since?: Date }): Promise<ParcelMeasurement[]>;
+  createParcelMeasurement(measurement: InsertParcelMeasurement): Promise<ParcelMeasurement>;
+  updateParcelMeasurement(id: number, updates: Partial<ParcelMeasurement>): Promise<ParcelMeasurement | undefined>;
+  deleteParcelMeasurement(id: number): Promise<boolean>;
   
   // Parcel Note operations
-  getParcelNotes(limit?: number): Promise<ParcelNote[]>;
+  getParcelNotes(options?: { limit?: number, userId?: number, updatedSince?: Date }): Promise<ParcelNote[]>;
   getParcelNote(id: number): Promise<ParcelNote | undefined>;
   getParcelNoteByParcelId(parcelId: string): Promise<ParcelNote | undefined>;
   createParcelNote(parcelNote: InsertParcelNote): Promise<ParcelNote>;
@@ -438,69 +449,121 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Parcel operations
-  async getParcels(options?: { limit?: number; userId?: number }): Promise<any[]> {
-    // This is a placeholder implementation
-    // In a real app, this would be stored in a database with a schema
-    // For now, we'll return some demo parcels
-    return [
-      {
-        id: 'parcel-001',
-        name: 'Demo Parcel 1',
-        address: '123 Main St',
-        city: 'Springfield',
-        state: 'IL',
-        zipCode: '62701',
-        coordinates: {
-          latitude: 39.7817,
-          longitude: -89.6501
-        },
-        userId: options?.userId || 1,
-        status: 'active'
-      },
-      {
-        id: 'parcel-002',
-        name: 'Demo Parcel 2',
-        address: '456 Oak Ave',
-        city: 'Springfield',
-        state: 'IL',
-        zipCode: '62702',
-        coordinates: {
-          latitude: 39.7854,
-          longitude: -89.6443
-        },
-        userId: options?.userId || 1,
-        status: 'active'
-      }
-    ].slice(0, options?.limit || 100);
-  }
-  
-  async getParcel(id: string): Promise<any | undefined> {
-    // Simplified implementation for demo
-    const allParcels = await this.getParcels();
-    return allParcels.find(parcel => parcel.id === id);
-  }
-  
-  async createParcel(parcel: any): Promise<any> {
-    // Simplified implementation for demo
-    // In a real app, this would create a parcel in the database
-    return {
-      id: `parcel-${Math.floor(Math.random() * 1000)}`,
-      ...parcel,
-      createdAt: new Date(),
-      updatedAt: new Date()
-    };
-  }
-  
-  async updateParcel(id: string, updates: any): Promise<any | undefined> {
-    // Simplified implementation for demo
-    const parcel = await this.getParcel(id);
-    if (!parcel) return undefined;
+  async getParcels(options?: { 
+    limit?: number; 
+    userId?: number; 
+    status?: string;
+    updatedSince?: Date;
+  }): Promise<Parcel[]> {
+    let query = db.select().from(parcels);
     
-    return {
-      ...parcel,
-      ...updates,
-      updatedAt: new Date()
-    };
+    if (options?.userId) {
+      query = query.where(eq(parcels.ownerId, options.userId));
+    }
+    
+    if (options?.status) {
+      query = query.where(eq(parcels.status, options.status));
+    }
+    
+    if (options?.updatedSince) {
+      query = query.where(gt(parcels.updatedAt, options.updatedSince));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return query.orderBy(desc(parcels.updatedAt));
+  }
+
+  async getParcel(id: number): Promise<Parcel | undefined> {
+    const [parcel] = await db.select().from(parcels).where(eq(parcels.id, id));
+    return parcel;
+  }
+  
+  async getParcelByExternalId(externalId: string): Promise<Parcel | undefined> {
+    const [parcel] = await db.select().from(parcels).where(eq(parcels.externalId, externalId));
+    return parcel;
+  }
+
+  async createParcel(parcel: InsertParcel): Promise<Parcel> {
+    const [newParcel] = await db.insert(parcels).values(parcel).returning();
+    return newParcel;
+  }
+
+  async updateParcel(id: number, updates: Partial<Parcel>): Promise<Parcel | undefined> {
+    const [updated] = await db
+      .update(parcels)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(parcels.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async updateParcelByExternalId(externalId: string, updates: Partial<Parcel>): Promise<Parcel | undefined> {
+    const [updated] = await db
+      .update(parcels)
+      .set({ ...updates, updatedAt: new Date() })
+      .where(eq(parcels.externalId, externalId))
+      .returning();
+    return updated;
+  }
+  
+  async deleteParcel(id: number): Promise<boolean> {
+    const result = await db.delete(parcels).where(eq(parcels.id, id));
+    return result.rowCount > 0;
+  }
+  
+  // Methods for parcel measurements
+  async getParcelMeasurements(options?: { 
+    parcelId?: string; 
+    userId?: number; 
+    measurementType?: string;
+    limit?: number;
+    since?: Date;
+  }): Promise<ParcelMeasurement[]> {
+    let query = db.select().from(parcelMeasurements);
+    
+    if (options?.parcelId) {
+      query = query.where(eq(parcelMeasurements.parcelId, options.parcelId));
+    }
+    
+    if (options?.userId) {
+      query = query.where(eq(parcelMeasurements.userId, options.userId));
+    }
+    
+    if (options?.measurementType) {
+      query = query.where(eq(parcelMeasurements.measurementType, options.measurementType));
+    }
+    
+    if (options?.since) {
+      query = query.where(gt(parcelMeasurements.timestamp, options.since));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return query.orderBy(desc(parcelMeasurements.timestamp));
+  }
+  
+  async createParcelMeasurement(measurement: InsertParcelMeasurement): Promise<ParcelMeasurement> {
+    const [newMeasurement] = await db.insert(parcelMeasurements).values(measurement).returning();
+    return newMeasurement;
+  }
+  
+  async updateParcelMeasurement(id: number, updates: Partial<ParcelMeasurement>): Promise<ParcelMeasurement | undefined> {
+    const [updated] = await db
+      .update(parcelMeasurements)
+      .set(updates)
+      .where(eq(parcelMeasurements.id, id))
+      .returning();
+    return updated;
+  }
+  
+  async deleteParcelMeasurement(id: number): Promise<boolean> {
+    const result = await db.delete(parcelMeasurements).where(eq(parcelMeasurements.id, id));
+    return result.rowCount > 0;
   }
   
   // Parcel Note operations
