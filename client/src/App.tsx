@@ -11,6 +11,8 @@ import BillingPage from "@/pages/billing";
 import OnboardingPage from "@/pages/onboarding";
 import Checkout from "@/pages/checkout";
 import Subscribe from "@/pages/subscribe";
+import AppDetails from "@/pages/app-details";
+import PluginDetails from "@/pages/plugin-details";
 import MainLayout from "@/components/layout/main-layout";
 
 function Router() {
@@ -24,7 +26,11 @@ function Router() {
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/checkout" component={Checkout} />
         <Route path="/subscribe" component={Subscribe} />
-        {/* Add more routes here as the application grows */}
+        
+        {/* Dynamic routes for apps and plugins */}
+        <Route path="/apps/:name" component={AppDetails} />
+        <Route path="/plugins/:name" component={PluginDetails} />
+        
         {/* Fallback to 404 */}
         <Route component={NotFound} />
       </Switch>
