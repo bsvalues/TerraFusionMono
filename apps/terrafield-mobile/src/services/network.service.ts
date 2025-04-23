@@ -1,115 +1,176 @@
-import { Platform, NetInfo } from 'react-native';
-import { syncService } from './sync.service';
+import NetInfo, { NetInfoState } from '@react-native-community/netinfo';
+import { apiBaseUrl } from '../config';
+import { appConfig } from '../config';
 
-/**
- * Network status types
- */
-export type ConnectionType = 'unknown' | 'none' | 'wifi' | 'cellular' | 'bluetooth' | 'ethernet' | 'wimax';
-
-/**
- * Network status service for monitoring connectivity
- */
 class NetworkService {
-  private isOnline: boolean = true;
-  private listeners: Set<(isOnline: boolean) => void> = new Set();
-  
+  private isConnected: boolean = true;
+  private hasInternet: boolean = true;
+  private lastChecked: Date = new Date();
+  private listeners: ((isOnline: boolean) => void)[] = [];
+  private checkInterval: any = null;
+  private pingTimeout = 10000; // 10 seconds timeout for ping
+
   constructor() {
-    this.initialize();
+    // Subscribe to connection info updates
+    this.setupConnectionMonitoring();
   }
-  
+
   /**
-   * Initialize network monitoring
+   * Sets up connection monitoring using NetInfo
    */
-  private initialize() {
-    // Set up network status monitoring
-    if (Platform.OS !== 'web') {
-      // This is a simplified implementation
-      // In a real app, use NetInfo.addEventListener
-      NetInfo.fetch().then(state => {
-        this.updateOnlineStatus(state.isConnected);
-      });
-      
-      // Subscribe to network status changes
-      NetInfo.addEventListener(state => {
-        this.updateOnlineStatus(state.isConnected);
-      });
-    } else {
-      // For web
-      window.addEventListener('online', () => this.updateOnlineStatus(true));
-      window.addEventListener('offline', () => this.updateOnlineStatus(false));
-      
-      // Initialize with current status
-      this.updateOnlineStatus(navigator.onLine);
-    }
-  }
-  
-  /**
-   * Update the online status and notify all listeners
-   * @param isOnline Whether the device is online
-   */
-  private updateOnlineStatus(isOnline: boolean | null) {
-    const wasOnline = this.isOnline;
-    this.isOnline = !!isOnline;
+  private setupConnectionMonitoring() {
+    // Subscribe to network info updates
+    NetInfo.addEventListener(this.handleNetInfoChange);
     
-    // Only notify if the status changed
-    if (wasOnline !== this.isOnline) {
-      // Notify all listeners
-      this.listeners.forEach(listener => listener(this.isOnline));
+    // Initial check
+    this.checkConnectivity();
+    
+    // Set up periodic check (every minute)
+    this.checkInterval = setInterval(() => {
+      this.checkConnectivity();
+    }, 60 * 1000);
+  }
+
+  /**
+   * Handles network info changes
+   */
+  private handleNetInfoChange = (state: NetInfoState) => {
+    // Update connection status
+    const wasConnected = this.isConnected;
+    this.isConnected = !!state.isConnected;
+    
+    // If connection type changes, check internet connectivity
+    if (this.isConnected !== wasConnected) {
+      if (this.isConnected) {
+        // Connection restored, check if we have internet
+        this.pingServer();
+      } else {
+        // Connection lost, update internet status and notify listeners
+        this.hasInternet = false;
+        this.notifyListeners();
+      }
+    }
+  };
+
+  /**
+   * Actually check network connectivity by pinging the server
+   */
+  private async checkConnectivity() {
+    // First check if device is connected to a network
+    const netInfo = await NetInfo.fetch();
+    this.isConnected = !!netInfo.isConnected;
+    
+    // If connected to network, check internet by pinging server
+    if (this.isConnected) {
+      await this.pingServer();
+    } else {
+      this.hasInternet = false;
+      this.notifyListeners();
+    }
+    
+    this.lastChecked = new Date();
+  }
+
+  /**
+   * Ping the server to check internet connectivity
+   */
+  private async pingServer() {
+    try {
+      // Try to ping API server with a timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), this.pingTimeout);
       
-      // Log the change
-      console.log(`Network status changed. Online: ${this.isOnline}`);
+      const response = await fetch(`${apiBaseUrl}/api/ping`, {
+        method: 'HEAD',
+        signal: controller.signal,
+      });
       
-      // Update the sync service
-      syncService.setOnlineStatus(this.isOnline);
+      clearTimeout(timeoutId);
       
-      // Attempt to process the sync queue if we're back online
-      if (this.isOnline && !wasOnline) {
-        syncService.forceSyncAll().catch(error => {
-          console.error('Failed to process sync queue:', error);
-        });
+      // If we get here, we have internet
+      const newStatus = response.ok;
+      
+      // Only notify if status changed
+      if (this.hasInternet !== newStatus) {
+        this.hasInternet = newStatus;
+        this.notifyListeners();
+      }
+    } catch (error) {
+      // Network error, probably no internet
+      if (this.hasInternet) {
+        this.hasInternet = false;
+        this.notifyListeners();
+      }
+      
+      if (appConfig.dev.verboseLogging) {
+        console.log('Network ping failed:', error);
       }
     }
   }
-  
+
   /**
-   * Get the current online status
-   * @returns Whether the device is online
+   * Notify listeners of network status changes
    */
-  public isNetworkOnline(): boolean {
-    return this.isOnline;
+  private notifyListeners() {
+    const isOnline = this.isConnected && this.hasInternet;
+    this.listeners.forEach(listener => {
+      try {
+        listener(isOnline);
+      } catch (error) {
+        console.error('Error in network listener:', error);
+      }
+    });
   }
-  
+
   /**
    * Add a listener for network status changes
-   * @param listener Function to call when network status changes
+   * @returns A function to remove the listener
    */
   public addListener(listener: (isOnline: boolean) => void): () => void {
-    this.listeners.add(listener);
+    this.listeners.push(listener);
     
-    // Call the listener immediately with the current status
-    listener(this.isOnline);
+    // Immediately notify with current status
+    listener(this.isConnected && this.hasInternet);
     
-    // Return a function to remove the listener
+    // Return unsubscribe function
     return () => {
-      this.listeners.delete(listener);
+      this.listeners = this.listeners.filter(l => l !== listener);
     };
   }
-  
+
   /**
-   * Remove a listener for network status changes
-   * @param listener The listener to remove
+   * Force a check of network connectivity
    */
-  public removeListener(listener: (isOnline: boolean) => void): void {
-    this.listeners.delete(listener);
+  public async checkConnection(): Promise<boolean> {
+    await this.checkConnectivity();
+    return this.isConnected && this.hasInternet;
   }
-  
+
   /**
-   * Manually set the online status (useful for testing)
-   * @param isOnline Whether the device is online
+   * Get current network status
    */
-  public manuallySetOnlineStatus(isOnline: boolean): void {
-    this.updateOnlineStatus(isOnline);
+  public isOnline(): boolean {
+    return this.isConnected && this.hasInternet;
+  }
+
+  /**
+   * Get last time network was checked
+   */
+  public getLastChecked(): Date {
+    return this.lastChecked;
+  }
+
+  /**
+   * Clean up resources
+   */
+  public destroy() {
+    if (this.checkInterval) {
+      clearInterval(this.checkInterval);
+    }
+    
+    // Could unsubscribe from NetInfo here if needed
   }
 }
 
+// Create singleton instance
 export const networkService = new NetworkService();
