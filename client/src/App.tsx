@@ -20,6 +20,8 @@ function Router() {
         <Route path="/marketplace" component={Marketplace} />
         <Route path="/billing" component={BillingPage} />
         <Route path="/onboarding" component={OnboardingPage} />
+        <Route path="/checkout" component={Checkout} />
+        <Route path="/subscribe" component={Subscribe} />
         {/* Add more routes here as the application grows */}
         {/* Fallback to 404 */}
         <Route component={NotFound} />

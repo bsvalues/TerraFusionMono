@@ -9,7 +9,7 @@ import { CreditCard, Check, AlertCircle, Tag } from "lucide-react";
 import { PluginProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { StripeCheckoutButton } from '@/components/checkout/stripe-checkout-button';
+import { CheckoutButton } from '@/components/checkout/checkout-button';
 
 export default function Marketplace() {
   const { toast } = useToast();
@@ -176,12 +176,11 @@ export default function Marketplace() {
                         {renderFeatures(product)}
                       </CardContent>
                       <CardFooter>
-                        <StripeCheckoutButton
-                          priceId={product.stripePriceId || ''}
-                          mode={product.type === 'subscription' ? 'subscription' : 'payment'}
+                        <CheckoutButton
+                          productId={product.id}
+                          productType={product.type === 'subscription' ? 'subscription' : 'one-time'}
                           buttonText={product.type === 'subscription' ? 'Subscribe' : 'Purchase'}
                           className="w-full"
-                          productName={product.name}
                         />
                       </CardFooter>
                     </Card>
@@ -219,12 +218,11 @@ export default function Marketplace() {
                     {renderFeatures(product)}
                   </CardContent>
                   <CardFooter>
-                    <StripeCheckoutButton
-                      priceId={product.stripePriceId || ''}
-                      mode="payment"
+                    <CheckoutButton
+                      productId={product.id}
+                      productType="one-time"
                       buttonText="Purchase"
                       className="w-full"
-                      productName={product.name}
                     />
                   </CardFooter>
                 </Card>
@@ -257,12 +255,11 @@ export default function Marketplace() {
                     {renderFeatures(product)}
                   </CardContent>
                   <CardFooter>
-                    <StripeCheckoutButton
-                      priceId={product.stripePriceId || ''}
-                      mode="subscription"
+                    <CheckoutButton
+                      productId={product.id}
+                      productType="subscription"
                       buttonText="Subscribe"
                       className="w-full"
-                      productName={product.name}
                     />
                   </CardFooter>
                 </Card>
