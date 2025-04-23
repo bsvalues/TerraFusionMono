@@ -18,6 +18,7 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
   const [progress, setProgress] = useState(0);
   const [jobId, setJobId] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
   const { toast } = useToast();
   const [socket, setSocket] = useState<WebSocket | null>(null);
 
@@ -39,6 +40,11 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
         if (data.type === 'job_update' && jobId !== null && data.job.id === jobId) {
           // Update progress
           setProgress(data.job.progress || 0);
+          
+          // Update status message if available
+          if (data.job.statusMessage) {
+            setStatusMessage(data.job.statusMessage);
+          }
           
           // Check job status
           if (data.job.status === 'completed') {
@@ -87,6 +93,7 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
       setStatus('installing');
       setProgress(0);
       setError(null);
+      setStatusMessage(null);
 
       // Call the installation API
       const response = await apiRequest('POST', `/api/plugins/${pluginId}/install`);
@@ -131,7 +138,9 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
         return (
           <div className="flex flex-col gap-2 w-full max-w-md">
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">Installing...</span>
+              <span className="text-sm text-muted-foreground">
+                {statusMessage || 'Installing...'}
+              </span>
               <span className="text-sm font-medium">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2" />

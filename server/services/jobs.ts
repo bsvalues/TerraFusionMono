@@ -52,14 +52,40 @@ class JobService {
           });
         }
         
+        // If this is a plugin installation job, add more detailed status messages
+        let statusMessages: string[] = [];
+        if (job.worker === 'plugin-installer') {
+          const pluginName = job.name.replace('Install plugin: ', '');
+          statusMessages = [
+            `Preparing to install ${pluginName}`,
+            `Verifying plugin dependencies`,
+            `Downloading plugin package`,
+            `Extracting plugin files`,
+            `Configuring plugin settings`,
+            `Running plugin initialization`,
+            `Updating system registry`,
+            `Validating plugin installation`,
+            `Finalizing installation`,
+            `Installation complete`
+          ];
+        }
+        
         // Simulate progress updates
         let progress = 0;
         const progressInterval = setInterval(async () => {
           progress += 10;
           
+          // For plugin installer, add status message
+          const additionalData: any = {};
+          if (job.worker === 'plugin-installer' && statusMessages.length > 0) {
+            const messageIndex = Math.min(Math.floor(progress / 10), statusMessages.length - 1);
+            additionalData.statusMessage = statusMessages[messageIndex];
+          }
+          
           // Update job progress
           const progressUpdatedJob = await storage.updateJob(jobId, { 
-            progress 
+            progress,
+            ...additionalData
           });
           
           // Broadcast progress update
@@ -94,9 +120,19 @@ class JobService {
               service: job.worker || "job-system",
               message: `Job ${job.name} (ID: ${job.id}) completed successfully`
             });
+            
+            // For plugin installation, log additional message
+            if (job.worker === 'plugin-installer') {
+              const pluginName = job.name.replace('Install plugin: ', '');
+              await storage.createLog({
+                level: "INFO",
+                service: "plugin-system",
+                message: `Plugin ${pluginName} has been successfully installed and is ready to use`
+              });
+            }
           } else {
             // Update progress
-            await storage.updateJob(jobId, { progress });
+            await storage.updateJob(jobId, { progress, ...additionalData });
           }
         }, 2000);
       } catch (error) {
