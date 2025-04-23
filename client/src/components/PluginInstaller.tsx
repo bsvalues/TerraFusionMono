@@ -1,273 +1,220 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { apiRequest } from '@/lib/queryClient';
+import { useToast } from '@/hooks/use-toast';
 import { 
+  Card, 
   Button, 
   Progress, 
-  Card, 
-  Text, 
-  Badge, 
-  Flex, 
-  Box, 
-  Alert, 
+  Badge,
+  Alert,
   AlertTitle, 
-  AlertDescription,
-  Spinner,
+  AlertDescription 
 } from "@/components/ui";
-import { Download, Check, AlertCircle, Info } from "lucide-react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { apiRequest } from "@/lib/queryClient";
-import { useToast } from "@/hooks/use-toast";
+import { CheckCircle, AlertCircle, Download, Package } from 'lucide-react';
 
-export interface PluginInstallProps {
+interface PluginInstallerProps {
   pluginId: number;
   name: string;
-  version: string;
   description: string;
-  isInstalled: boolean;
   author: string;
+  version: string;
+  isInstalled: boolean;
   size: string;
   price?: string;
-  tags?: string[];
+  tags: string[];
   onInstallComplete?: () => void;
 }
 
-interface InstallProgressState {
-  stage: 'idle' | 'download' | 'validate' | 'configure' | 'complete' | 'error';
-  progress: number;
-  message: string;
-}
-
-export default function PluginInstaller({
-  pluginId,
-  name,
-  version,
-  description,
-  isInstalled,
-  author,
+const PluginInstaller: React.FC<PluginInstallerProps> = ({ 
+  pluginId, 
+  name, 
+  description, 
+  author, 
+  version, 
+  isInstalled, 
   size,
   price,
-  tags = [],
-  onInstallComplete,
-}: PluginInstallProps) {
-  const [installProgress, setInstallProgress] = useState<InstallProgressState>({
-    stage: 'idle',
-    progress: 0,
-    message: '',
-  });
+  tags,
+  onInstallComplete 
+}) => {
+  const [installProgress, setInstallProgress] = useState(0);
+  const [installStatus, setInstallStatus] = useState<'idle' | 'installing' | 'success' | 'error'>('idle');
+  const [jobId, setJobId] = useState<number | null>(null);
   const { toast } = useToast();
   const queryClient = useQueryClient();
 
-  // Simulate installation progress
-  const simulateInstallProgress = async () => {
-    // Start with download stage
-    setInstallProgress({
-      stage: 'download',
-      progress: 0,
-      message: 'Downloading plugin...',
-    });
-
-    // Simulate download progress (0-40%)
-    for (let i = 0; i <= 40; i += 5) {
-      await new Promise(resolve => setTimeout(resolve, 150));
-      setInstallProgress(prev => ({
-        ...prev,
-        progress: i,
-      }));
-    }
-
-    // Validation stage (40-60%)
-    setInstallProgress({
-      stage: 'validate',
-      progress: 40,
-      message: 'Validating plugin...',
-    });
-
-    for (let i = 40; i <= 60; i += 5) {
-      await new Promise(resolve => setTimeout(resolve, 100));
-      setInstallProgress(prev => ({
-        ...prev,
-        progress: i,
-      }));
-    }
-
-    // Configuration stage (60-95%)
-    setInstallProgress({
-      stage: 'configure',
-      progress: 60,
-      message: 'Configuring plugin...',
-    });
-
-    for (let i = 60; i <= 95; i += 5) {
-      await new Promise(resolve => setTimeout(resolve, 120));
-      setInstallProgress(prev => ({
-        ...prev,
-        progress: i,
-      }));
-    }
-
-    // Complete stage (100%)
-    setInstallProgress({
-      stage: 'complete',
-      progress: 100,
-      message: 'Installation complete!',
-    });
-  };
-
-  // Mutation for plugin installation
+  // Mutation to initiate plugin installation
   const installMutation = useMutation({
     mutationFn: async () => {
-      const response = await apiRequest('POST', `/api/plugins/${pluginId}/install`);
-      return response.json();
-    },
-    onMutate: async () => {
-      // Start progress simulation
-      simulateInstallProgress();
+      const res = await apiRequest('POST', `/api/plugins/${pluginId}/install`);
+      const data = await res.json();
+      return data;
     },
     onSuccess: (data) => {
-      // Ensure we show 100% even if the server responded quickly
-      setInstallProgress({
-        stage: 'complete',
-        progress: 100,
-        message: 'Installation complete!',
-      });
+      setJobId(data.job.id);
+      setInstallStatus('installing');
+      setInstallProgress(10); // Initial progress
       
-      // Show success toast
       toast({
-        title: "Installation Successful",
-        description: `${name} v${version} has been installed successfully.`,
-        variant: "success",
+        title: 'Installation started',
+        description: `${name} is being installed. This might take a moment.`,
       });
-      
-      // Invalidate queries to refresh plugin lists
-      queryClient.invalidateQueries({ queryKey: ['/api/plugins'] });
-      queryClient.invalidateQueries({ queryKey: ['/api/user/plugins'] });
-      
-      // Callback for parent component if needed
-      if (onInstallComplete) {
-        onInstallComplete();
-      }
     },
     onError: (error: Error) => {
-      setInstallProgress({
-        stage: 'error',
-        progress: 0,
-        message: error.message || 'Installation failed',
-      });
+      setInstallStatus('error');
       
       toast({
-        title: "Installation Failed",
-        description: error.message || "An error occurred during installation.",
-        variant: "destructive",
+        title: 'Installation failed',
+        description: error.message,
+        variant: 'destructive',
       });
-    },
+    }
   });
 
+  // Query to check job status if we're installing
+  const { data: jobData, refetch } = useQuery({
+    queryKey: [`/api/jobs/${jobId}`],
+    queryFn: async () => {
+      if (!jobId) return null;
+      const res = await apiRequest('GET', `/api/jobs/${jobId}`);
+      return res.json();
+    },
+    enabled: Boolean(jobId) && installStatus === 'installing',
+    refetchInterval: installStatus === 'installing' ? 1000 : false,
+  });
+
+  // Effect to update progress based on job status
+  useEffect(() => {
+    if (jobData && installStatus === 'installing') {
+      switch(jobData.status) {
+        case 'in-progress':
+          // Update progress randomly but increasingly to simulate installation
+          setInstallProgress((prev) => 
+            Math.min(90, prev + Math.floor(Math.random() * 10))
+          );
+          break;
+        case 'completed':
+          setInstallProgress(100);
+          setInstallStatus('success');
+          if (onInstallComplete) {
+            onInstallComplete();
+          }
+          queryClient.invalidateQueries({ queryKey: ['/api/user/plugins'] });
+          toast({
+            title: 'Installation complete',
+            description: `${name} has been successfully installed.`,
+          });
+          break;
+        case 'failed':
+          setInstallStatus('error');
+          toast({
+            title: 'Installation failed',
+            description: jobData.error || 'An error occurred during installation.',
+            variant: 'destructive',
+          });
+          break;
+      }
+    }
+  }, [jobData, installStatus, name, queryClient, toast, onInstallComplete]);
+
+  // Function to handle install button click
   const handleInstall = () => {
+    setInstallStatus('installing');
+    setInstallProgress(0);
     installMutation.mutate();
   };
 
-  const getProgressColor = () => {
-    switch (installProgress.stage) {
-      case 'error': return 'bg-destructive';
-      case 'complete': return 'bg-success';
-      default: return 'bg-primary';
-    }
-  };
-
-  // Helper to render the current stage icon
-  const renderStageIcon = () => {
-    switch (installProgress.stage) {
-      case 'download':
-        return <Download className="animate-pulse" />;
-      case 'validate':
-      case 'configure':
-        return <Spinner className="h-4 w-4" />;
-      case 'complete':
-        return <Check className="text-success" />;
-      case 'error':
-        return <AlertCircle className="text-destructive" />;
-      default:
-        return null;
-    }
+  // Function to retry installation
+  const handleRetry = () => {
+    setInstallStatus('idle');
+    setJobId(null);
+    setInstallProgress(0);
   };
 
   return (
-    <Card className="w-full">
-      <div className="p-6">
-        <div className="flex justify-between items-start mb-4">
-          <div>
-            <Text className="text-xl font-bold">{name}</Text>
-            <Text className="text-sm text-muted-foreground">{author} • v{version}</Text>
-          </div>
-          <div className="flex items-center gap-2">
-            {price ? (
-              <Badge variant="secondary">{price}</Badge>
-            ) : (
-              <Badge variant="secondary">Free</Badge>
-            )}
-            <Badge variant="outline">{size}</Badge>
-          </div>
+    <Card className="p-6 flex flex-col">
+      <div className="flex justify-between items-start mb-4">
+        <div>
+          <h3 className="text-xl font-bold">{name}</h3>
+          <p className="text-sm text-muted-foreground">{author} • v{version}</p>
         </div>
-        
-        <Text className="mb-4">{description}</Text>
-        
-        <Flex className="gap-2 flex-wrap mb-4">
-          {tags.map((tag, idx) => (
-            <Badge key={idx} variant="outline">{tag}</Badge>
-          ))}
-        </Flex>
-        
-        {installProgress.stage !== 'idle' && (
-          <Box className="mb-6">
-            <Flex className="items-center gap-2 mb-2">
-              {renderStageIcon()}
-              <Text className="font-medium">{installProgress.message}</Text>
-            </Flex>
-            <Progress 
-              value={installProgress.progress} 
-              className={`h-2 ${installProgress.stage === 'error' ? 'bg-destructive/20' : ''}`}
-              indicatorClassName={getProgressColor()}
-            />
-          </Box>
-        )}
-        
-        {installProgress.stage === 'error' && (
-          <Alert variant="destructive" className="mb-4">
-            <AlertCircle className="h-4 w-4" />
-            <AlertTitle>Error</AlertTitle>
-            <AlertDescription>
-              Failed to install the plugin. Please try again or contact support.
-            </AlertDescription>
-          </Alert>
-        )}
-        
-        {installProgress.stage === 'complete' ? (
-          <Alert variant="success" className="mb-4">
-            <Check className="h-4 w-4" />
-            <AlertTitle>Success</AlertTitle>
-            <AlertDescription>
-              Plugin installed successfully!
-            </AlertDescription>
-          </Alert>
+        {price ? (
+          <Badge variant="outline">{price}</Badge>
         ) : (
-          <Button 
-            disabled={isInstalled || installProgress.stage !== 'idle' || installMutation.isPending} 
-            onClick={handleInstall}
-            className="w-full"
-          >
-            {isInstalled ? 'Already Installed' : 'Install Plugin'}
-          </Button>
+          <Badge variant="secondary">Free</Badge>
         )}
-        
-        {installProgress.stage === 'idle' && isInstalled && (
-          <Alert className="mt-4">
-            <Info className="h-4 w-4" />
-            <AlertTitle>Information</AlertTitle>
-            <AlertDescription>
-              This plugin is already installed on your system.
-            </AlertDescription>
-          </Alert>
+      </div>
+      
+      <p className="mb-4">{description}</p>
+      
+      <div className="flex gap-2 flex-wrap mb-4">
+        {tags.map((tag, idx) => (
+          <Badge key={idx} variant="outline">{tag}</Badge>
+        ))}
+        <Badge variant="outline">{size}</Badge>
+      </div>
+      
+      {installStatus === 'installing' && (
+        <div className="mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-medium">Installing...</span>
+            <span className="text-sm">{installProgress}%</span>
+          </div>
+          <Progress value={installProgress} className="h-2" />
+        </div>
+      )}
+      
+      {installStatus === 'success' && (
+        <Alert className="mb-4 border-green-500/50 text-green-700">
+          <CheckCircle className="h-4 w-4" />
+          <AlertTitle>Installation Successful</AlertTitle>
+          <AlertDescription>
+            {name} v{version} has been installed and is ready to use.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      {installStatus === 'error' && (
+        <Alert variant="destructive" className="mb-4">
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Installation Failed</AlertTitle>
+          <AlertDescription>
+            There was an error installing {name}. Please try again.
+          </AlertDescription>
+        </Alert>
+      )}
+      
+      <div className="mt-auto pt-4">
+        {isInstalled ? (
+          <Button variant="secondary" className="w-full" disabled>
+            <Package className="mr-2 h-4 w-4" />
+            Installed
+          </Button>
+        ) : installStatus === 'installing' ? (
+          <Button variant="secondary" className="w-full" disabled>
+            <div className="animate-spin mr-2 h-4 w-4 border-2 border-current rounded-full border-t-transparent" />
+            Installing...
+          </Button>
+        ) : installStatus === 'success' ? (
+          <Button variant="outline" className="w-full" disabled>
+            <CheckCircle className="mr-2 h-4 w-4" />
+            Installed
+          </Button>
+        ) : installStatus === 'error' ? (
+          <Button variant="outline" className="w-full" onClick={handleRetry}>
+            <AlertCircle className="mr-2 h-4 w-4" />
+            Retry
+          </Button>
+        ) : (
+          <Button className="w-full" onClick={handleInstall}>
+            <Download className="mr-2 h-4 w-4" />
+            Install
+          </Button>
         )}
       </div>
     </Card>
   );
-}
+};
+
+export default PluginInstaller;
