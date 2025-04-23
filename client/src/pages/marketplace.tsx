@@ -5,11 +5,12 @@ import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle }
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
-import { CreditCard, Check, AlertCircle, Tag } from "lucide-react";
+import { CreditCard, Check, AlertCircle, Tag, Download } from "lucide-react";
 import { PluginProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
 import { CheckoutButton } from '@/components/checkout/checkout-button';
+import { InstallPluginButton } from '@/components/marketplace/install-plugin-button';
 
 export default function Marketplace() {
   const { toast } = useToast();
@@ -17,10 +18,31 @@ export default function Marketplace() {
   const [showCheckout, setShowCheckout] = useState(false);
   
   // Fetch plugin products
-  const { data: products, isLoading } = useQuery({
+  const { data: products, isLoading: productsLoading } = useQuery({
     queryKey: ['/api/marketplace/products'],
     staleTime: 1000 * 60 * 5, // 5 minutes
   });
+  
+  // Fetch user plugins (if logged in)
+  const { data: userPlugins, isLoading: userPluginsLoading } = useQuery({
+    queryKey: ['/api/user/plugins'],
+    staleTime: 1000 * 60, // 1 minute
+    retry: (failureCount, error) => {
+      // Don't retry if unauthorized (likely not logged in)
+      if (error instanceof Error && error.message.includes('401')) {
+        return false;
+      }
+      return failureCount < 3;
+    }
+  });
+  
+  // Check if user has a specific plugin
+  const hasUserPlugin = (pluginId: number) => {
+    if (!userPlugins) return false;
+    return userPlugins.some((plugin: any) => plugin.pluginId === pluginId);
+  };
+  
+  const isLoading = productsLoading || userPluginsLoading;
   
   // Group products by plugin
   const productsByPlugin: Record<number, PluginProduct[]> = {};
@@ -175,13 +197,26 @@ export default function Marketplace() {
                         <Separator className="my-4" />
                         {renderFeatures(product)}
                       </CardContent>
-                      <CardFooter>
-                        <CheckoutButton
-                          productId={product.id}
-                          productType={product.type === 'subscription' ? 'subscription' : 'one-time'}
-                          buttonText={product.type === 'subscription' ? 'Subscribe' : 'Purchase'}
-                          className="w-full"
-                        />
+                      <CardFooter className="flex flex-col gap-2">
+                        {hasUserPlugin(product.pluginId) ? (
+                          <InstallPluginButton 
+                            pluginId={product.pluginId} 
+                            className="w-full"
+                            onSuccess={() => {
+                              toast({
+                                title: "Plugin Installed",
+                                description: `${product.name} has been successfully installed and is ready to use`,
+                              });
+                            }}
+                          />
+                        ) : (
+                          <CheckoutButton
+                            productId={product.id}
+                            productType={product.type === 'subscription' ? 'subscription' : 'one-time'}
+                            buttonText={product.type === 'subscription' ? 'Subscribe' : 'Purchase'}
+                            className="w-full"
+                          />
+                        )}
                       </CardFooter>
                     </Card>
                   ))}
@@ -217,13 +252,26 @@ export default function Marketplace() {
                     <Separator className="my-4" />
                     {renderFeatures(product)}
                   </CardContent>
-                  <CardFooter>
-                    <CheckoutButton
-                      productId={product.id}
-                      productType="one-time"
-                      buttonText="Purchase"
-                      className="w-full"
-                    />
+                  <CardFooter className="flex flex-col gap-2">
+                    {hasUserPlugin(product.pluginId) ? (
+                      <InstallPluginButton 
+                        pluginId={product.pluginId} 
+                        className="w-full"
+                        onSuccess={() => {
+                          toast({
+                            title: "Plugin Installed",
+                            description: `${product.name} has been successfully installed and is ready to use`,
+                          });
+                        }}
+                      />
+                    ) : (
+                      <CheckoutButton
+                        productId={product.id}
+                        productType="one-time"
+                        buttonText="Purchase"
+                        className="w-full"
+                      />
+                    )}
                   </CardFooter>
                 </Card>
               ))}
@@ -254,13 +302,26 @@ export default function Marketplace() {
                     <Separator className="my-4" />
                     {renderFeatures(product)}
                   </CardContent>
-                  <CardFooter>
-                    <CheckoutButton
-                      productId={product.id}
-                      productType="subscription"
-                      buttonText="Subscribe"
-                      className="w-full"
-                    />
+                  <CardFooter className="flex flex-col gap-2">
+                    {hasUserPlugin(product.pluginId) ? (
+                      <InstallPluginButton 
+                        pluginId={product.pluginId} 
+                        className="w-full"
+                        onSuccess={() => {
+                          toast({
+                            title: "Plugin Installed",
+                            description: `${product.name} has been successfully installed and is ready to use`,
+                          });
+                        }}
+                      />
+                    ) : (
+                      <CheckoutButton
+                        productId={product.id}
+                        productType="subscription"
+                        buttonText="Subscribe"
+                        className="w-full"
+                      />
+                    )}
                   </CardFooter>
                 </Card>
               ))}
