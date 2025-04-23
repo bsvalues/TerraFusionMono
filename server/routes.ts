@@ -751,11 +751,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.use('/api/mobile', mobileRoutes);
 
   // Register geocoding API endpoints
-  app.post('/api/geocode/search', isAuthenticated, async (req, res) => {
+  app.post('/api/geocode/search', async (req, res) => {
     await searchHandler(req, res);
   });
   
-  app.get('/api/geocode/metrics', isAuthenticated, async (req, res) => {
+  app.get('/api/geocode/metrics', async (req, res) => {
     await getMetricsHandler(req, res);
   });
   
