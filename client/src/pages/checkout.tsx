@@ -1,16 +1,15 @@
 import { useStripe, Elements, PaymentElement, useElements } from '@stripe/react-stripe-js';
 import { loadStripe } from '@stripe/stripe-js';
 import { useEffect, useState } from 'react';
+import { useLocation } from 'wouter';
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
-import { Separator } from '@/components/ui/separator';
-import { ArrowLeft, CheckCircle, Loader2 } from 'lucide-react';
-import { Link } from 'wouter';
+import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Loader2, ArrowLeft, CreditCard } from "lucide-react";
 
-// Make sure to call `loadStripe` outside of a component's render to avoid
-// recreating the `Stripe` object on every render.
+// Make sure to call loadStripe outside of a component's render to avoid
+// recreating the Stripe object on every render.
 if (!import.meta.env.VITE_STRIPE_PUBLIC_KEY) {
   throw new Error('Missing required Stripe key: VITE_STRIPE_PUBLIC_KEY');
 }
@@ -19,8 +18,9 @@ const stripePromise = loadStripe(import.meta.env.VITE_STRIPE_PUBLIC_KEY);
 const CheckoutForm = () => {
   const stripe = useStripe();
   const elements = useElements();
-  const { toast } = useToast();
   const [isProcessing, setIsProcessing] = useState(false);
+  const { toast } = useToast();
+  const [_, setLocation] = useLocation();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -35,7 +35,7 @@ const CheckoutForm = () => {
       const { error } = await stripe.confirmPayment({
         elements,
         confirmParams: {
-          return_url: window.location.origin,
+          return_url: window.location.origin + '/billing',
         },
       });
 
@@ -50,12 +50,13 @@ const CheckoutForm = () => {
           title: "Payment Successful",
           description: "Thank you for your purchase!",
         });
+        setLocation('/billing');
       }
     } catch (err) {
       console.error('Payment error:', err);
       toast({
-        title: "Payment Failed",
-        description: "An unexpected error occurred during payment processing.",
+        title: "Payment Error",
+        description: "An unexpected error occurred during payment processing",
         variant: "destructive",
       });
     } finally {
@@ -64,26 +65,23 @@ const CheckoutForm = () => {
   }
 
   return (
-    <form onSubmit={handleSubmit}>
-      <CardContent className="space-y-4 pt-6">
-        <PaymentElement />
-      </CardContent>
-      <CardFooter className="pt-4">
-        <Button 
-          type="submit" 
-          className="w-full" 
-          disabled={!stripe || isProcessing}
-        >
+    <form onSubmit={handleSubmit} className="space-y-6">
+      <PaymentElement />
+      <div className="flex justify-end pt-4">
+        <Button type="submit" disabled={!stripe || isProcessing} className="w-full">
           {isProcessing ? (
             <>
               <Loader2 className="mr-2 h-4 w-4 animate-spin" />
               Processing...
             </>
           ) : (
-            'Complete Payment'
+            <>
+              <CreditCard className="mr-2 h-4 w-4" />
+              Pay Now
+            </>
           )}
         </Button>
-      </CardFooter>
+      </div>
     </form>
   );
 };
@@ -91,32 +89,30 @@ const CheckoutForm = () => {
 export default function Checkout() {
   const [clientSecret, setClientSecret] = useState("");
   const [isLoading, setIsLoading] = useState(true);
-  const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
+  const [_, setLocation] = useLocation();
 
   useEffect(() => {
     // Create PaymentIntent as soon as the page loads
-    const fetchPaymentIntent = async () => {
+    // In a real implementation, you would pass the actual product/amount
+    const fetchClientSecret = async () => {
       try {
         setIsLoading(true);
         const response = await apiRequest("POST", "/api/create-payment-intent", { 
-          items: [{ id: "xl-tshirt" }], 
-          amount: 321 
+          amount: 29.99 // This would be dynamically set based on the product
         });
         
         if (!response.ok) {
-          const errorData = await response.json();
-          throw new Error(errorData.message || 'Failed to create payment intent');
+          throw new Error('Failed to create payment intent');
         }
         
         const data = await response.json();
         setClientSecret(data.clientSecret);
-      } catch (err) {
-        console.error('Error creating payment intent:', err);
-        setError(err instanceof Error ? err.message : 'Unknown error occurred');
+      } catch (error) {
+        console.error('Error creating payment intent:', error);
         toast({
-          title: "Error",
-          description: err instanceof Error ? err.message : 'Failed to initialize payment',
+          title: "Checkout Error",
+          description: "Unable to initialize the payment process. Please try again later.",
           variant: "destructive",
         });
       } finally {
@@ -124,86 +120,43 @@ export default function Checkout() {
       }
     };
 
-    fetchPaymentIntent();
+    fetchClientSecret();
   }, [toast]);
 
-  if (isLoading) {
-    return (
-      <div className="container py-10">
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>Processing Payment</CardTitle>
-            <CardDescription>Please wait while we prepare your payment...</CardDescription>
-          </CardHeader>
-          <CardContent className="flex justify-center py-10">
-            <div className="animate-spin w-10 h-10 border-4 border-primary border-t-transparent rounded-full" aria-label="Loading"/>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if (error) {
-    return (
-      <div className="container py-10">
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>Payment Error</CardTitle>
-            <CardDescription>There was a problem initializing your payment</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-destructive">{error}</p>
-          </CardContent>
-          <CardFooter>
-            <Link href="/marketplace">
-              <Button variant="outline" className="mt-4">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Return to Marketplace
-              </Button>
-            </Link>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  if (!clientSecret) {
-    return (
-      <div className="container py-10">
-        <Card className="max-w-2xl mx-auto">
-          <CardHeader>
-            <CardTitle>Payment Initialization Failed</CardTitle>
-            <CardDescription>Unable to initialize payment process</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p>We couldn't initialize the payment process. Please try again later.</p>
-          </CardContent>
-          <CardFooter>
-            <Link href="/marketplace">
-              <Button variant="outline" className="mt-4">
-                <ArrowLeft className="mr-2 h-4 w-4" />
-                Return to Marketplace
-              </Button>
-            </Link>
-          </CardFooter>
-        </Card>
-      </div>
-    );
-  }
-
-  // Make SURE to wrap the form in <Elements> which provides the stripe context.
   return (
-    <div className="container py-10">
-      <Card className="max-w-2xl mx-auto">
+    <div className="container mx-auto p-6 max-w-lg">
+      <Button 
+        variant="outline" 
+        className="mb-6"
+        onClick={() => setLocation('/marketplace')}
+      >
+        <ArrowLeft className="mr-2 h-4 w-4" />
+        Back to Marketplace
+      </Button>
+      
+      <Card>
         <CardHeader>
           <CardTitle>Complete Your Purchase</CardTitle>
-          <CardDescription>Enter your payment details to complete this transaction</CardDescription>
+          <CardDescription>
+            Enter your payment information to complete your purchase
+          </CardDescription>
         </CardHeader>
-        <Separator />
-        <Elements stripe={stripePromise} options={{ clientSecret }}>
-          <CheckoutForm />
-        </Elements>
+        <CardContent>
+          {isLoading ? (
+            <div className="flex justify-center items-center py-8">
+              <Loader2 className="animate-spin h-8 w-8 text-primary" />
+            </div>
+          ) : clientSecret ? (
+            <Elements stripe={stripePromise} options={{ clientSecret }}>
+              <CheckoutForm />
+            </Elements>
+          ) : (
+            <div className="text-center py-4 text-red-500">
+              Unable to initialize payment. Please try again later.
+            </div>
+          )}
+        </CardContent>
       </Card>
     </div>
   );
-};
+}

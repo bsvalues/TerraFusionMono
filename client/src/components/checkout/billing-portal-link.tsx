@@ -1,18 +1,18 @@
 import { useState } from 'react';
-import { apiRequest } from '@/lib/queryClient';
 import { Button, ButtonProps } from '@/components/ui/button';
 import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
+import { apiRequest } from '@/lib/queryClient';
 
 interface BillingPortalLinkProps extends ButtonProps {
   buttonText?: string;
 }
 
-export function BillingPortalLink({ 
-  buttonText = "Manage Billing", 
+export function BillingPortalLink({
+  buttonText = 'Manage Subscription',
   className,
-  variant = "default",
-  ...props 
+  variant = 'outline',
+  ...props
 }: BillingPortalLinkProps) {
   const [isLoading, setIsLoading] = useState(false);
   const { toast } = useToast();
@@ -20,6 +20,8 @@ export function BillingPortalLink({
   const handleClick = async () => {
     try {
       setIsLoading(true);
+      
+      // Create a customer portal session from the server
       const response = await apiRequest('POST', '/api/billing/create-portal-session');
       
       if (!response.ok) {
@@ -29,14 +31,18 @@ export function BillingPortalLink({
       
       const { url } = await response.json();
       
-      // Redirect to the Stripe Billing Portal
-      window.location.href = url;
+      // Redirect to the Stripe Customer Portal
+      if (url) {
+        window.location.href = url;
+      } else {
+        throw new Error('No portal URL returned from the server');
+      }
     } catch (error) {
-      console.error('Error creating billing portal session:', error);
+      console.error('Billing portal error:', error);
       toast({
-        title: "Error",
+        title: 'Error',
         description: error instanceof Error ? error.message : 'Failed to open billing portal',
-        variant: "destructive",
+        variant: 'destructive',
       });
       setIsLoading(false);
     }
