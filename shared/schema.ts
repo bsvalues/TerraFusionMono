@@ -49,6 +49,8 @@ export const plugins = pgTable("plugins", {
   peerVersion: text("peer_version").notNull(), // core version compatibility
   config: json("config"),
   installed: timestamp("installed").defaultNow().notNull(),
+  entryPoint: text("entry_point").default("index.js").notNull(),
+  quotas: json("quotas").default({ cpuMs: 1000, memKb: 128000 }),
 });
 
 export const insertPluginSchema = createInsertSchema(plugins).pick({
@@ -58,6 +60,8 @@ export const insertPluginSchema = createInsertSchema(plugins).pick({
   status: true,
   peerVersion: true,
   config: true,
+  entryPoint: true,
+  quotas: true,
 });
 
 // Background jobs
