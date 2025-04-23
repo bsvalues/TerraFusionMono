@@ -33,9 +33,20 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Input } from "@/components/ui/input";
 import { Job } from "@shared/schema";
 
+// Type for job data
+interface JobData {
+  id: number;
+  name: string;
+  status: string;
+  progress?: number;
+  timestamp: string;
+  description?: string;
+  error?: string;
+}
+
 // Type for sorted column
 type SortColumn = {
-  column: keyof Job | "";
+  column: keyof JobData | "";
   direction: "asc" | "desc";
 };
 
@@ -48,7 +59,7 @@ export default function JobQueuePage() {
   });
 
   // Fetch jobs from API
-  const { data: jobs, isLoading, isError, refetch } = useQuery({
+  const { data: jobs = [], isLoading, isError, refetch } = useQuery<JobData[]>({
     queryKey: ["/api/jobs"],
     staleTime: 30000, // 30 seconds
   });
@@ -112,7 +123,7 @@ export default function JobQueuePage() {
   };
 
   // Toggle sort direction
-  const toggleSort = (column: keyof Job) => {
+  const toggleSort = (column: keyof JobData) => {
     setSortColumn(prev => ({
       column,
       direction: prev.column === column && prev.direction === "asc" ? "desc" : "asc",
@@ -321,11 +332,12 @@ export default function JobQueuePage() {
                       <TableCell>
                         <Badge 
                           variant={
-                            job.status === "completed" ? "success" : 
+                            job.status === "completed" ? "outline" : 
                             job.status === "running" ? "default" :
                             job.status === "failed" ? "destructive" :
                             "outline"
                           }
+                          className={job.status === "completed" ? "bg-green-100 text-green-800 dark:bg-green-900/40 dark:text-green-400" : ""}
                         >
                           {job.status}
                         </Badge>

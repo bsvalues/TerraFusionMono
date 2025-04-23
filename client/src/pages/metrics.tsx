@@ -28,7 +28,13 @@ const diskData = generateData(30, 55, 20);
 
 export default function MetricsPage() {
   const [timeRange, setTimeRange] = useState("30d");
-  const { data: metricsData, isLoading } = useQuery({
+  const { data: metricsData, isLoading } = useQuery<{
+    status: string;
+    cpu?: { value: number; trend: string };
+    memory?: { value: number; trend: string };
+    disk?: { value: number; trend: string };
+    network?: { value: number; trend: string };
+  }>({
     queryKey: ["/api/metrics"],
     staleTime: 60000, // 1 minute
   });

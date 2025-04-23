@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
-import { AlertCircle, Database, GitBranch, Terminal, Wrench } from "lucide-react";
+import { AlertCircle, Database, GitBranch, Terminal, Wrench, Tool } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
@@ -165,7 +165,7 @@ export default function ToolsPage() {
               <Card>
                 <CardHeader className="pb-2">
                   <div className="flex items-center">
-                    <Tool className="h-4 w-4 mr-2" />
+                    <Wrench className="h-4 w-4 mr-2" />
                     <CardTitle className="text-base">API Explorer</CardTitle>
                   </div>
                 </CardHeader>
