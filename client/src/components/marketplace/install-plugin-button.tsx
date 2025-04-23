@@ -1,7 +1,7 @@
 import { useState, useEffect } from 'react';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { apiRequest } from '@/lib/queryClient';
+import { apiRequest, queryClient } from '@/lib/queryClient';
 import { useToast } from '@/hooks/use-toast';
 import { Loader2, Download, CheckCircle, XCircle } from 'lucide-react';
 
@@ -49,6 +49,9 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
           // Check job status
           if (data.job.status === 'completed') {
             setStatus('success');
+            // Invalidate the user plugins query to refresh the UI
+            queryClient.invalidateQueries({ queryKey: ['/api/user/plugins'] });
+            queryClient.invalidateQueries({ queryKey: ['/api/marketplace'] });
             toast({
               title: 'Installation complete',
               description: 'Plugin has been successfully installed',
@@ -137,10 +140,13 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
       case 'installing':
         return (
           <div className="flex flex-col gap-2 w-full max-w-md">
+            {statusMessage && (
+              <div className="bg-primary/10 text-primary rounded-md p-2 mb-1 text-sm">
+                {statusMessage}
+              </div>
+            )}
             <div className="flex items-center justify-between">
-              <span className="text-sm text-muted-foreground">
-                {statusMessage || 'Installing...'}
-              </span>
+              <span className="text-sm text-muted-foreground">Installing...</span>
               <span className="text-sm font-medium">{progress}%</span>
             </div>
             <Progress value={progress} className="h-2" />
@@ -161,10 +167,17 @@ export function InstallPluginButton({ pluginId, className, onSuccess }: InstallP
       
       case 'error':
         return (
-          <Button variant="outline" className={`bg-destructive/10 ${className}`} onClick={handleInstall}>
-            <XCircle className="mr-2 h-4 w-4 text-destructive" />
-            Retry Installation
-          </Button>
+          <div className="flex flex-col gap-2 w-full max-w-md">
+            {error && (
+              <div className="bg-destructive/10 text-destructive rounded-md p-2 mb-1 text-sm">
+                Error: {error}
+              </div>
+            )}
+            <Button variant="outline" className={`bg-destructive/10 ${className}`} onClick={handleInstall}>
+              <XCircle className="mr-2 h-4 w-4 text-destructive" />
+              Retry Installation
+            </Button>
+          </div>
         );
       
       default:
