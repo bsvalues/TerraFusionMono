@@ -1,70 +1,52 @@
 /**
- * TerraField Mobile Configuration
- * Contains environment-specific settings and feature flags for the mobile app
+ * Global application configuration
  */
-
 const Config = {
-  // App version information
+  // Application metadata
   VERSION: '1.0.0',
+  BUILD_NUMBER: '001',
   
   // API configuration
-  API_URL: process.env.API_URL || 'https://api.terrafusion.io',
+  API: {
+    BASE_URL: 'https://api.terrafusion.io',
+    TIMEOUT: 30000, // 30 seconds
+    RETRY_COUNT: 3,
+    RETRY_DELAY: 2000, // 2 seconds
+  },
   
-  // Authentication settings
+  // Authentication configuration
   AUTH: {
-    TOKEN_EXPIRATION_DAYS: 7,
+    TOKEN_KEY: 'terrafield_auth_token',
+    REFRESH_TOKEN_KEY: 'terrafield_refresh_token',
+    USER_INFO_KEY: 'terrafield_user',
+    TOKEN_EXPIRY_KEY: 'terrafield_token_expiry',
     MIN_PASSWORD_LENGTH: 8,
+    SESSION_TIMEOUT: 7 * 24 * 60 * 60 * 1000, // 7 days
   },
   
-  // Map settings
-  MAP: {
-    DEFAULT_CENTER: { latitude: 37.7749, longitude: -122.4194 }, // San Francisco
-    DEFAULT_ZOOM: 12,
-    DEFAULT_MAP_TYPE: 'standard',
-    PARCEL_MARKER_COLOR: '#4CAF50',
-    SELECTED_PARCEL_MARKER_COLOR: '#FFA000',
-  },
-  
-  // Sync settings
+  // Synchronization configuration
   SYNC: {
-    INTERVAL: 5 * 60 * 1000, // 5 minutes
-    RETRY_DELAY: 30 * 1000, // 30 seconds
-    MAX_RETRY_COUNT: 3,
-    CONNECTION_TIMEOUT: 10 * 1000, // 10 seconds
+    LAST_SYNC_TIME_KEY: 'terrafield_last_sync',
+    SYNC_INTERVAL: 15 * 60 * 1000, // 15 minutes
+    SYNC_QUEUE_KEY: 'terrafield_sync_queue',
+    SYNC_BATCH_SIZE: 20, // Number of items to sync in a single batch
+  },
+  
+  // Local storage configuration
+  STORAGE: {
+    PARCELS_KEY: 'terrafield_parcels',
+    PARCEL_NOTES_KEY: 'terrafield_parcel_notes',
+    SETTINGS_KEY: 'terrafield_settings',
   },
   
   // Feature flags
   FEATURES: {
-    OFFLINE_MODE: true,
-    LOCATION_TRACKING: true,
-    DOCUMENT_SCANNING: true,
-    OFFLINE_MAPS: true,
-    COLLABORATIVE_EDITING: true,
-    PHOTO_UPLOAD: true,
-    DARK_MODE: true,
+    ENABLE_OFFLINE_MODE: true,
+    ENABLE_AUTO_SYNC: true,
+    ENABLE_BACKGROUND_SYNC: false,
+    ENABLE_DOCUMENT_SCANNING: true,
+    ENABLE_GPS_TRACKING: true,
   },
-  
-  // Storage configuration
-  STORAGE: {
-    MAX_OFFLINE_STORAGE_MB: 100, // 100 MB
-    CACHE_EXPIRATION_DAYS: 30,
-    ENCRYPTION_ENABLED: true,
-  },
-  
-  // Error reporting
-  ERROR_REPORTING: {
-    ENABLED: true,
-    INCLUDE_USER_INFO: false,
-    AUTO_SEND: true,
-  },
-  
-  // Development flags (should be false in production)
-  DEV: {
-    MOCK_LOCATION: false,
-    VERBOSE_LOGGING: true,
-    DISABLE_ENCRYPTION: false,
-    FORCE_OFFLINE: false,
-  }
 };
 
 export default Config;

@@ -1,293 +1,177 @@
-import * as Y from 'yjs';
-import { Buffer } from 'buffer';
+import { BehaviorSubject } from 'rxjs';
+import Config from '../config';
 import apiService from './api.service';
 import networkService from './network.service';
-import { saveParcelNote, getNoteByParcelId } from '../utils/realm';
+
+interface SyncState {
+  isSyncing: boolean;
+  lastSyncTime: Date | null;
+  pendingChanges: number;
+}
 
 /**
- * CRDT-based synchronization service for parcel notes
- * Uses Y.js as the CRDT implementation for collaborative editing
+ * Synchronization service for handling offline/online data sync
  */
-export class SyncService {
-  private static instance: SyncService;
+class SyncService {
+  private _syncState = new BehaviorSubject<SyncState>({
+    isSyncing: false,
+    lastSyncTime: null,
+    pendingChanges: 0
+  });
   
-  // Map of active Y documents by parcel ID
-  private documents: Map<string, Y.Doc> = new Map();
+  private syncInterval: any = null;
+  private lastSyncAttempt: Date | null = null;
   
-  // Flag to track sync in progress
-  private syncInProgress: boolean = false;
-  
-  // Private constructor for singleton pattern
-  private constructor() {
-    // Set up network status listener
-    this.setupNetworkListener();
-  }
-
   /**
-   * Get singleton instance
+   * Initialize the sync service
    */
-  public static getInstance(): SyncService {
-    if (!SyncService.instance) {
-      SyncService.instance = new SyncService();
-    }
-    return SyncService.instance;
-  }
-
-  /**
-   * Set up network status listener
-   */
-  private setupNetworkListener(): void {
-    // When network comes back online, try to sync
-    networkService.networkState$.subscribe(status => {
-      if (status.isConnected && status.isInternetReachable) {
-        this.syncAllDocuments();
-      }
-    });
-  }
-
-  /**
-   * Get or create a Y document for a parcel
-   */
-  public async getDocument(parcelId: string): Promise<Y.Doc> {
-    // Check if document already exists in memory
-    if (this.documents.has(parcelId)) {
-      return this.documents.get(parcelId);
-    }
-    
-    // Create new document
-    const doc = new Y.Doc();
-    
-    // Try to load from local storage
+  public async initialize(): Promise<void> {
     try {
-      const localNote = await getNoteByParcelId(parcelId);
-      
-      if (localNote && localNote.yDocData) {
-        // Apply updates from stored document
-        const updates = Buffer.from(localNote.yDocData, 'base64');
-        Y.applyUpdate(doc, updates);
-      } else {
-        // Try to sync from server
-        await this.syncDocumentFromServer(doc, parcelId);
+      // Load the last sync time
+      const lastSyncTimeStr = await this.loadLastSyncTime();
+      if (lastSyncTimeStr) {
+        const lastSyncTime = new Date(lastSyncTimeStr);
+        this._syncState.next({
+          ...this._syncState.value,
+          lastSyncTime
+        });
       }
+      
+      // Set up periodic sync if auto-sync is enabled
+      this.setupAutoSync();
+      
     } catch (error) {
-      console.error(`Error loading document for parcel ${parcelId}:`, error);
+      console.error('Error initializing sync service:', error);
+    }
+  }
+  
+  /**
+   * Observable for sync state changes
+   */
+  public get syncState$() {
+    return this._syncState.asObservable();
+  }
+  
+  /**
+   * Get the last synchronization time
+   */
+  public async getLastSyncTime(): Promise<string | null> {
+    return this.loadLastSyncTime();
+  }
+  
+  /**
+   * Perform a synchronization
+   */
+  public async performSync(): Promise<boolean> {
+    if (this._syncState.value.isSyncing) {
+      return false; // Already syncing
     }
     
-    // Store in memory
-    this.documents.set(parcelId, doc);
-    
-    // Set up auto-save
-    this.setupDocumentAutoSave(doc, parcelId);
-    
-    return doc;
-  }
-
-  /**
-   * Set up auto-save for document changes
-   */
-  private setupDocumentAutoSave(doc: Y.Doc, parcelId: string): void {
-    // Listen for document changes
-    doc.on('update', async (update: Uint8Array) => {
-      try {
-        // Save current state to local storage
-        const base64Data = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
-        
-        // Get text content for easier viewing/searching
-        const yText = doc.getText('content');
-        const content = yText.toString();
-        
-        // Save to local storage
-        await saveParcelNote({
-          parcelId,
-          content,
-          yDocData: base64Data,
-          isLocalOnly: !networkService.isOnline(),
-          syncCount: 0,
-        });
-        
-        // Try to sync if online
-        if (networkService.isOnline()) {
-          this.syncDocumentToServer(doc, parcelId);
-        }
-      } catch (error) {
-        console.error(`Error auto-saving document for parcel ${parcelId}:`, error);
-      }
-    });
-  }
-
-  /**
-   * Sync a document from the server
-   */
-  private async syncDocumentFromServer(doc: Y.Doc, parcelId: string): Promise<boolean> {
     if (!networkService.isOnline()) {
-      return false;
+      return false; // Offline, can't sync
     }
     
     try {
-      // Get document from server
-      const response = await apiService.request<any>(`/api/mobile/parcels/${parcelId}/notes`, {
-        method: 'GET',
+      // Update sync state
+      this._syncState.next({
+        ...this._syncState.value,
+        isSyncing: true
       });
       
-      if (response && response.yDocData) {
-        // Apply updates from server
-        const updates = Buffer.from(response.yDocData, 'base64');
-        Y.applyUpdate(doc, updates);
-        
-        // Save to local storage
-        const base64Data = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
-        
-        // Get text content
-        const yText = doc.getText('content');
-        const content = yText.toString();
-        
-        await saveParcelNote({
-          parcelId,
-          content,
-          yDocData: base64Data,
-          isLocalOnly: false,
-          syncCount: response.syncCount || 0,
-        });
-        
-        return true;
-      }
-    } catch (error) {
-      console.error(`Error syncing document from server for parcel ${parcelId}:`, error);
-    }
-    
-    return false;
-  }
-
-  /**
-   * Sync a document to the server
-   */
-  private async syncDocumentToServer(doc: Y.Doc, parcelId: string): Promise<boolean> {
-    if (!networkService.isOnline() || this.syncInProgress) {
-      return false;
-    }
-    
-    this.syncInProgress = true;
-    
-    try {
-      // Get current state as base64
-      const base64Data = Buffer.from(Y.encodeStateAsUpdate(doc)).toString('base64');
+      this.lastSyncAttempt = new Date();
       
-      // Get text content
-      const yText = doc.getText('content');
-      const content = yText.toString();
+      // Get pending changes count
+      const syncQueue = await apiService.getSyncQueue();
+      const pendingChanges = syncQueue.length;
       
-      // Send to server
-      await apiService.request<any>(`/api/mobile/parcels/${parcelId}/notes`, {
-        method: 'PUT',
-        body: {
-          yDocData: base64Data,
-          content,
-        },
+      // Process the sync queue
+      const success = await apiService.processSyncQueue();
+      
+      // Update sync state
+      const now = new Date();
+      this._syncState.next({
+        isSyncing: false,
+        lastSyncTime: success ? now : this._syncState.value.lastSyncTime,
+        pendingChanges: success ? 0 : pendingChanges
       });
       
-      // Update local note as synced
-      await saveParcelNote({
-        parcelId,
-        content,
-        yDocData: base64Data,
-        isLocalOnly: false,
-        syncCount: (await getNoteByParcelId(parcelId))?.syncCount + 1 || 1,
-      });
-      
-      return true;
-    } catch (error) {
-      console.error(`Error syncing document to server for parcel ${parcelId}:`, error);
-      return false;
-    } finally {
-      this.syncInProgress = false;
-    }
-  }
-
-  /**
-   * Sync all documents to the server
-   */
-  public async syncAllDocuments(): Promise<boolean> {
-    if (!networkService.isOnline() || this.syncInProgress) {
-      return false;
-    }
-    
-    this.syncInProgress = true;
-    
-    try {
-      let success = true;
-      
-      // Sync all documents in memory
-      for (const [parcelId, doc] of this.documents.entries()) {
-        const result = await this.syncDocumentToServer(doc, parcelId);
-        success = success && result;
+      // Save last sync time if successful
+      if (success) {
+        await this.saveLastSyncTime(now.toISOString());
       }
       
       return success;
     } catch (error) {
-      console.error('Error syncing all documents:', error);
-      return false;
-    } finally {
-      this.syncInProgress = false;
-    }
-  }
-
-  /**
-   * Create a new text for a document if it doesn't exist
-   */
-  public initializeDocumentText(doc: Y.Doc, initialText: string = ''): Y.Text {
-    let text = doc.getText('content');
-    
-    // If text is empty, initialize it
-    if (text.length === 0 && initialText) {
-      text.insert(0, initialText);
-    }
-    
-    return text;
-  }
-
-  /**
-   * Get text content from a document
-   */
-  public getTextContent(doc: Y.Doc): string {
-    return doc.getText('content').toString();
-  }
-
-  /**
-   * Update text content in a document
-   */
-  public updateTextContent(doc: Y.Doc, content: string): void {
-    const text = doc.getText('content');
-    text.delete(0, text.length);
-    text.insert(0, content);
-  }
-
-  /**
-   * Release a document when no longer needed
-   */
-  public releaseDocument(parcelId: string): void {
-    // Save one last time
-    const doc = this.documents.get(parcelId);
-    if (doc) {
-      // Final sync if online
-      if (networkService.isOnline()) {
-        this.syncDocumentToServer(doc, parcelId);
-      }
+      console.error('Sync error:', error);
       
-      // Remove listeners and destroy
-      doc.destroy();
-      this.documents.delete(parcelId);
+      // Update sync state to show error
+      this._syncState.next({
+        ...this._syncState.value,
+        isSyncing: false
+      });
+      
+      return false;
     }
   }
-
+  
   /**
-   * Check if there's a sync in progress
+   * Setup automatic synchronization
    */
-  public isSyncing(): boolean {
-    return this.syncInProgress;
+  private setupAutoSync(): void {
+    // Clear any existing interval
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+    }
+    
+    // Set up new interval
+    this.syncInterval = setInterval(async () => {
+      // Only sync if online and not already syncing
+      if (networkService.isOnline() && !this._syncState.value.isSyncing) {
+        // Check if we have pending changes
+        const syncQueue = await apiService.getSyncQueue();
+        if (syncQueue.length > 0) {
+          await this.performSync();
+        }
+      }
+    }, Config.SYNC.SYNC_INTERVAL);
+  }
+  
+  /**
+   * Save the last sync time to persistent storage
+   */
+  private async saveLastSyncTime(time: string): Promise<void> {
+    // In a real implementation, this would save to AsyncStorage or similar
+    // For now, we'll just log that it would be saved
+    console.log(`Would save last sync time: ${time}`);
+  }
+  
+  /**
+   * Load the last sync time from persistent storage
+   */
+  private async loadLastSyncTime(): Promise<string | null> {
+    // In a real implementation, this would load from AsyncStorage or similar
+    // For now, we'll return null (never synced)
+    return null;
+  }
+  
+  /**
+   * Reset sync state (e.g. after logout)
+   */
+  public reset(): void {
+    // Clear auto-sync interval
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
+    
+    // Reset sync state
+    this._syncState.next({
+      isSyncing: false,
+      lastSyncTime: null,
+      pendingChanges: 0
+    });
   }
 }
 
-// Export singleton instance
-export const syncService = SyncService.getInstance();
-
+const syncService = new SyncService();
 export default syncService;

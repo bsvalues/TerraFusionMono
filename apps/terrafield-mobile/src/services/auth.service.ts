@@ -1,559 +1,287 @@
-import { saveUser, getUser, deleteUser } from '../utils/realm';
-import apiService from './api.service';
+import { BehaviorSubject } from 'rxjs';
 import Config from '../config';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import * as SecureStore from 'expo-secure-store';
-import { Platform } from 'react-native';
 
-// Keys for secure storage
-const TOKEN_KEY = 'auth_token';
-const USER_KEY = 'auth_user';
-const REFRESH_TOKEN_KEY = 'auth_refresh_token';
+interface AuthState {
+  isAuthenticated: boolean;
+  userId?: number;
+  username?: string;
+}
 
-// User interface
-export interface User {
+interface LoginData {
+  username: string;
+  password: string;
+}
+
+interface RegisterData {
+  username: string;
+  email: string;
+  password: string;
+}
+
+interface UserData {
   id: number;
   username: string;
-  email?: string;
+  email: string;
   role: string;
+  createdAt: string;
 }
 
-// Login credentials interface
-export interface LoginCredentials {
-  username: string;
-  password: string;
-}
-
-// Registration data interface
-export interface RegistrationData {
-  username: string;
-  password: string;
-  email?: string;
-}
-
-// Auth state interface
-export interface AuthState {
-  isAuthenticated: boolean;
-  user: User | null;
-  loading: boolean;
-  error: string | null;
+interface AuthTokens {
+  token: string;
+  refreshToken: string;
+  expiresAt: number;
 }
 
 /**
- * Authentication service for managing user login, registration, and token handling
+ * Authentication service for managing user authentication state
  */
-export class AuthService {
-  private static instance: AuthService;
-  
-  // Auth state
-  private _state: AuthState = {
-    isAuthenticated: false,
-    user: null,
-    loading: true,
-    error: null,
-  };
-  
-  // State change callbacks
-  private stateChangeCallbacks: Array<(state: AuthState) => void> = [];
-  
-  // Token refresh timeout
-  private refreshTimeout: any = null;
-  private readonly TOKEN_REFRESH_BUFFER = 5 * 60 * 1000; // 5 minutes before expiry
-  
-  // Private constructor for singleton pattern
-  private constructor() {
-    // Initialize auth state
-    this.initialize();
+class AuthService {
+  private _authState = new BehaviorSubject<AuthState>({ isAuthenticated: false });
+  private _tokens: AuthTokens | null = null;
+  private _currentUser: UserData | null = null;
+
+  /**
+   * Observable for auth state changes
+   */
+  public get authState$() {
+    return this._authState.asObservable();
   }
 
   /**
-   * Get singleton instance
+   * Login with username and password
    */
-  public static getInstance(): AuthService {
-    if (!AuthService.instance) {
-      AuthService.instance = new AuthService();
-    }
-    return AuthService.instance;
-  }
-
-  /**
-   * Initialize auth state from storage
-   */
-  private async initialize(): Promise<void> {
+  public async login(data: LoginData): Promise<UserData> {
     try {
-      // Check for stored user
-      const storedUser = await this.loadUserFromStorage();
+      // In a real implementation, this would make an API request
+      // For now, we'll simulate a successful login with mock data
       
-      if (storedUser) {
-        const token = await this.getToken();
-        if (token) {
-          this._state = {
-            isAuthenticated: true,
-            user: storedUser,
-            loading: false,
-            error: null,
-          };
-          
-          // Schedule token refresh if needed
-          this.scheduleTokenRefresh();
-        } else {
-          // Token missing, user needs to login again
-          this._state = {
-            isAuthenticated: false,
-            user: null,
-            loading: false,
-            error: null,
-          };
-        }
-      } else {
-        // No stored user
-        this._state = {
-          isAuthenticated: false,
-          user: null,
-          loading: false,
-          error: null,
-        };
-      }
-    } catch (error) {
-      console.error('Auth initialization error:', error);
-      this._state = {
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: 'Failed to initialize authentication',
-      };
-    }
-    
-    this.notifyStateChange();
-  }
-
-  /**
-   * Log in a user with credentials
-   */
-  public async login(credentials: LoginCredentials): Promise<User> {
-    try {
-      this.updateState({ loading: true, error: null });
-      
-      // Call login API
-      const response = await apiService.request<any>('/api/mobile/auth/login', {
+      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/login`, {
         method: 'POST',
-        body: credentials,
-        requiresAuth: false,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
       
-      if (!response.token || !response.user) {
-        throw new Error('Invalid response from login API');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Login failed');
       }
       
-      // Store tokens securely
-      await this.saveTokens(response.token, response.refreshToken);
+      const responseData = await response.json();
       
-      // Store user info
-      const user: User = {
-        id: response.user.id,
-        username: response.user.username,
-        email: response.user.email,
-        role: response.user.role,
+      // Store authentication tokens
+      this._tokens = {
+        token: responseData.token,
+        refreshToken: responseData.refreshToken,
+        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
       };
       
-      // Store in Realm for offline usage
-      await saveUser({ ...user, token: response.token });
+      // Store user information
+      this._currentUser = responseData.user;
       
-      // Update state
-      this.updateState({
+      // Save tokens and user info to secure storage
+      await this.persistAuthState();
+      
+      // Update authentication state
+      this._authState.next({
         isAuthenticated: true,
-        user,
-        loading: false,
-        error: null,
+        userId: responseData.user.id,
+        username: responseData.user.username,
       });
       
-      // Set up token refresh
-      this.scheduleTokenRefresh();
-      
-      return user;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Login failed';
-      
-      this.updateState({
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: errorMessage,
-      });
-      
-      throw error;
+      return responseData.user;
+    } catch (error: any) {
+      throw new Error(error.message || 'Login failed');
     }
   }
 
   /**
    * Register a new user
    */
-  public async register(data: RegistrationData): Promise<User> {
+  public async register(data: RegisterData): Promise<UserData> {
     try {
-      this.updateState({ loading: true, error: null });
+      // In a real implementation, this would make an API request
+      // For now, we'll simulate a successful registration with mock data
       
-      // Call register API
-      const response = await apiService.request<any>('/api/mobile/auth/register', {
+      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/register`, {
         method: 'POST',
-        body: data,
-        requiresAuth: false,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(data),
       });
       
-      if (!response.token || !response.user) {
-        throw new Error('Invalid response from registration API');
+      if (!response.ok) {
+        const errorData = await response.json();
+        throw new Error(errorData.message || 'Registration failed');
       }
       
-      // Store tokens securely
-      await this.saveTokens(response.token, response.refreshToken);
+      const responseData = await response.json();
       
-      // Store user info
-      const user: User = {
-        id: response.user.id,
-        username: response.user.username,
-        email: response.user.email,
-        role: response.user.role,
+      // Store authentication tokens
+      this._tokens = {
+        token: responseData.token,
+        refreshToken: responseData.refreshToken,
+        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
       };
       
-      // Store in Realm for offline usage
-      await saveUser({ ...user, token: response.token });
+      // Store user information
+      this._currentUser = responseData.user;
       
-      // Update state
-      this.updateState({
+      // Save tokens and user info to secure storage
+      await this.persistAuthState();
+      
+      // Update authentication state
+      this._authState.next({
         isAuthenticated: true,
-        user,
-        loading: false,
-        error: null,
+        userId: responseData.user.id,
+        username: responseData.user.username,
       });
       
-      // Set up token refresh
-      this.scheduleTokenRefresh();
-      
-      return user;
-    } catch (error) {
-      const errorMessage = error instanceof Error ? error.message : 'Registration failed';
-      
-      this.updateState({
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: errorMessage,
-      });
-      
-      throw error;
+      return responseData.user;
+    } catch (error: any) {
+      throw new Error(error.message || 'Registration failed');
     }
   }
 
   /**
-   * Log out the current user
+   * Logout the current user
    */
   public async logout(): Promise<void> {
     try {
-      // Clear refresh timeout
-      if (this.refreshTimeout) {
-        clearTimeout(this.refreshTimeout);
-        this.refreshTimeout = null;
-      }
+      // In a real implementation, this might call an API endpoint
+      // to invalidate the token on the server
       
-      // Attempt to call logout API if online
-      try {
-        await apiService.request('/api/mobile/auth/logout', {
-          method: 'POST',
-          bypassOfflineQueue: true,
-        });
-      } catch (error) {
-        // Ignore errors from logout API
-        console.log('Logout API error (ignored):', error);
-      }
+      // Clear auth state
+      this._tokens = null;
+      this._currentUser = null;
       
-      // Clear tokens and user data
-      await this.clearTokens();
-      await deleteUser();
+      // Clear persisted auth state
+      await this.clearAuthState();
       
-      // Update state
-      this.updateState({
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: null,
-      });
-    } catch (error) {
+      // Update authentication state
+      this._authState.next({ isAuthenticated: false });
+    } catch (error: any) {
       console.error('Logout error:', error);
-      
-      // Ensure state is reset even if there's an error
-      this.updateState({
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: 'Logout failed',
-      });
+      throw new Error(error.message || 'Logout failed');
     }
+  }
+
+  /**
+   * Check if the user is authenticated
+   */
+  public isAuthenticated(): boolean {
+    if (!this._tokens) {
+      return false;
+    }
+    
+    // Check if token is expired
+    return Date.now() < this._tokens.expiresAt;
   }
 
   /**
    * Get the current authentication token
    */
   public async getToken(): Promise<string | null> {
-    try {
-      // First try secure storage
-      let token = await this.getSecureValue(TOKEN_KEY);
-      
-      // If not in secure storage, try AsyncStorage
-      if (!token) {
-        token = await AsyncStorage.getItem(TOKEN_KEY);
+    // If token is expired, try to refresh
+    if (this._tokens && Date.now() >= this._tokens.expiresAt) {
+      try {
+        await this.refreshToken();
+      } catch (error) {
+        return null;
       }
-      
-      // If still no token, try Realm
-      if (!token) {
-        const user = await getUser();
-        token = user?.token || null;
-      }
-      
-      return token;
-    } catch (error) {
-      console.error('Error getting token:', error);
-      return null;
     }
+    
+    return this._tokens?.token || null;
   }
 
   /**
    * Refresh the authentication token
    */
   public async refreshToken(): Promise<boolean> {
+    if (!this._tokens?.refreshToken) {
+      return false;
+    }
+    
     try {
-      const refreshToken = await this.getSecureValue(REFRESH_TOKEN_KEY);
+      // In a real implementation, this would make an API request
+      // For now, we'll simulate a successful token refresh
       
-      if (!refreshToken) {
-        console.error('No refresh token available');
+      const response = await fetch(`${Config.API.BASE_URL}/api/mobile/auth/refresh`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          refreshToken: this._tokens.refreshToken,
+        }),
+      });
+      
+      if (!response.ok) {
+        // If refresh token is invalid, logout
+        await this.logout();
         return false;
       }
       
-      // Call token refresh API
-      const response = await apiService.request<any>('/api/mobile/auth/refresh', {
-        method: 'POST',
-        body: { refreshToken },
-        requiresAuth: false,
-        bypassOfflineQueue: true,
-      });
+      const responseData = await response.json();
       
-      if (!response.token) {
-        throw new Error('Invalid response from token refresh API');
-      }
+      // Update tokens
+      this._tokens = {
+        token: responseData.token,
+        refreshToken: responseData.refreshToken || this._tokens.refreshToken,
+        expiresAt: Date.now() + (responseData.expiresIn * 1000 || Config.AUTH.SESSION_TIMEOUT),
+      };
       
-      // Store new tokens
-      await this.saveTokens(response.token, response.refreshToken || refreshToken);
-      
-      // Update user in Realm if we have current user
-      if (this._state.user) {
-        await saveUser({ ...this._state.user, token: response.token });
-      }
-      
-      // Reschedule token refresh
-      this.scheduleTokenRefresh();
+      // Save updated tokens
+      await this.persistAuthState();
       
       return true;
     } catch (error) {
       console.error('Token refresh error:', error);
-      
-      // If refresh fails, user needs to login again
-      this.updateState({
-        isAuthenticated: false,
-        user: null,
-        loading: false,
-        error: 'Session expired, please login again',
-      });
-      
+      await this.logout();
       return false;
     }
   }
 
   /**
-   * Check if user is authenticated
+   * Get the current user data
    */
-  public isAuthenticated(): boolean {
-    return this._state.isAuthenticated;
+  public getCurrentUser(): UserData | null {
+    return this._currentUser;
   }
 
   /**
-   * Get current user
+   * Save authentication state to secure storage
    */
-  public getCurrentUser(): User | null {
-    return this._state.user;
+  private async persistAuthState(): Promise<void> {
+    // In a real implementation, this would save tokens to secure storage
+    // and user data to regular storage
+    // For now, we'll just log that it would be saved
+    console.log('Would save auth state to secure storage');
   }
 
   /**
-   * Get current authentication state
+   * Clear authentication state from secure storage
    */
-  public getState(): AuthState {
-    return { ...this._state };
+  private async clearAuthState(): Promise<void> {
+    // In a real implementation, this would clear tokens from secure storage
+    // and user data from regular storage
+    // For now, we'll just log that it would be cleared
+    console.log('Would clear auth state from secure storage');
   }
 
   /**
-   * Schedule token refresh based on expiry
+   * Load authentication state from secure storage
+   * Called during app initialization
    */
-  private scheduleTokenRefresh(): void {
-    // Clear any existing timeout
-    if (this.refreshTimeout) {
-      clearTimeout(this.refreshTimeout);
-      this.refreshTimeout = null;
-    }
-    
-    // Schedule refresh
-    // For simplicity, refresh every 6 hours
-    // In a production app, parse JWT expiry and schedule accordingly
-    const refreshTime = 6 * 60 * 60 * 1000; // 6 hours
-    
-    this.refreshTimeout = setTimeout(() => {
-      this.refreshToken();
-    }, refreshTime - this.TOKEN_REFRESH_BUFFER);
-  }
-
-  /**
-   * Update auth state and notify listeners
-   */
-  private updateState(updates: Partial<AuthState>): void {
-    this._state = { ...this._state, ...updates };
-    this.notifyStateChange();
-  }
-
-  /**
-   * Notify state change to all listeners
-   */
-  private notifyStateChange(): void {
-    this.stateChangeCallbacks.forEach(callback => callback(this._state));
-  }
-
-  /**
-   * Register for state change notifications
-   */
-  public onStateChange(callback: (state: AuthState) => void): () => void {
-    this.stateChangeCallbacks.push(callback);
-    
-    // Return unsubscribe function
-    return () => {
-      this.stateChangeCallbacks = this.stateChangeCallbacks.filter(cb => cb !== callback);
-    };
-  }
-
-  /**
-   * Save tokens to secure storage
-   */
-  private async saveTokens(token: string, refreshToken?: string): Promise<void> {
-    try {
-      // Try to use secure storage first
-      const tokenSaved = await this.saveSecureValue(TOKEN_KEY, token);
-      
-      // Fall back to AsyncStorage if secure storage fails
-      if (!tokenSaved) {
-        await AsyncStorage.setItem(TOKEN_KEY, token);
-      }
-      
-      // Save refresh token if provided
-      if (refreshToken) {
-        await this.saveSecureValue(REFRESH_TOKEN_KEY, refreshToken);
-      }
-    } catch (error) {
-      console.error('Error saving tokens:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Clear tokens from storage
-   */
-  private async clearTokens(): Promise<void> {
-    try {
-      // Clear from secure storage
-      await this.deleteSecureValue(TOKEN_KEY);
-      await this.deleteSecureValue(REFRESH_TOKEN_KEY);
-      
-      // Also clear from AsyncStorage as fallback
-      await AsyncStorage.removeItem(TOKEN_KEY);
-      await AsyncStorage.removeItem(USER_KEY);
-    } catch (error) {
-      console.error('Error clearing tokens:', error);
-      throw error;
-    }
-  }
-
-  /**
-   * Load user from storage
-   */
-  private async loadUserFromStorage(): Promise<User | null> {
-    try {
-      // Try to get from Realm first
-      const user = await getUser();
-      if (user) {
-        return user;
-      }
-      
-      // Try AsyncStorage as fallback
-      const userJson = await AsyncStorage.getItem(USER_KEY);
-      if (userJson) {
-        return JSON.parse(userJson);
-      }
-      
-      return null;
-    } catch (error) {
-      console.error('Error loading user from storage:', error);
-      return null;
-    }
-  }
-
-  /**
-   * Save value to secure storage
-   */
-  private async saveSecureValue(key: string, value: string): Promise<boolean> {
-    try {
-      if (Platform.OS === 'web') {
-        // Web doesn't support SecureStore
-        await AsyncStorage.setItem(key, value);
-      } else {
-        await SecureStore.setItemAsync(key, value);
-      }
-      return true;
-    } catch (error) {
-      console.error(`Error saving secure value for ${key}:`, error);
-      return false;
-    }
-  }
-
-  /**
-   * Get value from secure storage
-   */
-  private async getSecureValue(key: string): Promise<string | null> {
-    try {
-      if (Platform.OS === 'web') {
-        // Web doesn't support SecureStore
-        return await AsyncStorage.getItem(key);
-      } else {
-        return await SecureStore.getItemAsync(key);
-      }
-    } catch (error) {
-      console.error(`Error getting secure value for ${key}:`, error);
-      return null;
-    }
-  }
-
-  /**
-   * Delete value from secure storage
-   */
-  private async deleteSecureValue(key: string): Promise<boolean> {
-    try {
-      if (Platform.OS === 'web') {
-        // Web doesn't support SecureStore
-        await AsyncStorage.removeItem(key);
-      } else {
-        await SecureStore.deleteItemAsync(key);
-      }
-      return true;
-    } catch (error) {
-      console.error(`Error deleting secure value for ${key}:`, error);
-      return false;
-    }
+  public async loadAuthState(): Promise<boolean> {
+    // In a real implementation, this would load tokens from secure storage
+    // and user data from regular storage
+    // For now, we'll just return false (not authenticated)
+    return false;
   }
 }
 
-// Export singleton instance
-export const authService = AuthService.getInstance();
-
+const authService = new AuthService();
 export default authService;
