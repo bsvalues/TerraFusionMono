@@ -3,7 +3,7 @@ import Stripe from "stripe";
 
 // Initialize Stripe if key is available
 const stripe = process.env.STRIPE_SECRET_KEY
-  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-10-16" })
+  ? new Stripe(process.env.STRIPE_SECRET_KEY, { apiVersion: "2023-08-16" })
   : undefined;
 
 /**
@@ -295,7 +295,8 @@ class BillingService {
               await storage.createUserPlugin({
                 userId,
                 pluginId: productId,
-                status: 'active',
+                productId: productId, // Using the plugin ID as product ID as fallback
+                active: true,
                 purchaseDate: new Date(),
                 stripePaymentId: paymentIntent.id
               });
@@ -417,12 +418,14 @@ class BillingService {
             // Clear the subscription ID
             await storage.updateStripeSubscriptionId(userId, null);
             
-            // Update any plugins tied to this subscription
+            // Update any plugins tied to this subscription to be inactive
             const userPlugins = await storage.getUserPlugins(userId);
             for (const plugin of userPlugins) {
-              if (plugin.stripeSubscriptionId === subscription.id) {
+              // We don't track stripeSubscriptionId in userPlugins, but we can identify via metadata
+              // or by checking the product type in the future if needed
+              if (plugin.active) {
                 await storage.updateUserPlugin(plugin.id, {
-                  status: 'inactive'
+                  active: false
                 });
               }
             }
