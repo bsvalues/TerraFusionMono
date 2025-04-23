@@ -421,6 +421,11 @@ router.post('/sync', async (req: Request, res: Response) => {
  * @access Private
  */
 router.post('/sync/crdt', async (req: Request, res: Response) => {
+  // For development testing: bypass authentication
+  const isDevelopment = process.env.NODE_ENV === 'development';
+  if (!req.isAuthenticated() && !isDevelopment) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
   try {
     const { parcelId, update } = req.body;
     

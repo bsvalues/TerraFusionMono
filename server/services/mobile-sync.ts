@@ -38,8 +38,10 @@ class MobileSyncService {
       const existingNote = await storage.getParcelNoteByParcelId(parcelId);
       
       if (existingNote) {
-        // Apply existing state to document
-        applyEncodedUpdate(doc, existingNote.yDocData);
+        // Apply existing state to document if available
+        if (existingNote.yDocData) {
+          applyEncodedUpdate(doc, existingNote.yDocData);
+        }
         
         // Apply client update to document (merges automatically with CRDT)
         applyEncodedUpdate(doc, update);
@@ -47,11 +49,16 @@ class MobileSyncService {
         // Encode the merged result
         const mergedUpdate = encodeDocUpdate(doc);
         
+        // Extract plain text content from the document
+        const textContent = yText.toString();
+        
         // Save to database
         await storage.updateParcelNote(existingNote.id, {
           yDocData: mergedUpdate,
+          content: textContent,
           userId,
-          syncCount: existingNote.syncCount + 1
+          syncCount: (existingNote.syncCount || 0) + 1,
+          updatedAt: new Date()
         });
         
         return {
@@ -65,11 +72,16 @@ class MobileSyncService {
         // Encode the result
         const encodedUpdate = encodeDocUpdate(doc);
         
+        // Extract plain text content from the document
+        const textContent = yText.toString();
+        
         // Save to database
         await storage.createParcelNote({
           parcelId,
           yDocData: encodedUpdate,
-          userId
+          content: textContent,
+          userId,
+          syncCount: 1
         });
         
         return {

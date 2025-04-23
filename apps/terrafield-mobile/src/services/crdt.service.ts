@@ -2,7 +2,7 @@ import { BehaviorSubject } from 'rxjs';
 import * as Y from 'yjs';
 import apiService from './api.service';
 import networkService from './network.service';
-import { ParcelNoteRepository } from '../utils/realm';
+import { ParcelNoteRepository, ParcelRepository } from '../utils/realm';
 import Config from '../config';
 
 // Type for document updates
