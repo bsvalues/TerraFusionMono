@@ -17,6 +17,8 @@ import MainLayout from "@/components/layout/main-layout";
 import ToolsPage from "@/pages/tools";
 import MetricsPage from "@/pages/metrics";
 import JobQueuePage from "@/pages/jobs";
+import ParcelsPage from "@/pages/parcels";
+import GeocodePage from "@/pages/geocode";
 
 function Router() {
   return (
@@ -34,6 +36,10 @@ function Router() {
         <Route path="/tools" component={ToolsPage} />
         <Route path="/metrics" component={MetricsPage} />
         <Route path="/jobs" component={JobQueuePage} />
+        
+        {/* Field management routes */}
+        <Route path="/parcels" component={ParcelsPage} />
+        <Route path="/geocode" component={GeocodePage} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />

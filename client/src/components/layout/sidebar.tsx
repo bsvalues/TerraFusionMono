@@ -11,7 +11,11 @@ import {
   DatabaseIcon,
   ShoppingCartIcon,
   CreditCardIcon,
-  BookOpenIcon
+  BookOpenIcon,
+  MapPinIcon,
+  LayersIcon,
+  WrenchIcon,
+  MapIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
