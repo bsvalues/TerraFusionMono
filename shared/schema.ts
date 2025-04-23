@@ -220,3 +220,25 @@ export type InsertPluginProduct = z.infer<typeof insertPluginProductSchema>;
 
 export type UserPlugin = typeof userPlugins.$inferSelect;
 export type InsertUserPlugin = z.infer<typeof insertUserPluginSchema>;
+
+// Geocode call tracking for metered billing
+export const geocodeCalls = pgTable("geocode_calls", {
+  id: serial("id").primaryKey(),
+  tenantId: integer("tenant_id").notNull(), // The customer/tenant ID
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  address: text("address"),
+  success: boolean("success").default(true),
+  responseTime: integer("response_time_ms"), // Response time in milliseconds
+  chargeStatus: text("charge_status").default("pending"), // pending, charged, failed
+});
+
+export const insertGeocodeCallSchema = createInsertSchema(geocodeCalls).pick({
+  tenantId: true,
+  address: true,
+  success: true,
+  responseTime: true,
+  chargeStatus: true,
+});
+
+export type GeocodeCall = typeof geocodeCalls.$inferSelect;
+export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
