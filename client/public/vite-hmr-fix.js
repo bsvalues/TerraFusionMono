@@ -1,64 +1,54 @@
-// This script fixes the Vite HMR WebSocket connection issue
-// It runs before Vite's client script and ensures the HMR WebSocket always works in Replit
+// This is a simplified WebSocket fix for Vite HMR in Replit
+// It replaces the invalid localhost:undefined URL with the current host
 
 (function() {
-  console.log('[vite-hmr-fix] Setting up HMR connection fix for Replit environment');
+  console.log('[vite-hmr-fix] Loading WebSocket fix for Replit');
   
   // Store the original WebSocket constructor
   const OriginalWebSocket = window.WebSocket;
   
-  // Override WebSocket constructor to intercept Vite HMR connections
+  // Create a simpler WebSocket wrapper to handle invalid URLs
   window.WebSocket = function(url, protocols) {
-    // Parse the URL to understand where it's trying to connect
     try {
-      let newUrl = url;
-      
-      // Check if this is a Vite HMR WebSocket connection
-      if (typeof url === 'string' && (url.includes('vite') || url.includes('hmr') || url.includes('ws'))) {
-        const urlObj = new URL(url);
+      // Check if this is an invalid URL with localhost:undefined
+      if (typeof url === 'string' && url.includes('localhost:undefined')) {
+        // Extract the protocol (ws: or wss:)
+        const protocol = url.startsWith('wss:') ? 'wss:' : 'ws:';
         
-        // Fix for localhost:undefined pattern
-        if (urlObj.host.includes('localhost:undefined')) {
-          // Get the current host from the window location
-          const currentHost = window.location.host;
-          // Use same protocol (ws/wss) as the original URL
-          const protocol = urlObj.protocol;
-          // Keep the pathname and search params
-          const pathAndParams = urlObj.pathname + urlObj.search;
-          
-          // Construct a new URL using the current hostname but keeping the original URL's protocol and path
-          newUrl = `${protocol}//${currentHost}${pathAndParams}`;
-          console.log('[vite-hmr-fix] Redirecting WebSocket from', url, 'to', newUrl);
-        }
+        // Get the current host from window.location
+        const currentHost = window.location.host;
+        
+        // Extract the path and query string (everything after the hostname)
+        const pathAndQuery = url.split('localhost:undefined')[1] || '';
+        
+        // Construct a new URL with the current host
+        const fixedUrl = protocol + '//' + currentHost + pathAndQuery;
+        
+        console.log('[vite-hmr-fix] Fixed WebSocket URL from', url, 'to', fixedUrl);
+        
+        // Create WebSocket with the fixed URL
+        return new OriginalWebSocket(fixedUrl, protocols);
       }
       
-      // Call the original WebSocket constructor with the fixed URL
-      return new OriginalWebSocket(newUrl, protocols);
-    } catch (e) {
-      console.error('[vite-hmr-fix] Error fixing WebSocket URL:', e);
-      // Fallback to original behavior
+      // For all other URLs, use the original constructor
+      return new OriginalWebSocket(url, protocols);
+    } catch (err) {
+      console.error('[vite-hmr-fix] Error in WebSocket fix:', err);
+      
+      // Fallback to original behavior if our fix causes an error
       return new OriginalWebSocket(url, protocols);
     }
   };
   
-  // Copy properties from the original WebSocket constructor
+  // Copy all static properties from the original WebSocket
   for (const prop in OriginalWebSocket) {
     if (OriginalWebSocket.hasOwnProperty(prop)) {
       window.WebSocket[prop] = OriginalWebSocket[prop];
     }
   }
   
-  // Set prototype to match original
+  // Copy the prototype
   window.WebSocket.prototype = OriginalWebSocket.prototype;
   
-  // Notify that the patch has been applied
-  console.log('[vite-hmr-fix] WebSocket connection handling enabled for Replit environment');
-  
-  // Add a custom event listener for Vite to detect when it tries to connect but fails
-  window.addEventListener('error', function(event) {
-    if (event && event.message && typeof event.message === 'string' && 
-        (event.message.includes('WebSocket') || event.message.includes('vite') || event.message.includes('hmr'))) {
-      console.log('[vite-hmr-fix] Detected WebSocket error:', event.message);
-    }
-  });
+  console.log('[vite-hmr-fix] WebSocket fix applied for Replit environment');
 })();
