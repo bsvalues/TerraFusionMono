@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
+import Marketplace from "@/pages/marketplace";
 import MainLayout from "@/components/layout/main-layout";
 
 function Router() {
@@ -12,6 +13,7 @@ function Router() {
     <MainLayout>
       <Switch>
         <Route path="/" component={Dashboard} />
+        <Route path="/marketplace" component={Marketplace} />
         {/* Add more routes here as the application grows */}
         {/* Fallback to 404 */}
         <Route component={NotFound} />

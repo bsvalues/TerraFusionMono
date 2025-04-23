@@ -36,8 +36,35 @@ app.use((req, res, next) => {
   next();
 });
 
+// Import service initializers
+import { coreService } from "./services/core";
+import { jobService } from "./services/jobs";
+import { pluginService } from "./services/plugins";
+import { metricsService } from "./services/metrics";
+import { logsService } from "./services/logs";
+import { marketplaceService } from "./services/marketplace";
+
 (async () => {
   const server = await registerRoutes(app);
+
+  // Initialize default data for services
+  try {
+    // First initialize plugins and core services
+    await pluginService.initializeDefaultPlugins();
+    await coreService.initializeDefaultServices();
+    
+    // Then initialize dependent services
+    await jobService.initializeDefaultJobs();
+    await logsService.initializeSampleLogs();
+    await metricsService.initializeAiProviders();
+    
+    // Initialize marketplace products based on available plugins
+    await marketplaceService.initializeSampleProducts();
+    
+    log("Services initialized successfully");
+  } catch (error) {
+    log(`Error initializing services: ${error}`, "error");
+  }
 
   app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
     const status = err.status || err.statusCode || 500;

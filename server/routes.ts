@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { storage } from "./storage";
 import { coreService } from "./services/core";
@@ -6,12 +6,21 @@ import { jobService } from "./services/jobs";
 import { pluginService } from "./services/plugins";
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
+import { marketplaceService } from "./services/marketplace";
 import Stripe from "stripe";
 
 // Initialize Stripe if key is available
-const stripe = process.env.STRIPE_KEY ? new Stripe(process.env.STRIPE_KEY, {
+const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY, {
   apiVersion: "2023-10-16",
 }) : undefined;
+
+// Middleware to check if user is authenticated
+const isAuthenticated = (req: Request, res: Response, next: NextFunction) => {
+  if (req.isAuthenticated && req.isAuthenticated()) {
+    return next();
+  }
+  res.status(401).json({ message: 'Unauthorized: Please login first' });
+};
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Initialize service endpoints
@@ -172,6 +181,115 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Marketplace plugin products endpoints
+  app.get('/api/marketplace/products', async (req, res) => {
+    try {
+      const products = await marketplaceService.getPluginProducts();
+      res.json(products);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching plugin products: ${error.message}` });
+    }
+  });
+
+  app.get('/api/marketplace/products/:id', async (req, res) => {
+    try {
+      const product = await marketplaceService.getPluginProduct(Number(req.params.id));
+      if (!product) {
+        return res.status(404).json({ message: `Product with ID ${req.params.id} not found` });
+      }
+      res.json(product);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching plugin product: ${error.message}` });
+    }
+  });
+
+  app.get('/api/marketplace/plugins/:pluginId/products', async (req, res) => {
+    try {
+      const products = await marketplaceService.getPluginProductsByPluginId(Number(req.params.pluginId));
+      res.json(products);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching plugin products: ${error.message}` });
+    }
+  });
+
+  app.post('/api/marketplace/products', isAuthenticated, async (req, res) => {
+    try {
+      // Only admin can create products
+      const user = req.user as any;
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Admin access required' });
+      }
+      
+      const product = await marketplaceService.createPluginProduct(req.body);
+      res.status(201).json(product);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error creating plugin product: ${error.message}` });
+    }
+  });
+
+  app.put('/api/marketplace/products/:id', isAuthenticated, async (req, res) => {
+    try {
+      // Only admin can update products
+      const user = req.user as any;
+      if (user?.role !== 'admin') {
+        return res.status(403).json({ message: 'Forbidden: Admin access required' });
+      }
+      
+      const product = await marketplaceService.updatePluginProduct(Number(req.params.id), req.body);
+      if (!product) {
+        return res.status(404).json({ message: `Product with ID ${req.params.id} not found` });
+      }
+      res.json(product);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error updating plugin product: ${error.message}` });
+    }
+  });
+
+  // User plugin endpoints
+  app.get('/api/user/plugins', isAuthenticated, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const userPlugins = await marketplaceService.getUserPlugins(user.id);
+      res.json(userPlugins);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching user plugins: ${error.message}` });
+    }
+  });
+
+  // Create payment intent for purchasing a plugin
+  app.post('/api/marketplace/create-payment-intent', isAuthenticated, async (req, res) => {
+    try {
+      const { productId } = req.body;
+      const user = req.user as any;
+      
+      if (!productId) {
+        return res.status(400).json({ message: 'Product ID is required' });
+      }
+      
+      const paymentIntent = await marketplaceService.createPaymentIntent(Number(productId), user.id);
+      res.json(paymentIntent);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error creating payment intent: ${error.message}` });
+    }
+  });
+
+  // Complete a plugin purchase after successful payment
+  app.post('/api/marketplace/complete-purchase', isAuthenticated, async (req, res) => {
+    try {
+      const { productId, stripePaymentId } = req.body;
+      const user = req.user as any;
+      
+      if (!productId || !stripePaymentId) {
+        return res.status(400).json({ message: 'Product ID and Stripe payment ID are required' });
+      }
+      
+      const purchase = await marketplaceService.completePurchase(user.id, Number(productId), stripePaymentId);
+      res.status(201).json(purchase);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error completing purchase: ${error.message}` });
+    }
+  });
+  
   // Stripe webhook endpoint
   if (stripe && process.env.STRIPE_WEBHOOK_SECRET) {
     app.post('/api/webhook/stripe', async (req, res) => {
@@ -183,13 +301,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
           process.env.STRIPE_WEBHOOK_SECRET!
         );
         
-        if (event.type === 'invoice.paid') {
-          // Enable plugin by id
-          // Implementation would go here
+        // Process the event based on type
+        switch (event.type) {
+          case 'payment_intent.succeeded': {
+            const paymentIntent = event.data.object as Stripe.PaymentIntent;
+            
+            // Extract metadata to complete the purchase
+            if (paymentIntent.metadata?.userId && paymentIntent.metadata?.productId) {
+              try {
+                await marketplaceService.completePurchase(
+                  Number(paymentIntent.metadata.userId), 
+                  Number(paymentIntent.metadata.productId),
+                  paymentIntent.id
+                );
+                
+                // Log successful purchase
+                await storage.createLog({
+                  level: 'INFO',
+                  service: 'stripe-webhook',
+                  message: `Completed purchase for user ${paymentIntent.metadata.userId}, product ${paymentIntent.metadata.productId}`
+                });
+              } catch (error: any) {
+                await storage.createLog({
+                  level: 'ERROR',
+                  service: 'stripe-webhook',
+                  message: `Failed to complete purchase: ${error.message}`
+                });
+              }
+            }
+            break;
+          }
+          
+          case 'invoice.paid': {
+            // Handle subscription renewal
+            const invoice = event.data.object as Stripe.Invoice;
+            
+            // Implementation for subscription renewal would go here
+            await storage.createLog({
+              level: 'INFO',
+              service: 'stripe-webhook',
+              message: `Invoice paid: ${invoice.id}`
+            });
+            break;
+          }
         }
         
         res.sendStatus(200);
       } catch (error: any) {
+        await storage.createLog({
+          level: 'ERROR',
+          service: 'stripe-webhook',
+          message: `Webhook error: ${error.message}`
+        });
         res.status(400).json({ message: `Webhook error: ${error.message}` });
       }
     });

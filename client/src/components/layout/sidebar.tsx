@@ -8,7 +8,8 @@ import {
   PuzzleIcon,
   BarChartIcon,
   ListTodoIcon,
-  DatabaseIcon
+  DatabaseIcon,
+  ShoppingCartIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,6 +55,19 @@ export default function Sidebar() {
               )}>
                 <HomeIcon className="mr-3 h-5 w-5" />
                 Dashboard
+              </a>
+            </Link>
+            
+            {/* Marketplace */}
+            <Link href="/marketplace">
+              <a className={cn(
+                "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+                location === "/marketplace" 
+                  ? "bg-primary text-white" 
+                  : "text-gray-700 hover:bg-gray-100"
+              )}>
+                <ShoppingCartIcon className="mr-3 h-5 w-5" />
+                Marketplace
               </a>
             </Link>
 
