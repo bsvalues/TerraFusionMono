@@ -456,29 +456,52 @@ router.post('/sync/crdt', async (req: Request, res: Response) => {
   try {
     const { parcelId, update } = req.body;
     
-    if (!parcelId || !update) {
+    if (!parcelId) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
+    }
+    
+    if (!update) {
+      return res.status(400).json({ message: 'Yjs update is required' });
+    }
+    
+    // Validate base64 format
+    try {
+      Buffer.from(update, 'base64');
+    } catch (e) {
       return res.status(400).json({ 
-        message: 'Parcel ID and Yjs update are required' 
+        message: 'Invalid base64 encoding for Yjs update',
+        error: e instanceof Error ? e.message : String(e)
       });
     }
     
-    const { mobileSyncService } = await import('../services/mobile-sync');
-    
-    // Apply the CRDT update and get the merged state
-    const result = await mobileSyncService.syncParcelNote(
-      parcelId,
-      update,
-      req.user?.id || 0 // Fallback to 0 if user ID is not available
-    );
-    
-    res.json({
-      success: true,
-      update: result.update,
-      timestamp: result.timestamp
-    });
+    try {
+      const { mobileSyncService } = await import('../services/mobile-sync');
+      
+      // Apply the CRDT update and get the merged state
+      const result = await mobileSyncService.syncParcelNote(
+        parcelId,
+        update,
+        req.user?.id || 0 // Fallback to 0 if user ID is not available
+      );
+      
+      res.json({
+        success: true,
+        update: result.update,
+        timestamp: result.timestamp
+      });
+    } catch (syncError) {
+      console.error('CRDT update processing error:', syncError);
+      res.status(400).json({ 
+        message: 'Error processing CRDT update',
+        error: syncError instanceof Error ? syncError.message : String(syncError)
+      });
+    }
   } catch (error) {
     console.error('CRDT sync error:', error);
-    res.status(500).json({ message: 'Server error' });
+    res.status(500).json({ 
+      message: 'Server error',
+      error: error instanceof Error ? error.message : String(error)
+    });
   }
 });
 
