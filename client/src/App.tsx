@@ -14,6 +14,9 @@ import Subscribe from "@/pages/subscribe";
 import AppDetails from "@/pages/app-details";
 import PluginDetails from "@/pages/plugin-details";
 import MainLayout from "@/components/layout/main-layout";
+import ToolsPage from "@/pages/tools";
+import MetricsPage from "@/pages/metrics";
+import JobQueuePage from "@/pages/jobs";
 
 function Router() {
   return (
@@ -26,6 +29,11 @@ function Router() {
         <Route path="/onboarding" component={OnboardingPage} />
         <Route path="/checkout" component={Checkout} />
         <Route path="/subscribe" component={Subscribe} />
+        
+        {/* System management routes */}
+        <Route path="/tools" component={ToolsPage} />
+        <Route path="/metrics" component={MetricsPage} />
+        <Route path="/jobs" component={JobQueuePage} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />
