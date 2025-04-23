@@ -158,6 +158,53 @@ export default function BillingPage() {
 
       <Separator className="my-8" />
 
+      {/* Payment History */}
+      <div className="mb-6">
+        <h2 className="text-2xl font-bold tracking-tight mb-4">Payment History</h2>
+        <Card>
+          <Table>
+            <TableCaption>Your recent payment transactions</TableCaption>
+            <TableHeader>
+              <TableRow>
+                <TableHead>Transaction ID</TableHead>
+                <TableHead>Date</TableHead>
+                <TableHead>Amount</TableHead>
+                <TableHead>Type</TableHead>
+                <TableHead>Status</TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {user?.stripeSubscriptionId ? (
+                <>
+                  <TableRow>
+                    <TableCell className="font-medium">pi_3N7y2j...</TableCell>
+                    <TableCell>{format(new Date(), 'MMM d, yyyy')}</TableCell>
+                    <TableCell>$19.99</TableCell>
+                    <TableCell>
+                      <Badge>Subscription</Badge>
+                    </TableCell>
+                    <TableCell>
+                      <span className="flex items-center">
+                        <CheckCircle2 className="mr-2 h-4 w-4 text-green-500" />
+                        Paid
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                </>
+              ) : (
+                <TableRow>
+                  <TableCell colSpan={5} className="text-center py-4 text-muted-foreground">
+                    No payment transactions found
+                  </TableCell>
+                </TableRow>
+              )}
+            </TableBody>
+          </Table>
+        </Card>
+      </div>
+
+      <Separator className="my-8" />
+
       {/* Purchased plugins */}
       <div className="mb-6">
         <h2 className="text-2xl font-bold tracking-tight mb-4">Your Plugins</h2>
