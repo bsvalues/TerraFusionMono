@@ -11,6 +11,7 @@ import { marketplaceService } from "./services/marketplace";
 import { billingService } from "./services/billing";
 import { geocodeService } from "./services/geocode";
 import { usageService } from "./services/metering/usage";
+import { mobileSyncService } from "./services/mobile-sync";
 import Stripe from "stripe";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -643,6 +644,98 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error: any) {
       console.error('Payment intent error:', error);
       res.status(500).json({ message: `Error creating payment intent: ${error.message}` });
+    }
+  });
+
+  // Mobile sync endpoints
+  app.post('/api/mobile-sync', isAuthenticated, async (req, res) => {
+    try {
+      const { parcelId, update } = req.body;
+      const user = req.user as any;
+      
+      if (!parcelId || !update) {
+        return res.status(400).json({ message: 'Parcel ID and update are required' });
+      }
+      
+      // Check if user has TerraField mobile access
+      if (process.env.MOBILE_SYNC_PRODUCT_ID) {
+        const hasAccess = await billingService.verifyAccess(
+          user.id, 
+          process.env.MOBILE_SYNC_PRODUCT_ID
+        );
+        
+        if (!hasAccess) {
+          return res.status(402).json({ 
+            message: 'Payment Required: You need a TerraField subscription',
+            subscriptionRequired: true
+          });
+        }
+      }
+      
+      // Process sync request
+      const result = await mobileSyncService.syncParcelNote(parcelId, update, user.id);
+      
+      // Log successful sync
+      await storage.createLog({
+        level: 'INFO',
+        service: 'mobile-sync',
+        message: `Synced parcel note ${parcelId} for user ${user.id}`
+      });
+      
+      res.json(result);
+    } catch (error: any) {
+      await storage.createLog({
+        level: 'ERROR',
+        service: 'mobile-sync',
+        message: `Sync error: ${error.message}`
+      });
+      res.status(500).json({ message: `Error syncing parcel note: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/mobile-sync/:parcelId', isAuthenticated, async (req, res) => {
+    try {
+      const { parcelId } = req.params;
+      const user = req.user as any;
+      
+      if (!parcelId) {
+        return res.status(400).json({ message: 'Parcel ID is required' });
+      }
+      
+      // Check if user has TerraField mobile access
+      if (process.env.MOBILE_SYNC_PRODUCT_ID) {
+        const hasAccess = await billingService.verifyAccess(
+          user.id, 
+          process.env.MOBILE_SYNC_PRODUCT_ID
+        );
+        
+        if (!hasAccess) {
+          return res.status(402).json({ 
+            message: 'Payment Required: You need a TerraField subscription',
+            subscriptionRequired: true
+          });
+        }
+      }
+      
+      // Fetch parcel note
+      const note = await mobileSyncService.getParcelNote(parcelId);
+      
+      if (!note) {
+        return res.status(404).json({ message: `Parcel note with ID ${parcelId} not found` });
+      }
+      
+      res.json({
+        update: note.yDocData,
+        timestamp: note.updatedAt.toISOString(),
+        syncCount: note.syncCount
+      });
+    } catch (error: any) {
+      await storage.createLog({
+        level: 'ERROR',
+        service: 'mobile-sync',
+        message: `Fetch error: ${error.message}`
+      });
+      res.status(500).json({ message: `Error fetching parcel note: ${error.message}` });
     }
   });
 

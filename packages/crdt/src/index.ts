@@ -1,48 +1,48 @@
 import * as Y from 'yjs';
-import { syncedStore, getYjsDoc } from '@syncedstore/core';
+import { SyncedStore } from '@syncedstore/core';
 
+/**
+ * Interface for parcel store type
+ */
 export interface ParcelStore {
   notes: string;
 }
 
 /**
- * Creates a CRDT-enabled store for a parcel
- * @param parcelId The unique identifier for the parcel
- * @returns A synchronized store with CRDT capabilities
+ * Create a new parcel store with Yjs document
+ * @param id The ID for the document
+ * @returns Object containing the store and doc
  */
-export function createParcelStore(parcelId: string) {
-  // Create a synced store with a notes field
-  const store = syncedStore<ParcelStore>({ notes: '' });
+export function createParcelStore(id: string) {
+  // Create the Y.Doc instance
+  const doc = new Y.Doc();
   
-  // Get the underlying Yjs document
-  const doc = getYjsDoc(store);
+  // Create a synced store using the Y.Doc
+  const store = SyncedStore.create<ParcelStore>({
+    notes: 'text',
+  }, doc);
   
-  // Set the clientID to ensure consistent merges
-  doc.clientID = generateClientId(parcelId);
-  
-  return {
-    store,
-    doc,
-  };
-}
-
-/**
- * Generates a deterministic client ID based on parcel ID
- * This helps with consistent conflict resolution
- */
-function generateClientId(parcelId: string): number {
-  let hash = 0;
-  for (let i = 0; i < parcelId.length; i++) {
-    const char = parcelId.charCodeAt(i);
-    hash = ((hash << 5) - hash) + char;
-    hash = hash & hash; // Convert to 32bit integer
+  // Initialize with empty text
+  if (!store.notes) {
+    store.notes = '';
   }
-  return Math.abs(hash);
+  
+  return { store, doc };
 }
 
 /**
- * Encodes a Yjs document update as a Base64 string
- * @param doc The Yjs document
+ * Apply an encoded update to a Y.Doc
+ * @param doc The Y.Doc instance to update
+ * @param base64Update Base64 encoded update
+ */
+export function applyEncodedUpdate(doc: Y.Doc, base64Update: string): void {
+  const update = Buffer.from(base64Update, 'base64');
+  Y.applyUpdate(doc, update);
+}
+
+/**
+ * Encode a Y.Doc's state as a base64 string
+ * @param doc The Y.Doc instance to encode
  * @returns Base64 encoded update
  */
 export function encodeDocUpdate(doc: Y.Doc): string {
@@ -51,22 +51,34 @@ export function encodeDocUpdate(doc: Y.Doc): string {
 }
 
 /**
- * Decodes a Base64 encoded update and applies it to a Yjs document
- * @param doc The target Yjs document
- * @param base64Update The Base64 encoded update
+ * Merge two Y.Doc instances
+ * @param doc1 The first Y.Doc
+ * @param doc2 The second Y.Doc
+ * @returns A new Y.Doc with merged state
  */
-export function applyEncodedUpdate(doc: Y.Doc, base64Update: string): void {
-  const update = Buffer.from(base64Update, 'base64');
-  Y.applyUpdate(doc, update);
+export function mergeYDocs(doc1: Y.Doc, doc2: Y.Doc): Y.Doc {
+  const mergedDoc = new Y.Doc();
+  
+  // Apply updates from both docs to the merged doc
+  Y.applyUpdate(mergedDoc, Y.encodeStateAsUpdate(doc1));
+  Y.applyUpdate(mergedDoc, Y.encodeStateAsUpdate(doc2));
+  
+  return mergedDoc;
 }
 
 /**
- * Merges an encoded update into a document and returns the new state
- * @param doc The target Yjs document
- * @param base64Update The Base64 encoded update to merge
- * @returns The Base64 encoded state after merge
+ * Get differences between two Y.Doc instances
+ * @param doc1 The first Y.Doc
+ * @param doc2 The second Y.Doc
+ * @returns Base64 encoded diff update
  */
-export function mergeUpdates(doc: Y.Doc, base64Update: string): string {
-  applyEncodedUpdate(doc, base64Update);
-  return encodeDocUpdate(doc);
+export function getDiff(doc1: Y.Doc, doc2: Y.Doc): string {
+  const state1 = Y.encodeStateAsUpdate(doc1);
+  const state2 = Y.encodeStateAsUpdate(doc2);
+  
+  // This is a simplified approach; in a real implementation, 
+  // you would compute a proper diff between the two states
+  const diff = Y.diffUpdate(state1, state2);
+  
+  return Buffer.from(diff).toString('base64');
 }
