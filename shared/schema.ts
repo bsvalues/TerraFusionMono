@@ -242,3 +242,22 @@ export const insertGeocodeCallSchema = createInsertSchema(geocodeCalls).pick({
 
 export type GeocodeCall = typeof geocodeCalls.$inferSelect;
 export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
+
+// Parcel notes for mobile sync
+export const parcelNotes = pgTable("parcel_notes", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().unique(),
+  yDocData: text("y_doc_data").notNull(), // Base64 encoded Y.Doc update
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  userId: integer("user_id").notNull(), // User who last updated
+  syncCount: integer("sync_count").default(0), // Number of times synced
+});
+
+export const insertParcelNoteSchema = createInsertSchema(parcelNotes).pick({
+  parcelId: true,
+  yDocData: true,
+  userId: true,
+});
+
+export type ParcelNote = typeof parcelNotes.$inferSelect;
+export type InsertParcelNote = z.infer<typeof insertParcelNoteSchema>;

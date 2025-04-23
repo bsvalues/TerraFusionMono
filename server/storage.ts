@@ -79,6 +79,13 @@ export interface IStorage {
   updateStripeSubscriptionId(userId: number, stripeSubscriptionId: string): Promise<User | undefined>;
   updateStripeSubscriptionStatus(userId: number, stripeSubscriptionStatus: string): Promise<User | undefined>;
   getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]>;
+  
+  // Parcel Note operations
+  getParcelNotes(limit?: number): Promise<ParcelNote[]>;
+  getParcelNote(id: number): Promise<ParcelNote | undefined>;
+  getParcelNoteByParcelId(parcelId: string): Promise<ParcelNote | undefined>;
+  createParcelNote(parcelNote: InsertParcelNote): Promise<ParcelNote>;
+  updateParcelNote(id: number, updates: Partial<ParcelNote>): Promise<ParcelNote | undefined>;
 }
 
 // Database-backed storage implementation
@@ -415,6 +422,42 @@ export class DatabaseStorage implements IStorage {
   
   async getUserByStripeCustomerId(stripeCustomerId: string): Promise<User[]> {
     return await db.select().from(users).where(eq(users.stripeCustomerId, stripeCustomerId));
+  }
+  
+  // Parcel Note operations
+  async getParcelNotes(limit: number = 50): Promise<ParcelNote[]> {
+    return await db
+      .select()
+      .from(parcelNotes)
+      .orderBy(desc(parcelNotes.updatedAt))
+      .limit(limit);
+  }
+  
+  async getParcelNote(id: number): Promise<ParcelNote | undefined> {
+    const [note] = await db.select().from(parcelNotes).where(eq(parcelNotes.id, id));
+    return note;
+  }
+  
+  async getParcelNoteByParcelId(parcelId: string): Promise<ParcelNote | undefined> {
+    const [note] = await db.select().from(parcelNotes).where(eq(parcelNotes.parcelId, parcelId));
+    return note;
+  }
+  
+  async createParcelNote(note: InsertParcelNote): Promise<ParcelNote> {
+    const [newNote] = await db
+      .insert(parcelNotes)
+      .values(note)
+      .returning();
+    return newNote;
+  }
+  
+  async updateParcelNote(id: number, updates: Partial<ParcelNote>): Promise<ParcelNote | undefined> {
+    const [updatedNote] = await db
+      .update(parcelNotes)
+      .set(updates)
+      .where(eq(parcelNotes.id, id))
+      .returning();
+    return updatedNote;
   }
 }
 
