@@ -36,6 +36,9 @@ const ParcelNoteSchema = {
     id: 'string',
     parcelId: 'string',
     text: 'string',
+    // CRDT state for collaborative editing
+    yDocData: 'string?',
+    syncCount: { type: 'int', default: 0 },
     createdAt: 'date',
     updatedAt: 'date',
     isDeleted: 'bool',

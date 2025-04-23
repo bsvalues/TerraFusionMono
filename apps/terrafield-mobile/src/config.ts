@@ -30,6 +30,9 @@ const Config = {
     SYNC_INTERVAL: 15 * 60 * 1000, // 15 minutes
     SYNC_QUEUE_KEY: 'terrafield_sync_queue',
     SYNC_BATCH_SIZE: 20, // Number of items to sync in a single batch
+    // CRDT synchronization configuration
+    CRDT_SYNC_DELAY: 3000, // 3 seconds delay for throttling CRDT sync requests
+    CRDT_AUTO_SYNC: true, // Enable automatic CRDT synchronization
   },
   
   // Local storage configuration

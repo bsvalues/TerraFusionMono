@@ -47,7 +47,7 @@ router.use(authenticateJWT);
 router.get('/user', async (req: Request, res: Response) => {
   try {
     // User is already set by the authenticateJWT middleware
-    const { passwordHash, ...userWithoutPassword } = req.user;
+    const { password, ...userWithoutPassword } = req.user;
     res.json(userWithoutPassword);
   } catch (error) {
     console.error('Get user error:', error);
@@ -410,6 +410,74 @@ router.post('/sync', async (req: Request, res: Response) => {
     });
   } catch (error) {
     console.error('Sync error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @route POST /api/mobile/sync/crdt
+ * @desc Synchronize data between mobile and server using CRDT (conflict-free replicated data type)
+ * @access Private
+ */
+router.post('/sync/crdt', async (req: Request, res: Response) => {
+  try {
+    const { parcelId, update } = req.body;
+    
+    if (!parcelId || !update) {
+      return res.status(400).json({ 
+        message: 'Parcel ID and Yjs update are required' 
+      });
+    }
+    
+    const { mobileSyncService } = await import('../services/mobile-sync');
+    
+    // Apply the CRDT update and get the merged state
+    const result = await mobileSyncService.syncParcelNote(
+      parcelId,
+      update,
+      req.user.id
+    );
+    
+    res.json({
+      success: true,
+      update: result.update,
+      timestamp: result.timestamp
+    });
+  } catch (error) {
+    console.error('CRDT sync error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @route GET /api/mobile/sync/crdt/:parcelId
+ * @desc Get the latest CRDT state for a parcel note
+ * @access Private
+ */
+router.get('/sync/crdt/:parcelId', async (req: Request, res: Response) => {
+  try {
+    const { parcelId } = req.params;
+    
+    if (!parcelId) {
+      return res.status(400).json({ message: 'Parcel ID is required' });
+    }
+    
+    const { mobileSyncService } = await import('../services/mobile-sync');
+    
+    // Get the latest state
+    const note = await mobileSyncService.getParcelNote(parcelId);
+    
+    if (!note || !note.yDocData) {
+      return res.status(404).json({ message: 'No CRDT data found for this parcel' });
+    }
+    
+    res.json({
+      success: true,
+      update: note.yDocData,
+      timestamp: note.updatedAt
+    });
+  } catch (error) {
+    console.error('CRDT get error:', error);
     res.status(500).json({ message: 'Server error' });
   }
 });
