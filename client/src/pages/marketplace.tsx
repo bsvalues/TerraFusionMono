@@ -9,6 +9,7 @@ import { CreditCard, Check, AlertCircle, Tag } from "lucide-react";
 import { PluginProduct } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
+import { StripeCheckoutButton } from '@/components/checkout/stripe-checkout-button';
 
 export default function Marketplace() {
   const { toast } = useToast();
@@ -175,13 +176,13 @@ export default function Marketplace() {
                         {renderFeatures(product)}
                       </CardContent>
                       <CardFooter>
-                        <Button 
+                        <StripeCheckoutButton
+                          priceId={product.stripePriceId || ''}
+                          mode={product.type === 'subscription' ? 'subscription' : 'payment'}
+                          buttonText={product.type === 'subscription' ? 'Subscribe' : 'Purchase'}
                           className="w-full"
-                          onClick={() => handleCheckout(product)}
-                        >
-                          <CreditCard className="w-4 h-4 mr-2" />
-                          {product.type === 'subscription' ? 'Subscribe' : 'Purchase'}
-                        </Button>
+                          productName={product.name}
+                        />
                       </CardFooter>
                     </Card>
                   ))}
@@ -218,13 +219,13 @@ export default function Marketplace() {
                     {renderFeatures(product)}
                   </CardContent>
                   <CardFooter>
-                    <Button 
+                    <StripeCheckoutButton
+                      priceId={product.stripePriceId || ''}
+                      mode="payment"
+                      buttonText="Purchase"
                       className="w-full"
-                      onClick={() => handleCheckout(product)}
-                    >
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Purchase
-                    </Button>
+                      productName={product.name}
+                    />
                   </CardFooter>
                 </Card>
               ))}
@@ -256,13 +257,13 @@ export default function Marketplace() {
                     {renderFeatures(product)}
                   </CardContent>
                   <CardFooter>
-                    <Button 
+                    <StripeCheckoutButton
+                      priceId={product.stripePriceId || ''}
+                      mode="subscription"
+                      buttonText="Subscribe"
                       className="w-full"
-                      onClick={() => handleCheckout(product)}
-                    >
-                      <CreditCard className="w-4 h-4 mr-2" />
-                      Subscribe
-                    </Button>
+                      productName={product.name}
+                    />
                   </CardFooter>
                 </Card>
               ))}

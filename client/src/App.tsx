@@ -6,6 +6,7 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import NotFound from "@/pages/not-found";
 import Dashboard from "@/pages/dashboard";
 import Marketplace from "@/pages/marketplace";
+import BillingPage from "@/pages/billing";
 import MainLayout from "@/components/layout/main-layout";
 
 function Router() {
@@ -14,6 +15,7 @@ function Router() {
       <Switch>
         <Route path="/" component={Dashboard} />
         <Route path="/marketplace" component={Marketplace} />
+        <Route path="/billing" component={BillingPage} />
         {/* Add more routes here as the application grows */}
         {/* Fallback to 404 */}
         <Route component={NotFound} />
