@@ -48,55 +48,47 @@ export default function Sidebar() {
         <div className="flex flex-col flex-1 overflow-y-auto">
           <nav className="flex-1 px-2 py-4 space-y-1">
             {/* Dashboard */}
-            <Link href="/">
-              <a className={cn(
-                "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                location === "/" 
-                  ? "bg-primary text-white" 
-                  : "text-gray-700 hover:bg-gray-100"
-              )}>
-                <HomeIcon className="mr-3 h-5 w-5" />
-                Dashboard
-              </a>
+            <Link href="/" className={cn(
+              "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+              location === "/" 
+                ? "bg-primary text-white" 
+                : "text-gray-700 hover:bg-gray-100"
+            )}>
+              <HomeIcon className="mr-3 h-5 w-5" />
+              Dashboard
             </Link>
             
             {/* Marketplace */}
-            <Link href="/marketplace">
-              <a className={cn(
-                "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                location === "/marketplace" 
-                  ? "bg-primary text-white" 
-                  : "text-gray-700 hover:bg-gray-100"
-              )}>
-                <ShoppingCartIcon className="mr-3 h-5 w-5" />
-                Marketplace
-              </a>
+            <Link href="/marketplace" className={cn(
+              "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+              location === "/marketplace" 
+                ? "bg-primary text-white" 
+                : "text-gray-700 hover:bg-gray-100"
+            )}>
+              <ShoppingCartIcon className="mr-3 h-5 w-5" />
+              Marketplace
             </Link>
             
             {/* Billing */}
-            <Link href="/billing">
-              <a className={cn(
-                "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                location === "/billing" 
-                  ? "bg-primary text-white" 
-                  : "text-gray-700 hover:bg-gray-100"
-              )}>
-                <CreditCardIcon className="mr-3 h-5 w-5" />
-                Billing & Subscriptions
-              </a>
+            <Link href="/billing" className={cn(
+              "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+              location === "/billing" 
+                ? "bg-primary text-white" 
+                : "text-gray-700 hover:bg-gray-100"
+            )}>
+              <CreditCardIcon className="mr-3 h-5 w-5" />
+              Billing & Subscriptions
             </Link>
             
             {/* Plugin Onboarding */}
-            <Link href="/onboarding">
-              <a className={cn(
-                "flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                location === "/onboarding" 
-                  ? "bg-primary text-white" 
-                  : "text-gray-700 hover:bg-gray-100"
-              )}>
-                <BookOpenIcon className="mr-3 h-5 w-5" />
-                Plugin Tutorial
-              </a>
+            <Link href="/onboarding" className={cn(
+              "flex items-center px-3 py-2 text-sm font-medium rounded-md",
+              location === "/onboarding" 
+                ? "bg-primary text-white" 
+                : "text-gray-700 hover:bg-gray-100"
+            )}>
+              <BookOpenIcon className="mr-3 h-5 w-5" />
+              Plugin Tutorial
             </Link>
 
             {/* Apps */}
@@ -106,19 +98,17 @@ export default function Sidebar() {
               </h3>
               <div className="space-y-1">
                 {apps.map((app) => (
-                  <Link key={app.name} href={app.path}>
-                    <a className={cn(
-                      "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                      location === app.path 
-                        ? "bg-primary text-white" 
-                        : "text-gray-700 hover:bg-gray-100"
-                    )}>
-                      <app.icon className={cn(
-                        "mr-3 h-5 w-5",
-                        location === app.path ? "text-white" : "text-gray-500"
-                      )} />
-                      {app.name}
-                    </a>
+                  <Link key={app.name} href={app.path} className={cn(
+                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
+                    location === app.path 
+                      ? "bg-primary text-white" 
+                      : "text-gray-700 hover:bg-gray-100"
+                  )}>
+                    <app.icon className={cn(
+                      "mr-3 h-5 w-5",
+                      location === app.path ? "text-white" : "text-gray-500"
+                    )} />
+                    {app.name}
                   </Link>
                 ))}
               </div>
@@ -131,19 +121,17 @@ export default function Sidebar() {
               </h3>
               <div className="space-y-1">
                 {plugins.map((plugin) => (
-                  <Link key={plugin.name} href={plugin.path}>
-                    <a className={cn(
-                      "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
-                      location === plugin.path 
-                        ? "bg-primary text-white" 
-                        : "text-gray-700 hover:bg-gray-100"
-                    )}>
-                      <PuzzleIcon className={cn(
-                        "mr-3 h-5 w-5",
-                        location === plugin.path ? "text-white" : "text-gray-500"
-                      )} />
-                      {plugin.name}
-                    </a>
+                  <Link key={plugin.name} href={plugin.path} className={cn(
+                    "group flex items-center px-3 py-2 text-sm font-medium rounded-md",
+                    location === plugin.path 
+                      ? "bg-primary text-white" 
+                      : "text-gray-700 hover:bg-gray-100"
+                  )}>
+                    <PuzzleIcon className={cn(
+                      "mr-3 h-5 w-5",
+                      location === plugin.path ? "text-white" : "text-gray-500"
+                    )} />
+                    {plugin.name}
                   </Link>
                 ))}
               </div>

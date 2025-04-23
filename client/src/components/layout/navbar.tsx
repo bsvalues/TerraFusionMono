@@ -1,8 +1,7 @@
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { BellIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { useLocation } from "wouter";
 
 export default function Navbar() {
   const [location] = useLocation();
@@ -40,8 +39,8 @@ export default function Navbar() {
           <nav className="hidden sm:ml-6 sm:flex">
             <ol className="flex items-center space-x-2 text-sm">
               <li>
-                <Link href="/">
-                  <a className="text-gray-500 hover:text-gray-700">Dashboard</a>
+                <Link href="/" className="text-gray-500 hover:text-gray-700">
+                  Dashboard
                 </Link>
               </li>
               
@@ -52,8 +51,8 @@ export default function Navbar() {
                     <li key={idx}>
                       {idx < breadcrumbs.length - 1 ? (
                         <>
-                          <Link href={crumb.path}>
-                            <a className="text-gray-500 hover:text-gray-700">{crumb.name}</a>
+                          <Link href={crumb.path} className="text-gray-500 hover:text-gray-700">
+                            {crumb.name}
                           </Link>
                           <span className="text-gray-400 ml-2">/</span>
                         </>
