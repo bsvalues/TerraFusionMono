@@ -1,431 +1,417 @@
-import express from 'express';
+import { Router, Request, Response } from 'express';
+import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
-import { verifyToken } from './auth';
-import { mobileSyncService } from '../services/mobile-sync';
+import { z } from 'zod';
 
-const router = express.Router();
+const router = Router();
+
+// Environment variables
+const JWT_SECRET = process.env.JWT_SECRET || 'terrafield-dev-secret';
+
+// Middleware to verify JWT token
+const authenticateJWT = async (req: Request, res: Response, next: Function) => {
+  const authHeader = req.headers.authorization;
+  
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return res.status(401).json({ message: 'Authentication required' });
+  }
+  
+  const token = authHeader.split(' ')[1];
+  
+  try {
+    const decoded = jwt.verify(token, JWT_SECRET) as { userId: number; username: string };
+    
+    // Set user on request object
+    const user = await storage.getUser(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid token' });
+    }
+    
+    // Add user to request object
+    req.user = user;
+    
+    next();
+  } catch (error) {
+    return res.status(401).json({ message: 'Invalid token' });
+  }
+};
+
+// Apply authentication middleware to all routes in this router
+router.use(authenticateJWT);
 
 /**
- * Mobile API routes
- * Provides endpoints for the TerraField mobile application
+ * @route GET /api/mobile/user
+ * @desc Get current user information
+ * @access Private
  */
-
-// Ping endpoint - used to check connectivity from mobile app
-router.get('/ping', (req, res) => {
-  res.json({ 
-    success: true,
-    status: 'ok', 
-    message: 'TerraFusion API is running', 
-    timestamp: new Date().toISOString(),
-    version: process.env.API_VERSION || '1.0.0'
-  });
-});
-
-// Auth validation endpoint - redirect to mobile auth routes
-router.get('/auth/validate', verifyToken, (req, res) => {
-  const { password: _, ...userWithoutPassword } = req.user as any;
-  res.json({ 
-    success: true, 
-    valid: true, 
-    user: userWithoutPassword 
-  });
-});
-
-// Get app configuration
-router.get('/config', async (req, res) => {
+router.get('/user', async (req: Request, res: Response) => {
   try {
-    // Application configuration for mobile clients
-    res.json({
-      success: true,
-      config: {
-        syncInterval: 300000, // 5 minutes
-        maxOfflineTime: 2592000000, // 30 days
-        cacheExpiration: 86400000, // 24 hours
-        features: {
-          offlineEditing: true,
-          gpsTracking: true,
-          documentScanning: true,
-          mapVisualization: true,
-          crdt: true
-        },
-        version: process.env.API_VERSION || '1.0.0',
-        minClientVersion: '1.0.0'
-      }
-    });
-  } catch (error: any) {
-    console.error('Get config error:', error);
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    // User is already set by the authenticateJWT middleware
+    const { passwordHash, ...userWithoutPassword } = req.user;
+    res.json(userWithoutPassword);
+  } catch (error) {
+    console.error('Get user error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get parcels endpoint - with optional filtering and pagination
-router.get('/parcels', verifyToken, async (req, res) => {
+/**
+ * @route GET /api/mobile/parcels
+ * @desc Get all parcels for the user
+ * @access Private
+ */
+router.get('/parcels', async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
-    const { limit = 50, page = 1 } = req.query;
+    // Get parcels
+    const parcels = await storage.getParcels({ userId: req.user.id });
     
-    // Get parcels associated with the user
-    const parcels = await storage.getParcels({ 
-      userId: user.id,
-      limit: Number(limit)
-    });
+    // For each parcel, check if it has notes
+    const parcelsWithNoteInfo = await Promise.all(
+      parcels.map(async (parcel) => {
+        const note = await storage.getParcelNoteByParcelId(parcel.id);
+        return {
+          ...parcel,
+          hasNotes: !!note
+        };
+      })
+    );
     
-    // Log access
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-api',
-      message: `User ${user.username} retrieved parcels list`
-    });
-    
-    res.json({
-      success: true,
-      data: parcels,
-      meta: {
-        total: parcels.length,
-        page: Number(page),
-        limit: Number(limit)
-      }
-    });
-  } catch (error: any) {
+    res.json(parcelsWithNoteInfo);
+  } catch (error) {
     console.error('Get parcels error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-api',
-      message: `Get parcels error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get specific parcel endpoint
-router.get('/parcels/:id', verifyToken, async (req, res) => {
+/**
+ * @route GET /api/mobile/parcels/:id
+ * @desc Get a specific parcel
+ * @access Private
+ */
+router.get('/parcels/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const user = req.user as any;
     
-    if (!id) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Parcel ID is required' 
-      });
-    }
-    
-    // Get the parcel
+    // Get parcel
     const parcel = await storage.getParcel(id);
-    
     if (!parcel) {
-      return res.status(404).json({ 
-        success: false,
-        message: `Parcel with ID ${id} not found` 
-      });
+      return res.status(404).json({ message: 'Parcel not found' });
     }
     
-    // Log access
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-api',
-      message: `User ${user.username} retrieved parcel ${id}`
-    });
+    // Check if parcel has notes
+    const note = await storage.getParcelNoteByParcelId(id);
     
     res.json({
-      success: true,
-      data: parcel
+      ...parcel,
+      hasNotes: !!note
     });
-  } catch (error: any) {
+  } catch (error) {
     console.error('Get parcel error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-api',
-      message: `Get parcel error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Get parcel notes with CRDT data
-router.get('/parcels/:parcelId/notes', verifyToken, async (req, res) => {
+/**
+ * @route GET /api/mobile/parcels/:id/notes
+ * @desc Get notes for a specific parcel
+ * @access Private
+ */
+router.get('/parcels/:id/notes', async (req: Request, res: Response) => {
   try {
-    const { parcelId } = req.params;
-    const user = req.user as any;
+    const { id } = req.params;
     
-    if (!parcelId) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Parcel ID is required' 
-      });
-    }
-    
-    // Get the parcel note
-    const note = await storage.getParcelNoteByParcelId(parcelId);
-    
-    if (!note) {
-      // Return empty note structure for new notes
-      return res.json({
-        success: true,
-        data: {
-          parcelId,
-          content: '',
-          yDocData: '',
-          syncCount: 0,
-          updatedAt: new Date().toISOString()
-        }
-      });
-    }
-    
-    // Log access
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-api',
-      message: `User ${user.username} retrieved notes for parcel ${parcelId}`
-    });
-    
-    res.json({
-      success: true,
-      data: note
-    });
-  } catch (error: any) {
-    console.error('Get parcel notes error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-api',
-      message: `Get parcel notes error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
-  }
-});
-
-// Update parcel notes with content and CRDT data
-router.put('/parcels/:parcelId/notes', verifyToken, async (req, res) => {
-  try {
-    const { parcelId } = req.params;
-    const { content, yDocData } = req.body;
-    const user = req.user as any;
-    
-    if (!parcelId) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Parcel ID is required' 
-      });
-    }
-    
-    if (!content && !yDocData) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Note content or CRDT data is required' 
-      });
-    }
-    
-    // Get the parcel to verify it exists
-    const parcel = await storage.getParcel(parcelId);
-    
+    // Check if parcel exists
+    const parcel = await storage.getParcel(id);
     if (!parcel) {
-      return res.status(404).json({ 
-        success: false,
-        message: `Parcel with ID ${parcelId} not found` 
-      });
+      return res.status(404).json({ message: 'Parcel not found' });
+    }
+    
+    // Get note
+    const note = await storage.getParcelNoteByParcelId(id);
+    if (!note) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
+    
+    res.json(note);
+  } catch (error) {
+    console.error('Get note error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @route POST /api/mobile/parcels/:id/notes
+ * @desc Create a note for a parcel
+ * @access Private
+ */
+router.post('/parcels/:id/notes', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { text } = req.body;
+    
+    if (!text) {
+      return res.status(400).json({ message: 'Note text is required' });
+    }
+    
+    // Check if parcel exists
+    const parcel = await storage.getParcel(id);
+    if (!parcel) {
+      return res.status(404).json({ message: 'Parcel not found' });
     }
     
     // Check if note already exists
-    const existingNote = await storage.getParcelNoteByParcelId(parcelId);
-    
-    let note;
+    const existingNote = await storage.getParcelNoteByParcelId(id);
     if (existingNote) {
-      // Update existing note
-      note = await storage.updateParcelNote(existingNote.id, {
-        content: content || existingNote.content,
-        yDocData: yDocData || existingNote.yDocData,
-        userId: user.id,
-        updatedAt: new Date(),
-        syncCount: existingNote.syncCount + 1
-      });
-    } else {
-      // Create new note
-      note = await storage.createParcelNote({
-        parcelId,
-        content: content || '',
-        yDocData: yDocData || '',
-        userId: user.id,
-        syncCount: 1
-      });
+      return res.status(400).json({ message: 'Note already exists for this parcel' });
     }
     
-    // Log update
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-api',
-      message: `User ${user.username} updated notes for parcel ${parcelId}`
+    // Create note
+    const note = await storage.createParcelNote({
+      parcelId: id,
+      text,
+      userId: req.user.id,
     });
     
-    res.json({
-      success: true,
-      data: note
-    });
-  } catch (error: any) {
-    console.error('Update parcel notes error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-api',
-      message: `Update parcel notes error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    res.status(201).json(note);
+  } catch (error) {
+    console.error('Create note error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Enhanced sync endpoint with CRDT merging
-router.post('/sync', verifyToken, async (req, res) => {
+/**
+ * @route PATCH /api/mobile/parcels/:id/notes/:noteId
+ * @desc Update a note
+ * @access Private
+ */
+router.patch('/parcels/:id/notes/:noteId', async (req: Request, res: Response) => {
   try {
-    const { parcelId, update, timestamp } = req.body;
-    const user = req.user as any;
+    const { id, noteId } = req.params;
+    const { text } = req.body;
     
-    if (!parcelId || !update) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Parcel ID and CRDT update are required' 
-      });
+    if (!text) {
+      return res.status(400).json({ message: 'Note text is required' });
     }
     
-    // Use the mobileSyncService to properly merge CRDT updates
-    const syncResult = await mobileSyncService.syncParcelNote(
-      parcelId,
-      update,
-      user.id
-    );
+    // Check if parcel exists
+    const parcel = await storage.getParcel(id);
+    if (!parcel) {
+      return res.status(404).json({ message: 'Parcel not found' });
+    }
     
-    // Log sync activity
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-sync',
-      message: `User ${user.username} synced parcel ${parcelId}`
-    });
+    // Get note
+    const note = await storage.getParcelNote(parseInt(noteId));
+    if (!note) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
     
-    res.json({
-      success: true,
-      syncedAt: new Date().toISOString(),
-      ...syncResult
-    });
-  } catch (error: any) {
-    console.error('Sync error:', error);
+    // Check if note belongs to parcel
+    if (note.parcelId !== id) {
+      return res.status(400).json({ message: 'Note does not belong to this parcel' });
+    }
     
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-sync',
-      message: `Sync error: ${error.message}`
-    });
+    // Update note
+    const updatedNote = await storage.updateParcelNote(parseInt(noteId), { text });
+    if (!updatedNote) {
+      return res.status(404).json({ message: 'Failed to update note' });
+    }
     
-    res.status(500).json({ 
-      success: false,
-      message: `Sync error: ${error.message}` 
-    });
+    res.json(updatedNote);
+  } catch (error) {
+    console.error('Update note error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Batch sync endpoint for multiple updates
-router.post('/batch-sync', verifyToken, async (req, res) => {
+/**
+ * @route DELETE /api/mobile/parcels/:id/notes/:noteId
+ * @desc Delete a note
+ * @access Private
+ */
+router.delete('/parcels/:id/notes/:noteId', async (req: Request, res: Response) => {
   try {
-    const { updates } = req.body;
-    const user = req.user as any;
+    const { id, noteId } = req.params;
     
-    if (!updates || !Array.isArray(updates) || updates.length === 0) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Valid updates array is required' 
-      });
+    // Check if parcel exists
+    const parcel = await storage.getParcel(id);
+    if (!parcel) {
+      return res.status(404).json({ message: 'Parcel not found' });
     }
     
+    // Get note
+    const note = await storage.getParcelNote(parseInt(noteId));
+    if (!note) {
+      return res.status(404).json({ message: 'Note not found' });
+    }
+    
+    // Check if note belongs to parcel
+    if (note.parcelId !== id) {
+      return res.status(400).json({ message: 'Note does not belong to this parcel' });
+    }
+    
+    // Delete note (soft delete)
+    const updatedNote = await storage.updateParcelNote(parseInt(noteId), { isDeleted: true });
+    if (!updatedNote) {
+      return res.status(404).json({ message: 'Failed to delete note' });
+    }
+    
+    res.json({ message: 'Note deleted successfully' });
+  } catch (error) {
+    console.error('Delete note error:', error);
+    res.status(500).json({ message: 'Server error' });
+  }
+});
+
+/**
+ * @route POST /api/mobile/sync
+ * @desc Sync data between mobile and server
+ * @access Private
+ */
+router.post('/sync', async (req: Request, res: Response) => {
+  try {
+    const { lastSyncTime, changes } = req.body;
+    
+    if (!changes || !Array.isArray(changes)) {
+      return res.status(400).json({ message: 'Changes are required and must be an array' });
+    }
+    
+    // Process changes
     const results = [];
     
-    // Process each update
-    for (const item of updates) {
-      const { parcelId, update } = item;
+    for (const change of changes) {
+      const { type, entity, data, id } = change;
       
-      if (!parcelId || !update) {
+      if (!type || !entity || !data) {
         results.push({
-          parcelId,
           success: false,
-          error: 'Parcel ID and update are required'
+          id: id || 'unknown',
+          error: 'Invalid change format'
         });
         continue;
       }
       
       try {
-        // Use the mobileSyncService to properly merge CRDT updates
-        const syncResult = await mobileSyncService.syncParcelNote(
-          parcelId,
-          update,
-          user.id
-        );
-        
+        // Handle different entity types
+        if (entity === 'parcel') {
+          if (type === 'update' && id) {
+            const updatedParcel = await storage.updateParcel(id, data);
+            results.push({
+              success: !!updatedParcel,
+              id,
+              data: updatedParcel || undefined
+            });
+          } else {
+            results.push({
+              success: false,
+              id: id || 'unknown',
+              error: 'Unsupported operation for parcel'
+            });
+          }
+        } else if (entity === 'parcelNote') {
+          if (type === 'create') {
+            const newNote = await storage.createParcelNote({
+              ...data,
+              userId: req.user.id
+            });
+            results.push({
+              success: true,
+              id: data.id || newNote.id.toString(),
+              data: newNote
+            });
+          } else if (type === 'update' && id) {
+            const note = await storage.getParcelNote(parseInt(id));
+            
+            if (!note) {
+              results.push({
+                success: false,
+                id,
+                error: 'Note not found'
+              });
+              continue;
+            }
+            
+            const updatedNote = await storage.updateParcelNote(parseInt(id), data);
+            results.push({
+              success: !!updatedNote,
+              id,
+              data: updatedNote || undefined
+            });
+          } else if (type === 'delete' && id) {
+            const note = await storage.getParcelNote(parseInt(id));
+            
+            if (!note) {
+              results.push({
+                success: false,
+                id,
+                error: 'Note not found'
+              });
+              continue;
+            }
+            
+            const updatedNote = await storage.updateParcelNote(parseInt(id), { isDeleted: true });
+            results.push({
+              success: !!updatedNote,
+              id,
+              data: { id, isDeleted: true }
+            });
+          } else {
+            results.push({
+              success: false,
+              id: id || 'unknown',
+              error: 'Unsupported operation for parcelNote'
+            });
+          }
+        } else {
+          results.push({
+            success: false,
+            id: id || 'unknown',
+            error: 'Unsupported entity type'
+          });
+        }
+      } catch (error) {
+        console.error(`Error processing change for ${entity} ${id}:`, error);
         results.push({
-          parcelId,
-          success: true,
-          syncedAt: new Date().toISOString(),
-          ...syncResult
-        });
-      } catch (error: any) {
-        results.push({
-          parcelId,
           success: false,
-          error: error.message
+          id: id || 'unknown',
+          error: 'Processing error'
         });
       }
     }
     
-    // Log batch sync activity
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-sync',
-      message: `User ${user.username} performed batch sync with ${updates.length} updates`
-    });
+    // Get updates since lastSyncTime
+    let updates = {};
+    
+    if (lastSyncTime) {
+      const syncDate = new Date(lastSyncTime);
+      
+      // Get parcels updated since last sync
+      const updatedParcels = await storage.getParcels({
+        userId: req.user.id,
+        updatedSince: syncDate
+      });
+      
+      // Get parcel notes updated since last sync
+      const updatedNotes = await storage.getParcelNotes({
+        userId: req.user.id,
+        updatedSince: syncDate
+      });
+      
+      updates = {
+        parcels: updatedParcels,
+        parcelNotes: updatedNotes
+      };
+    }
     
     res.json({
       success: true,
-      syncedAt: new Date().toISOString(),
-      results
+      results,
+      updates,
+      serverTime: new Date().toISOString()
     });
-  } catch (error: any) {
-    console.error('Batch sync error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-sync',
-      message: `Batch sync error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Batch sync error: ${error.message}` 
-    });
+  } catch (error) {
+    console.error('Sync error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Export router
 export default router;

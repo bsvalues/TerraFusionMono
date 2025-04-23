@@ -2,6 +2,7 @@ import { BehaviorSubject } from 'rxjs';
 import Config from '../config';
 import authService from './auth.service';
 import networkService from './network.service';
+import { SyncQueueRepository, ParcelRepository, ParcelNoteRepository } from '../utils/realm';
 
 interface ApiResponse<T = any> {
   success: boolean;
@@ -18,6 +19,8 @@ interface ApiRequestOptions {
   requiresAuth?: boolean;
   forceOffline?: boolean;
   cacheResponse?: boolean;
+  resourceType?: 'parcel' | 'parcelNote' | 'other';
+  resourceId?: string;
 }
 
 interface SyncQueueItem {
@@ -33,16 +36,24 @@ interface SyncQueueItem {
  * API service for handling network requests with offline support
  */
 class ApiService {
-  private syncQueue: SyncQueueItem[] = [];
-  private syncQueueLoaded = false;
+  private _isInitialized = false;
 
   /**
    * Initialize the API service
    */
   public async initialize(): Promise<void> {
-    // Load sync queue from persistent storage
-    await this.loadSyncQueue();
-    this.syncQueueLoaded = true;
+    if (this._isInitialized) {
+      return;
+    }
+    
+    try {
+      // Nothing to specifically initialize here - the Realm repositories
+      // handle their own initialization
+      this._isInitialized = true;
+    } catch (error) {
+      console.error('Failed to initialize API service:', error);
+      throw error;
+    }
   }
 
   /**
@@ -61,15 +72,17 @@ class ApiService {
       timeout = Config.API.TIMEOUT,
       requiresAuth = true,
       forceOffline = false,
-      cacheResponse = true
+      cacheResponse = true,
+      resourceType = 'other',
+      resourceId
     } = options;
 
     // Check if we're offline or forced offline mode
     const isOffline = forceOffline || !networkService.isOnline();
 
-    // If offline and this is a mutation, add to sync queue
+    // If offline and this is a mutation (not GET), add to sync queue
     if (isOffline && method !== 'GET') {
-      return this.handleOfflineMutation<T>(endpoint, method, body);
+      return this.handleOfflineMutation<T>(endpoint, method, body, resourceType, resourceId);
     }
 
     // Add authentication token if required
@@ -111,6 +124,18 @@ class ApiService {
 
       // Handle response based on status code
       if (response.ok) {
+        // If this was a successful GET request for a cacheable resource type,
+        // update the local cache
+        if (method === 'GET' && cacheResponse) {
+          await this.updateCache(resourceType, data, resourceId);
+        }
+        
+        // If this was a successful mutation and we have a resourceId,
+        // mark the local resource as synced
+        if (method !== 'GET' && resourceType !== 'other' && resourceId) {
+          await this.markResourceSynced(resourceType, resourceId);
+        }
+        
         return {
           success: true,
           data,
@@ -145,8 +170,8 @@ class ApiService {
       }
 
       // If we're offline and this is a GET request, try to get from cache
-      if (isOffline && method === 'GET') {
-        return this.handleOfflineRead<T>(endpoint);
+      if ((isOffline || !networkService.isOnline()) && method === 'GET') {
+        return this.handleOfflineRead<T>(endpoint, resourceType, resourceId);
       }
 
       return {
@@ -163,68 +188,178 @@ class ApiService {
   private async handleOfflineMutation<T>(
     endpoint: string,
     method: string,
-    body: any
+    body: any,
+    resourceType: string,
+    resourceId?: string
   ): Promise<ApiResponse<T>> {
-    // Generate unique ID for this request
-    const id = `${Date.now()}-${Math.random().toString(36).substring(2, 9)}`;
-    
-    // Add to sync queue
-    this.syncQueue.push({
-      id,
-      endpoint,
-      method,
-      body,
-      timestamp: Date.now(),
-      retryCount: 0
-    });
-    
-    // Save sync queue to persistent storage
-    await this.saveSyncQueue();
-    
-    return {
-      success: true,
-      data: { id, queued: true } as any,
-      statusCode: 202
-    };
+    try {
+      // Add to sync queue in Realm
+      const queueItem = await SyncQueueRepository.add({
+        endpoint,
+        method,
+        body
+      });
+      
+      // For certain resource types, we need to update the local database directly
+      if (resourceType !== 'other' && resourceId) {
+        // Handle based on the resource type and method
+        // In a real implementation, this would be more robust
+        if (resourceType === 'parcel' && method === 'PATCH') {
+          await ParcelRepository.update(resourceId, body);
+        } else if (resourceType === 'parcelNote' && method === 'PATCH') {
+          await ParcelNoteRepository.update(resourceId, body);
+        }
+      }
+      
+      return {
+        success: true,
+        data: { id: queueItem.id, queued: true } as any,
+        statusCode: 202
+      };
+    } catch (error) {
+      console.error('Error handling offline mutation:', error);
+      return {
+        success: false,
+        error: 'Failed to save operation for offline sync',
+        statusCode: 500
+      };
+    }
   }
 
   /**
    * Handle offline read by checking cache
    */
-  private async handleOfflineRead<T>(endpoint: string): Promise<ApiResponse<T>> {
-    // In a real implementation, this would check local storage or a database
-    // for cached responses. For now, we'll just return an error.
-    return {
-      success: false,
-      error: 'Offline and data not available in cache',
-      statusCode: 503
-    };
+  private async handleOfflineRead<T>(
+    endpoint: string,
+    resourceType: string,
+    resourceId?: string
+  ): Promise<ApiResponse<T>> {
+    try {
+      // Handle based on resource type and endpoint pattern
+      if (resourceType === 'parcel' && resourceId) {
+        const parcel = await ParcelRepository.getById(resourceId);
+        if (parcel) {
+          return {
+            success: true,
+            data: parcel as any,
+            statusCode: 200
+          };
+        }
+      } else if (resourceType === 'parcel' && endpoint.includes('/api/mobile/parcels')) {
+        const parcels = await ParcelRepository.getAll();
+        return {
+          success: true,
+          data: parcels as any,
+          statusCode: 200
+        };
+      } else if (resourceType === 'parcelNote' && resourceId) {
+        // Extract parcelId from the endpoint or use resourceId directly
+        const parcelId = resourceId.includes('/') ? resourceId.split('/').pop() : resourceId;
+        if (parcelId) {
+          const note = await ParcelNoteRepository.getByParcelId(parcelId);
+          if (note) {
+            return {
+              success: true,
+              data: note as any,
+              statusCode: 200
+            };
+          }
+        }
+      }
+      
+      // No cached data available
+      return {
+        success: false,
+        error: 'Offline and data not available in cache',
+        statusCode: 503
+      };
+    } catch (error) {
+      console.error('Error reading from cache:', error);
+      return {
+        success: false,
+        error: 'Error reading from offline cache',
+        statusCode: 500
+      };
+    }
   }
 
   /**
-   * Load sync queue from persistent storage
+   * Update the local cache with data from a successful GET request
    */
-  private async loadSyncQueue(): Promise<void> {
-    // In a real implementation, this would load from AsyncStorage or similar
-    // For now, we'll just use an empty array
-    this.syncQueue = [];
+  private async updateCache(
+    resourceType: string,
+    data: any,
+    resourceId?: string
+  ): Promise<void> {
+    try {
+      // Handle based on resource type
+      if (resourceType === 'parcel' && Array.isArray(data)) {
+        // Update multiple parcels
+        // In a real implementation, this would use batch operations
+        for (const parcel of data) {
+          const existingParcel = await ParcelRepository.getById(parcel.id);
+          if (existingParcel) {
+            await ParcelRepository.update(parcel.id, parcel);
+          } else {
+            await ParcelRepository.create(parcel);
+          }
+        }
+      } else if (resourceType === 'parcel' && data && resourceId) {
+        // Update a single parcel
+        const existingParcel = await ParcelRepository.getById(resourceId);
+        if (existingParcel) {
+          await ParcelRepository.update(resourceId, data);
+        } else {
+          await ParcelRepository.create(data);
+        }
+      } else if (resourceType === 'parcelNote' && data && resourceId) {
+        // Update a parcel note
+        const parcelId = resourceId.includes('/') ? resourceId.split('/').pop() : resourceId;
+        if (parcelId) {
+          const existingNote = await ParcelNoteRepository.getByParcelId(parcelId);
+          if (existingNote) {
+            await ParcelNoteRepository.update(existingNote.id, data);
+          } else {
+            await ParcelNoteRepository.create({
+              ...data,
+              parcelId
+            });
+          }
+        }
+      }
+    } catch (error) {
+      console.error('Error updating cache:', error);
+    }
   }
 
   /**
-   * Save sync queue to persistent storage
+   * Mark a resource as synced with the server
    */
-  private async saveSyncQueue(): Promise<void> {
-    // In a real implementation, this would save to AsyncStorage or similar
+  private async markResourceSynced(
+    resourceType: string,
+    resourceId: string
+  ): Promise<void> {
+    try {
+      if (resourceType === 'parcel') {
+        await ParcelRepository.markSynced(resourceId);
+      } else if (resourceType === 'parcelNote') {
+        await ParcelNoteRepository.markSynced(resourceId);
+      }
+    } catch (error) {
+      console.error('Error marking resource as synced:', error);
+    }
   }
 
   /**
    * Get the current sync queue
    */
-  public async getSyncQueue(): Promise<SyncQueueItem[]> {
-    if (!this.syncQueueLoaded) {
-      await this.loadSyncQueue();
+  public async getSyncQueue(): Promise<any[]> {
+    try {
+      return await SyncQueueRepository.getAll();
+    } catch (error) {
+      console.error('Error getting sync queue:', error);
+      return [];
     }
-    return [...this.syncQueue];
   }
 
   /**
@@ -235,47 +370,64 @@ class ApiService {
       return false;
     }
 
+    // Get all items from the sync queue
+    const syncQueue = await SyncQueueRepository.getAll();
+    
     // Skip if queue is empty
-    if (this.syncQueue.length === 0) {
+    if (syncQueue.length === 0) {
       return true;
     }
 
     let allSuccess = true;
 
     // Process each item in the queue
-    for (const item of [...this.syncQueue]) {
+    for (const item of syncQueue) {
       try {
+        // Mark item as processing
+        await SyncQueueRepository.markProcessing(item.id, true);
+        
+        const body = JSON.parse(item.body);
+        
         const response = await this.request(item.endpoint, {
           method: item.method as any,
-          body: item.body,
+          body,
           requiresAuth: true,
           forceOffline: false
         });
 
         if (response.success) {
           // Remove successful item from queue
-          this.syncQueue = this.syncQueue.filter(i => i.id !== item.id);
+          await SyncQueueRepository.remove(item.id);
         } else {
           // Increment retry count
-          const index = this.syncQueue.findIndex(i => i.id === item.id);
-          if (index >= 0) {
-            this.syncQueue[index].retryCount += 1;
-            
-            // Remove if we've exceeded max retries
-            if (this.syncQueue[index].retryCount > Config.API.RETRY_COUNT) {
-              this.syncQueue = this.syncQueue.filter(i => i.id !== item.id);
-              allSuccess = false;
-            }
+          await SyncQueueRepository.incrementRetryCount(item.id);
+          
+          // Remove if we've exceeded max retries
+          if (item.retryCount + 1 > Config.API.RETRY_COUNT) {
+            await SyncQueueRepository.remove(item.id);
+            allSuccess = false;
+          } else {
+            // Mark as no longer processing
+            await SyncQueueRepository.markProcessing(item.id, false);
           }
         }
       } catch (error) {
         console.error('Error processing sync queue item:', error);
+        
+        // Mark as no longer processing
+        await SyncQueueRepository.markProcessing(item.id, false);
+        
+        // Increment retry count
+        await SyncQueueRepository.incrementRetryCount(item.id);
+        
+        // Remove if we've exceeded max retries
+        if (item.retryCount + 1 > Config.API.RETRY_COUNT) {
+          await SyncQueueRepository.remove(item.id);
+        }
+        
         allSuccess = false;
       }
     }
-
-    // Save updated queue
-    await this.saveSyncQueue();
 
     return allSuccess;
   }

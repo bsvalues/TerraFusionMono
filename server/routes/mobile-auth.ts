@@ -1,336 +1,262 @@
-import express from 'express';
+import { Router, Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
 import jwt from 'jsonwebtoken';
 import { storage } from '../storage';
-import { verifyToken } from './auth';
+import { insertUserSchema } from '../../shared/schema';
+import { z } from 'zod';
 
-const router = express.Router();
-const JWT_SECRET = process.env.JWT_SECRET || 'terrafield-secret-key';
-const REFRESH_SECRET = process.env.REFRESH_SECRET || 'terrafield-refresh-secret';
+const router = Router();
+
+// Environment variables
+const JWT_SECRET = process.env.JWT_SECRET || 'terrafield-dev-secret';
 const TOKEN_EXPIRY = '7d'; // 7 days
-const REFRESH_EXPIRY = '30d'; // 30 days
+const REFRESH_TOKEN_EXPIRY = '30d'; // 30 days
+
+// Validation schemas
+const loginSchema = z.object({
+  username: z.string().min(1),
+  password: z.string().min(1),
+});
+
+const registerSchema = insertUserSchema.extend({
+  password: z.string().min(8),
+});
+
+const refreshTokenSchema = z.object({
+  refreshToken: z.string().min(1),
+});
 
 /**
- * Mobile authentication routes
- * Provides endpoints for mobile-specific auth operations with refresh token support
+ * Generate access and refresh tokens for a user
  */
+function generateTokens(userId: number, username: string) {
+  const accessToken = jwt.sign(
+    { userId, username },
+    JWT_SECRET,
+    { expiresIn: TOKEN_EXPIRY }
+  );
+  
+  const refreshToken = jwt.sign(
+    { userId, username, tokenType: 'refresh' },
+    JWT_SECRET,
+    { expiresIn: REFRESH_TOKEN_EXPIRY }
+  );
+  
+  return {
+    token: accessToken,
+    refreshToken,
+    expiresIn: 7 * 24 * 60 * 60, // 7 days in seconds
+  };
+}
 
-// Login endpoint for mobile clients
-router.post('/login', async (req, res) => {
+/**
+ * @route POST /api/mobile/auth/login
+ * @desc Authenticate user and get tokens
+ * @access Public
+ */
+router.post('/login', async (req: Request, res: Response) => {
   try {
-    const { username, password } = req.body;
+    // Validate request body
+    const validatedData = loginSchema.parse(req.body);
+    const { username, password } = validatedData;
     
-    if (!username || !password) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Username and password are required' 
-      });
-    }
-    
-    // Get user from storage
+    // Find user
     const user = await storage.getUserByUsername(username);
-    
     if (!user) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'Invalid credentials' 
-      });
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
     
-    // Compare password
-    const isMatch = await bcrypt.compare(password, user.password);
-    
-    if (!isMatch) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'Invalid credentials' 
-      });
+    // Check password
+    const isPasswordValid = await bcrypt.compare(password, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Invalid credentials' });
     }
     
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: user.id }, 
-      JWT_SECRET, 
-      { expiresIn: TOKEN_EXPIRY }
-    );
+    // Generate tokens
+    const tokens = generateTokens(user.id, user.username);
     
-    // Generate refresh token
-    const refreshToken = jwt.sign(
-      { userId: user.id, type: 'refresh' }, 
-      REFRESH_SECRET, 
-      { expiresIn: REFRESH_EXPIRY }
-    );
-    
-    // Return user info and tokens (excluding password)
-    const { password: _, ...userWithoutPassword } = user;
-    
-    // Log successful login
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-auth',
-      message: `Mobile login successful: ${username}`
-    });
-    
+    // Return tokens and user data (excluding sensitive info)
+    const { passwordHash, ...userWithoutPassword } = user;
     res.json({
-      success: true,
+      ...tokens,
       user: userWithoutPassword,
-      token,
-      refreshToken,
-      expiresIn: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
     });
-  } catch (error: any) {
-    console.error('Mobile login error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-auth',
-      message: `Mobile login error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+  } catch (error) {
+    console.error('Login error:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid request data', errors: error.errors });
+    }
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Register endpoint for mobile clients
-router.post('/register', async (req, res) => {
+/**
+ * @route POST /api/mobile/auth/register
+ * @desc Register new user and get tokens
+ * @access Public
+ */
+router.post('/register', async (req: Request, res: Response) => {
   try {
-    const { username, email, password } = req.body;
+    // Validate request body
+    const validatedData = registerSchema.parse(req.body);
+    const { username, email, password, ...rest } = validatedData;
     
-    if (!username || !email || !password) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Username, email, and password are required' 
-      });
+    // Check if username or email already exists
+    const existingUser = await storage.getUserByUsername(username);
+    if (existingUser) {
+      return res.status(400).json({ message: 'Username already exists' });
     }
     
-    // Validate password strength
-    if (password.length < 8) {
-      return res.status(400).json({
-        success: false,
-        message: 'Password must be at least 8 characters long'
-      });
-    }
-    
-    // Check if username already exists
-    const existingUsername = await storage.getUserByUsername(username);
-    if (existingUsername) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Username already exists' 
-      });
-    }
-    
-    // Check if email already exists
     const existingEmail = await storage.getUserByEmail(email);
     if (existingEmail) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Email already exists' 
-      });
+      return res.status(400).json({ message: 'Email already exists' });
     }
     
     // Hash password
     const salt = await bcrypt.genSalt(10);
-    const hashedPassword = await bcrypt.hash(password, salt);
+    const passwordHash = await bcrypt.hash(password, salt);
     
     // Create user
-    const newUser = await storage.createUser({
+    const user = await storage.createUser({
       username,
-      password: hashedPassword,
       email,
-      role: 'user'
+      passwordHash,
+      role: 'user',
+      ...rest,
     });
     
-    // Generate JWT token
-    const token = jwt.sign(
-      { userId: newUser.id }, 
-      JWT_SECRET, 
-      { expiresIn: TOKEN_EXPIRY }
-    );
+    // Generate tokens
+    const tokens = generateTokens(user.id, user.username);
     
-    // Generate refresh token
-    const refreshToken = jwt.sign(
-      { userId: newUser.id, type: 'refresh' }, 
-      REFRESH_SECRET, 
-      { expiresIn: REFRESH_EXPIRY }
-    );
-    
-    // Return user info and tokens (excluding password)
-    const { password: _, ...userWithoutPassword } = newUser;
-    
-    // Log successful registration
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-auth',
-      message: `Mobile registration successful: ${username}`
-    });
-    
+    // Return tokens and user data (excluding sensitive info)
+    const { passwordHash: _, ...userWithoutPassword } = user;
     res.status(201).json({
-      success: true,
+      ...tokens,
       user: userWithoutPassword,
-      token,
-      refreshToken,
-      expiresIn: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
     });
-  } catch (error: any) {
-    console.error('Mobile registration error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-auth',
-      message: `Mobile registration error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+  } catch (error) {
+    console.error('Registration error:', error);
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid request data', errors: error.errors });
+    }
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Token refresh endpoint
-router.post('/refresh', async (req, res) => {
+/**
+ * @route POST /api/mobile/auth/refresh
+ * @desc Refresh access token using refresh token
+ * @access Public
+ */
+router.post('/refresh', async (req: Request, res: Response) => {
   try {
-    const { refreshToken } = req.body;
-    
-    if (!refreshToken) {
-      return res.status(400).json({ 
-        success: false,
-        message: 'Refresh token is required' 
-      });
-    }
+    // Validate request body
+    const validatedData = refreshTokenSchema.parse(req.body);
+    const { refreshToken } = validatedData;
     
     // Verify refresh token
-    try {
-      const decoded = jwt.verify(refreshToken, REFRESH_SECRET) as any;
-      
-      // Check if this is a refresh token
-      if (decoded.type !== 'refresh') {
-        return res.status(401).json({ 
-          success: false,
-          message: 'Invalid refresh token' 
-        });
-      }
-      
-      // Get user from storage
-      const user = await storage.getUser(decoded.userId);
-      
-      if (!user) {
-        return res.status(401).json({ 
-          success: false,
-          message: 'User not found' 
-        });
-      }
-      
-      // Generate new JWT token
-      const newToken = jwt.sign(
-        { userId: user.id }, 
-        JWT_SECRET, 
-        { expiresIn: TOKEN_EXPIRY }
-      );
-      
-      // Generate new refresh token
-      const newRefreshToken = jwt.sign(
-        { userId: user.id, type: 'refresh' }, 
-        REFRESH_SECRET, 
-        { expiresIn: REFRESH_EXPIRY }
-      );
-      
-      // Return new tokens
-      res.json({
-        success: true,
-        token: newToken,
-        refreshToken: newRefreshToken,
-        expiresIn: 7 * 24 * 60 * 60 * 1000 // 7 days in milliseconds
-      });
-      
-    } catch (error) {
-      return res.status(401).json({ 
-        success: false,
-        message: 'Invalid or expired refresh token' 
-      });
+    const decoded = jwt.verify(refreshToken, JWT_SECRET) as { userId: number; username: string; tokenType?: string };
+    
+    // Check if it's a refresh token
+    if (decoded.tokenType !== 'refresh') {
+      return res.status(401).json({ message: 'Invalid refresh token' });
     }
-  } catch (error: any) {
+    
+    // Find user
+    const user = await storage.getUser(decoded.userId);
+    if (!user) {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+    
+    // Generate new tokens
+    const tokens = generateTokens(user.id, user.username);
+    
+    // Return new tokens
+    res.json(tokens);
+  } catch (error) {
     console.error('Token refresh error:', error);
-    
-    // Log error
-    await storage.createLog({
-      level: 'ERROR',
-      service: 'mobile-auth',
-      message: `Token refresh error: ${error.message}`
-    });
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    if (error instanceof jwt.JsonWebTokenError) {
+      return res.status(401).json({ message: 'Invalid refresh token' });
+    }
+    if (error instanceof z.ZodError) {
+      return res.status(400).json({ message: 'Invalid request data', errors: error.errors });
+    }
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Logout endpoint
-router.post('/logout', verifyToken, async (req, res) => {
+/**
+ * @route POST /api/mobile/auth/reset-password
+ * @desc Request password reset
+ * @access Public
+ */
+router.post('/reset-password', async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
+    // Validate request body
+    const { email } = req.body;
+    if (!email) {
+      return res.status(400).json({ message: 'Email is required' });
+    }
     
-    // In a real application, you would invalidate the token here
-    // For now, we just log the logout
-    await storage.createLog({
-      level: 'INFO',
-      service: 'mobile-auth',
-      message: `Mobile logout: User ID ${user.id}`
-    });
+    // Find user by email
+    const user = await storage.getUserByEmail(email);
     
-    res.json({ 
-      success: true,
-      message: 'Logged out successfully' 
-    });
-  } catch (error: any) {
-    console.error('Logout error:', error);
-    
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    // Always return success for security reasons, even if user not found
+    // In a real implementation, this would send an email with reset instructions
+    res.json({ message: 'If this email exists in our system, you will receive password reset instructions' });
+  } catch (error) {
+    console.error('Password reset error:', error);
+    // Always return success for security reasons
+    res.json({ message: 'If this email exists in our system, you will receive password reset instructions' });
   }
 });
 
-// Validate token endpoint
-router.get('/validate', verifyToken, (req, res) => {
-  // If this route is reached, the token is valid (verifyToken middleware)
-  const { password: _, ...userWithoutPassword } = req.user as any;
-  res.json({ 
-    success: true,
-    valid: true, 
-    user: userWithoutPassword 
-  });
-});
-
-// Get user profile
-router.get('/profile', verifyToken, async (req, res) => {
+/**
+ * @route POST /api/mobile/auth/change-password
+ * @desc Change user password
+ * @access Private
+ */
+router.post('/change-password', async (req: Request, res: Response) => {
   try {
-    const user = req.user as any;
+    // Check if user is authenticated
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ message: 'Unauthorized' });
+    }
     
-    // Return user info (excluding password)
-    const { password: _, ...userWithoutPassword } = user;
+    // Validate request body
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ message: 'Current password and new password are required' });
+    }
     
-    res.json({
-      success: true,
-      user: userWithoutPassword
-    });
-  } catch (error: any) {
-    console.error('Get profile error:', error);
+    if (newPassword.length < 8) {
+      return res.status(400).json({ message: 'New password must be at least 8 characters long' });
+    }
     
-    res.status(500).json({ 
-      success: false,
-      message: `Server error: ${error.message}` 
-    });
+    // Find user
+    const user = await storage.getUser(req.user.id);
+    if (!user) {
+      return res.status(401).json({ message: 'User not found' });
+    }
+    
+    // Check current password
+    const isPasswordValid = await bcrypt.compare(currentPassword, user.passwordHash);
+    if (!isPasswordValid) {
+      return res.status(401).json({ message: 'Current password is incorrect' });
+    }
+    
+    // Hash new password
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+    
+    // Update user password
+    await storage.updateUser(user.id, { passwordHash });
+    
+    res.json({ message: 'Password updated successfully' });
+  } catch (error) {
+    console.error('Change password error:', error);
+    res.status(500).json({ message: 'Server error' });
   }
 });
 
-// Export router
 export default router;

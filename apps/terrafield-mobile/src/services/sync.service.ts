@@ -2,11 +2,14 @@ import { BehaviorSubject } from 'rxjs';
 import Config from '../config';
 import apiService from './api.service';
 import networkService from './network.service';
+import { SettingsRepository, SyncQueueRepository } from '../utils/realm';
 
 interface SyncState {
   isSyncing: boolean;
   lastSyncTime: Date | null;
   pendingChanges: number;
+  autoSyncEnabled: boolean;
+  backgroundSyncEnabled: boolean;
 }
 
 /**
@@ -16,30 +19,50 @@ class SyncService {
   private _syncState = new BehaviorSubject<SyncState>({
     isSyncing: false,
     lastSyncTime: null,
-    pendingChanges: 0
+    pendingChanges: 0,
+    autoSyncEnabled: true,
+    backgroundSyncEnabled: false
   });
   
   private syncInterval: any = null;
   private lastSyncAttempt: Date | null = null;
+  private _isInitialized = false;
   
   /**
    * Initialize the sync service
    */
   public async initialize(): Promise<void> {
+    if (this._isInitialized) {
+      return;
+    }
+    
     try {
-      // Load the last sync time
-      const lastSyncTimeStr = await this.loadLastSyncTime();
-      if (lastSyncTimeStr) {
-        const lastSyncTime = new Date(lastSyncTimeStr);
+      // Load settings from the database
+      const settings = await SettingsRepository.getSettings();
+      
+      if (settings) {
+        // Update sync state with settings
         this._syncState.next({
           ...this._syncState.value,
-          lastSyncTime
+          lastSyncTime: settings.lastSyncTime,
+          autoSyncEnabled: settings.autoSyncEnabled,
+          backgroundSyncEnabled: settings.backgroundSyncEnabled
         });
       }
       
-      // Set up periodic sync if auto-sync is enabled
-      this.setupAutoSync();
+      // Get current pending changes count
+      const syncQueue = await apiService.getSyncQueue();
+      this._syncState.next({
+        ...this._syncState.value,
+        pendingChanges: syncQueue.length
+      });
       
+      // Set up periodic sync if auto-sync is enabled
+      if (this._syncState.value.autoSyncEnabled) {
+        this.setupAutoSync();
+      }
+      
+      this._isInitialized = true;
     } catch (error) {
       console.error('Error initializing sync service:', error);
     }
@@ -55,8 +78,9 @@ class SyncService {
   /**
    * Get the last synchronization time
    */
-  public async getLastSyncTime(): Promise<string | null> {
-    return this.loadLastSyncTime();
+  public async getLastSyncTime(): Promise<Date | null> {
+    const settings = await SettingsRepository.getSettings();
+    return settings?.lastSyncTime || null;
   }
   
   /**
@@ -87,17 +111,22 @@ class SyncService {
       // Process the sync queue
       const success = await apiService.processSyncQueue();
       
+      // Get updated pending changes count
+      const updatedSyncQueue = await apiService.getSyncQueue();
+      const remainingChanges = updatedSyncQueue.length;
+      
       // Update sync state
       const now = new Date();
       this._syncState.next({
+        ...this._syncState.value,
         isSyncing: false,
         lastSyncTime: success ? now : this._syncState.value.lastSyncTime,
-        pendingChanges: success ? 0 : pendingChanges
+        pendingChanges: remainingChanges
       });
       
       // Save last sync time if successful
-      if (success) {
-        await this.saveLastSyncTime(now.toISOString());
+      if (success && pendingChanges > 0) {
+        await SettingsRepository.updateLastSyncTime(now);
       }
       
       return success;
@@ -115,13 +144,50 @@ class SyncService {
   }
   
   /**
+   * Enable or disable auto sync
+   */
+  public async setAutoSync(enabled: boolean): Promise<void> {
+    // Update settings in database
+    const settings = await SettingsRepository.updateSettings({
+      autoSyncEnabled: enabled
+    });
+    
+    // Update sync state
+    this._syncState.next({
+      ...this._syncState.value,
+      autoSyncEnabled: enabled
+    });
+    
+    // Setup or clear the sync interval
+    if (enabled) {
+      this.setupAutoSync();
+    } else {
+      this.clearAutoSync();
+    }
+  }
+  
+  /**
+   * Enable or disable background sync
+   */
+  public async setBackgroundSync(enabled: boolean): Promise<void> {
+    // Update settings in database
+    const settings = await SettingsRepository.updateSettings({
+      backgroundSyncEnabled: enabled
+    });
+    
+    // Update sync state
+    this._syncState.next({
+      ...this._syncState.value,
+      backgroundSyncEnabled: enabled
+    });
+  }
+  
+  /**
    * Setup automatic synchronization
    */
   private setupAutoSync(): void {
     // Clear any existing interval
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-    }
+    this.clearAutoSync();
     
     // Set up new interval
     this.syncInterval = setInterval(async () => {
@@ -137,21 +203,13 @@ class SyncService {
   }
   
   /**
-   * Save the last sync time to persistent storage
+   * Clear the automatic synchronization interval
    */
-  private async saveLastSyncTime(time: string): Promise<void> {
-    // In a real implementation, this would save to AsyncStorage or similar
-    // For now, we'll just log that it would be saved
-    console.log(`Would save last sync time: ${time}`);
-  }
-  
-  /**
-   * Load the last sync time from persistent storage
-   */
-  private async loadLastSyncTime(): Promise<string | null> {
-    // In a real implementation, this would load from AsyncStorage or similar
-    // For now, we'll return null (never synced)
-    return null;
+  private clearAutoSync(): void {
+    if (this.syncInterval) {
+      clearInterval(this.syncInterval);
+      this.syncInterval = null;
+    }
   }
   
   /**
@@ -159,17 +217,36 @@ class SyncService {
    */
   public reset(): void {
     // Clear auto-sync interval
-    if (this.syncInterval) {
-      clearInterval(this.syncInterval);
-      this.syncInterval = null;
-    }
+    this.clearAutoSync();
     
     // Reset sync state
     this._syncState.next({
       isSyncing: false,
       lastSyncTime: null,
-      pendingChanges: 0
+      pendingChanges: 0,
+      autoSyncEnabled: true,
+      backgroundSyncEnabled: false
     });
+  }
+  
+  /**
+   * Reset all sync data
+   * This is useful when the user wants to clear all offline data
+   */
+  public async resetSyncData(): Promise<void> {
+    try {
+      // Clear all sync queue items
+      await SyncQueueRepository.clearAll();
+      
+      // Update sync state
+      this._syncState.next({
+        ...this._syncState.value,
+        pendingChanges: 0
+      });
+    } catch (error) {
+      console.error('Error resetting sync data:', error);
+      throw error;
+    }
   }
 }
 

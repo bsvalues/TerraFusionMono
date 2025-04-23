@@ -1,433 +1,550 @@
 import Realm from 'realm';
-import { User } from '../services/auth.service';
+import { v4 as uuidv4 } from 'uuid';
+import Config from '../config';
 
-// Schema version - increment this when changing schemas
-const SCHEMA_VERSION = 1;
-
-// Parcel schema
-export class ParcelSchema extends Realm.Object<ParcelSchema> {
-  _id!: string; // This will be the same as parcelId from API
-  address!: string;
-  city!: string;
-  state!: string;
-  zipCode!: string;
-  latitude!: number;
-  longitude!: number;
-  acres!: number;
-  assessedValue!: number;
-  ownerName!: string;
-  lastSync!: Date;
-  isLocalOnly!: boolean;
-  createdAt!: Date;
-  updatedAt!: Date;
-
-  static schema = {
-    name: 'Parcel',
-    primaryKey: '_id',
-    properties: {
-      _id: 'string',
-      address: 'string',
-      city: 'string',
-      state: 'string',
-      zipCode: 'string',
-      latitude: 'double',
-      longitude: 'double',
-      acres: 'double',
-      assessedValue: 'double',
-      ownerName: 'string',
-      lastSync: 'date',
-      isLocalOnly: 'bool',
-      createdAt: 'date',
-      updatedAt: 'date'
-    }
-  };
-}
-
-// Parcel note schema
-export class ParcelNoteSchema extends Realm.Object<ParcelNoteSchema> {
-  _id!: string; // This will be generated locally
-  parcelId!: string; // This references the parent parcel
-  content!: string;
-  yDocData!: string; // Base64 encoded Y.Doc update for CRDT sync
-  syncCount!: number;
-  lastSync!: Date;
-  isLocalOnly!: boolean;
-  createdAt!: Date;
-  updatedAt!: Date;
-
-  static schema = {
-    name: 'ParcelNote',
-    primaryKey: '_id',
-    properties: {
-      _id: 'string',
-      parcelId: 'string',
-      content: 'string',
-      yDocData: 'string',
-      syncCount: 'int',
-      lastSync: 'date',
-      isLocalOnly: 'bool',
-      createdAt: 'date',
-      updatedAt: 'date'
-    }
-  };
-}
-
-// User schema for storing local user info
-export class UserSchema extends Realm.Object<UserSchema> {
-  _id!: string; // User ID from API
-  username!: string;
-  email!: string;
-  role!: string;
-  token!: string;
-  tokenExpiry!: Date;
-  lastSync!: Date;
-  
-  static schema = {
-    name: 'User',
-    primaryKey: '_id',
-    properties: {
-      _id: 'string',
-      username: 'string',
-      email: 'string',
-      role: 'string',
-      token: 'string',
-      tokenExpiry: 'date',
-      lastSync: 'date'
-    }
-  };
-}
-
-// Sync queue for tracking operations to sync with server when online
-export class SyncQueueSchema extends Realm.Object<SyncQueueSchema> {
-  _id!: string; // UUID for the operation
-  operationType!: string; // 'create', 'update', 'delete'
-  entityType!: string; // 'parcel', 'note'
-  entityId!: string; // ID of the entity being changed
-  data!: string; // JSON stringified data
-  attempts!: number; // Number of sync attempts
-  createdAt!: Date;
-  
-  static schema = {
-    name: 'SyncQueue',
-    primaryKey: '_id',
-    properties: {
-      _id: 'string',
-      operationType: 'string',
-      entityType: 'string',
-      entityId: 'string',
-      data: 'string',
-      attempts: 'int',
-      createdAt: 'date'
-    }
-  };
-}
-
-// Realm configuration
-const realmConfig: Realm.Configuration = {
-  schema: [ParcelSchema, ParcelNoteSchema, UserSchema, SyncQueueSchema],
-  schemaVersion: SCHEMA_VERSION,
-  migration: (oldRealm, newRealm) => {
-    // Handle migrations here when schema changes
-    const oldVersion = oldRealm.schemaVersion;
-    
-    if (oldVersion < 1) {
-      // Migration from pre-1.0 to 1.0
-      // ... migration code would go here
-    }
-    
-    // Add more version migrations as needed
-  }
+// Define Realm schemas for our models
+const ParcelSchema = {
+  name: 'Parcel',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    address: 'string',
+    city: 'string',
+    state: 'string',
+    zipCode: 'string',
+    acres: 'double',
+    assessedValue: 'double',
+    ownerName: 'string?',
+    latitude: 'double?',
+    longitude: 'double?',
+    propertyType: 'string?',
+    yearBuilt: 'int?',
+    lastUpdate: 'date?',
+    createdAt: 'date',
+    updatedAt: 'date',
+    hasNotes: 'bool',
+    isDeleted: 'bool',
+    serverSynced: 'bool',
+    lastSyncedAt: 'date?',
+  },
 };
 
-// Initialize Realm
+const ParcelNoteSchema = {
+  name: 'ParcelNote',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    parcelId: 'string',
+    text: 'string',
+    createdAt: 'date',
+    updatedAt: 'date',
+    isDeleted: 'bool',
+    serverSynced: 'bool',
+    lastSyncedAt: 'date?',
+  },
+};
+
+const SyncQueueItemSchema = {
+  name: 'SyncQueueItem',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    endpoint: 'string',
+    method: 'string',
+    body: 'string', // JSON stringified body
+    timestamp: 'date',
+    retryCount: 'int',
+    isProcessing: 'bool',
+  },
+};
+
+const UserSchema = {
+  name: 'User',
+  primaryKey: 'id',
+  properties: {
+    id: 'int',
+    username: 'string',
+    email: 'string',
+    role: 'string',
+    createdAt: 'date',
+  },
+};
+
+const SettingsSchema = {
+  name: 'Settings',
+  primaryKey: 'id',
+  properties: {
+    id: 'string',
+    offlineEnabled: 'bool',
+    autoSyncEnabled: 'bool',
+    backgroundSyncEnabled: 'bool',
+    lastSyncTime: 'date?',
+  },
+};
+
+// Collection of all schemas
+const schemas = [
+  ParcelSchema,
+  ParcelNoteSchema,
+  SyncQueueItemSchema,
+  UserSchema,
+  SettingsSchema,
+];
+
+// Singleton instance of Realm
 let realmInstance: Realm | null = null;
 
-// Get Realm instance (singleton pattern)
+/**
+ * Initialize and get the Realm database instance
+ */
 export async function getRealm(): Promise<Realm> {
-  if (!realmInstance) {
-    realmInstance = await Realm.open(realmConfig);
+  if (realmInstance && !realmInstance.isClosed) {
+    return realmInstance;
   }
-  return realmInstance;
+
+  try {
+    realmInstance = await Realm.open({
+      schema: schemas,
+      schemaVersion: 1,
+      // Migration function would be defined here for schema updates
+      migration: (oldRealm, newRealm) => {
+        // Handle migrations as schema evolves
+      },
+    });
+
+    // Initialize default settings if not exist
+    initializeSettings(realmInstance);
+
+    return realmInstance;
+  } catch (error) {
+    console.error('Failed to open Realm database:', error);
+    throw error;
+  }
 }
 
-// Close Realm connection
-export function closeRealm() {
-  if (realmInstance) {
+/**
+ * Initialize default settings if not already present
+ */
+function initializeSettings(realm: Realm): void {
+  const settings = realm.objects('Settings').filtered('id = "app-settings"')[0];
+
+  if (!settings) {
+    realm.write(() => {
+      realm.create('Settings', {
+        id: 'app-settings',
+        offlineEnabled: true,
+        autoSyncEnabled: true,
+        backgroundSyncEnabled: false,
+        lastSyncTime: null,
+      });
+    });
+  }
+}
+
+/**
+ * Generate a new UUID for Realm objects
+ */
+export function generateId(): string {
+  return uuidv4();
+}
+
+/**
+ * Close the Realm instance
+ */
+export function closeRealm(): void {
+  if (realmInstance && !realmInstance.isClosed) {
     realmInstance.close();
     realmInstance = null;
   }
 }
 
-// Save user to Realm
-export async function saveUser(user: User & { token: string }): Promise<void> {
-  const realm = await getRealm();
-  try {
+/**
+ * Parcel repository - functions for working with parcels
+ */
+export const ParcelRepository = {
+  /**
+   * Get all parcels (non-deleted)
+   */
+  async getAll(): Promise<any[]> {
+    const realm = await getRealm();
+    const parcels = realm.objects('Parcel').filtered('isDeleted = false');
+    return Array.from(parcels);
+  },
+
+  /**
+   * Get a single parcel by ID
+   */
+  async getById(id: string): Promise<any | null> {
+    const realm = await getRealm();
+    const parcel = realm.objectForPrimaryKey('Parcel', id);
+    return parcel || null;
+  },
+
+  /**
+   * Create a new parcel
+   */
+  async create(parcelData: any): Promise<any> {
+    const realm = await getRealm();
+    let newParcel;
+
     realm.write(() => {
-      realm.create('User', {
-        _id: user.id.toString(),
-        username: user.username,
-        email: user.email || '',
-        role: user.role,
-        token: user.token,
-        tokenExpiry: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000), // 30 days from now
-        lastSync: new Date()
-      }, Realm.UpdateMode.Modified);
-    });
-  } catch (error) {
-    console.error('Error saving user to Realm:', error);
-    throw error;
-  }
-}
-
-// Get user from Realm
-export async function getUser(): Promise<(User & { token: string }) | null> {
-  const realm = await getRealm();
-  const users = realm.objects<UserSchema>('User');
-  
-  if (users.length === 0) {
-    return null;
-  }
-  
-  // Convert from Realm object to plain object
-  const user = users[0];
-  return {
-    id: parseInt(user._id),
-    username: user.username,
-    email: user.email,
-    role: user.role,
-    token: user.token
-  };
-}
-
-// Delete user from Realm (for logout)
-export async function deleteUser(): Promise<void> {
-  const realm = await getRealm();
-  try {
-    realm.write(() => {
-      const users = realm.objects('User');
-      realm.delete(users);
-    });
-  } catch (error) {
-    console.error('Error deleting user from Realm:', error);
-    throw error;
-  }
-}
-
-// Save parcel to Realm
-export async function saveParcel(parcel: any): Promise<void> {
-  const realm = await getRealm();
-  try {
-    realm.write(() => {
-      realm.create('Parcel', {
-        _id: parcel.id,
-        address: parcel.address || '',
-        city: parcel.city || '',
-        state: parcel.state || '',
-        zipCode: parcel.zipCode || '',
-        latitude: parcel.latitude || 0,
-        longitude: parcel.longitude || 0,
-        acres: parcel.acres || 0,
-        assessedValue: parcel.assessedValue || 0,
-        ownerName: parcel.ownerName || '',
-        lastSync: new Date(),
-        isLocalOnly: parcel.isLocalOnly || false,
-        createdAt: parcel.createdAt ? new Date(parcel.createdAt) : new Date(),
-        updatedAt: new Date()
-      }, Realm.UpdateMode.Modified);
-    });
-  } catch (error) {
-    console.error('Error saving parcel to Realm:', error);
-    throw error;
-  }
-}
-
-// Get parcels from Realm
-export async function getParcels(): Promise<any[]> {
-  const realm = await getRealm();
-  const parcels = realm.objects<ParcelSchema>('Parcel');
-  
-  // Convert to plain JS objects
-  return Array.from(parcels).map(parcel => ({
-    id: parcel._id,
-    address: parcel.address,
-    city: parcel.city,
-    state: parcel.state,
-    zipCode: parcel.zipCode,
-    latitude: parcel.latitude,
-    longitude: parcel.longitude,
-    acres: parcel.acres,
-    assessedValue: parcel.assessedValue,
-    ownerName: parcel.ownerName,
-    isLocalOnly: parcel.isLocalOnly,
-    createdAt: parcel.createdAt.toISOString(),
-    updatedAt: parcel.updatedAt.toISOString()
-  }));
-}
-
-// Get parcel by ID
-export async function getParcel(id: string): Promise<any | null> {
-  const realm = await getRealm();
-  const parcel = realm.objectForPrimaryKey<ParcelSchema>('Parcel', id);
-  
-  if (!parcel) {
-    return null;
-  }
-  
-  return {
-    id: parcel._id,
-    address: parcel.address,
-    city: parcel.city,
-    state: parcel.state,
-    zipCode: parcel.zipCode,
-    latitude: parcel.latitude,
-    longitude: parcel.longitude,
-    acres: parcel.acres,
-    assessedValue: parcel.assessedValue,
-    ownerName: parcel.ownerName,
-    isLocalOnly: parcel.isLocalOnly,
-    createdAt: parcel.createdAt.toISOString(),
-    updatedAt: parcel.updatedAt.toISOString()
-  };
-}
-
-// Save parcel note to Realm
-export async function saveParcelNote(note: any): Promise<string> {
-  const realm = await getRealm();
-  let noteId = note._id || `note_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
-  
-  try {
-    realm.write(() => {
-      realm.create('ParcelNote', {
-        _id: noteId,
-        parcelId: note.parcelId,
-        content: note.content || '',
-        yDocData: note.yDocData || '',
-        syncCount: note.syncCount || 0,
-        lastSync: new Date(),
-        isLocalOnly: note.isLocalOnly || false,
-        createdAt: note.createdAt ? new Date(note.createdAt) : new Date(),
-        updatedAt: new Date()
-      }, Realm.UpdateMode.Modified);
-    });
-    
-    return noteId;
-  } catch (error) {
-    console.error('Error saving note to Realm:', error);
-    throw error;
-  }
-}
-
-// Get note by parcel ID
-export async function getNoteByParcelId(parcelId: string): Promise<any | null> {
-  const realm = await getRealm();
-  const notes = realm.objects<ParcelNoteSchema>('ParcelNote').filtered('parcelId = $0', parcelId);
-  
-  if (notes.length === 0) {
-    return null;
-  }
-  
-  const note = notes[0];
-  return {
-    id: note._id,
-    parcelId: note.parcelId,
-    content: note.content,
-    yDocData: note.yDocData,
-    syncCount: note.syncCount,
-    isLocalOnly: note.isLocalOnly,
-    createdAt: note.createdAt.toISOString(),
-    updatedAt: note.updatedAt.toISOString()
-  };
-}
-
-// Add item to sync queue
-export async function addToSyncQueue(
-  operationType: 'create' | 'update' | 'delete',
-  entityType: 'parcel' | 'note',
-  entityId: string,
-  data: any
-): Promise<void> {
-  const realm = await getRealm();
-  const queueId = `${operationType}_${entityType}_${entityId}_${Date.now()}`;
-  
-  try {
-    realm.write(() => {
-      realm.create('SyncQueue', {
-        _id: queueId,
-        operationType,
-        entityType,
-        entityId,
-        data: JSON.stringify(data),
-        attempts: 0,
-        createdAt: new Date()
+      newParcel = realm.create('Parcel', {
+        id: generateId(),
+        ...parcelData,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        hasNotes: false,
+        isDeleted: false,
+        serverSynced: false,
+        lastSyncedAt: null,
       });
     });
-  } catch (error) {
-    console.error('Error adding to sync queue:', error);
-    throw error;
-  }
-}
 
-// Get sync queue items
-export async function getSyncQueue(): Promise<any[]> {
-  const realm = await getRealm();
-  const queue = realm.objects<SyncQueueSchema>('SyncQueue').sorted('createdAt');
-  
-  return Array.from(queue).map(item => ({
-    id: item._id,
-    operationType: item.operationType,
-    entityType: item.entityType,
-    entityId: item.entityId,
-    data: JSON.parse(item.data),
-    attempts: item.attempts,
-    createdAt: item.createdAt.toISOString()
-  }));
-}
+    return newParcel;
+  },
 
-// Remove item from sync queue
-export async function removeFromSyncQueue(id: string): Promise<void> {
-  const realm = await getRealm();
-  try {
+  /**
+   * Update an existing parcel
+   */
+  async update(id: string, updates: any): Promise<any | null> {
+    const realm = await getRealm();
+    const parcel = realm.objectForPrimaryKey('Parcel', id);
+
+    if (!parcel) {
+      return null;
+    }
+
     realm.write(() => {
-      const item = realm.objectForPrimaryKey('SyncQueue', id);
-      if (item) {
-        realm.delete(item);
+      Object.assign(parcel, {
+        ...updates,
+        updatedAt: new Date(),
+        serverSynced: false,
+      });
+    });
+
+    return parcel;
+  },
+
+  /**
+   * Soft delete a parcel
+   */
+  async delete(id: string): Promise<boolean> {
+    const realm = await getRealm();
+    const parcel = realm.objectForPrimaryKey('Parcel', id);
+
+    if (!parcel) {
+      return false;
+    }
+
+    realm.write(() => {
+      Object.assign(parcel, {
+        isDeleted: true,
+        updatedAt: new Date(),
+        serverSynced: false,
+      });
+    });
+
+    return true;
+  },
+
+  /**
+   * Mark a parcel as synced with server
+   */
+  async markSynced(id: string): Promise<void> {
+    const realm = await getRealm();
+    const parcel = realm.objectForPrimaryKey('Parcel', id);
+
+    if (parcel) {
+      realm.write(() => {
+        Object.assign(parcel, {
+          serverSynced: true,
+          lastSyncedAt: new Date(),
+        });
+      });
+    }
+  },
+};
+
+/**
+ * ParcelNote repository - functions for working with parcel notes
+ */
+export const ParcelNoteRepository = {
+  /**
+   * Get a note by parcel ID
+   */
+  async getByParcelId(parcelId: string): Promise<any | null> {
+    const realm = await getRealm();
+    const notes = realm.objects('ParcelNote')
+      .filtered('parcelId = $0 AND isDeleted = false', parcelId);
+    
+    return notes.length > 0 ? notes[0] : null;
+  },
+
+  /**
+   * Create a new note
+   */
+  async create(noteData: any): Promise<any> {
+    const realm = await getRealm();
+    let newNote;
+
+    realm.write(() => {
+      newNote = realm.create('ParcelNote', {
+        id: generateId(),
+        ...noteData,
+        createdAt: new Date(),
+        updatedAt: new Date(),
+        isDeleted: false,
+        serverSynced: false,
+        lastSyncedAt: null,
+      });
+
+      // Update the associated parcel to indicate it has notes
+      const parcel = realm.objectForPrimaryKey('Parcel', noteData.parcelId);
+      if (parcel) {
+        parcel.hasNotes = true;
+        parcel.serverSynced = false;
+        parcel.updatedAt = new Date();
       }
     });
-  } catch (error) {
-    console.error('Error removing from sync queue:', error);
-    throw error;
-  }
-}
 
-// Increment sync attempt counter
-export async function incrementSyncAttempt(id: string): Promise<void> {
-  const realm = await getRealm();
-  try {
+    return newNote;
+  },
+
+  /**
+   * Update an existing note
+   */
+  async update(id: string, updates: any): Promise<any | null> {
+    const realm = await getRealm();
+    const note = realm.objectForPrimaryKey('ParcelNote', id);
+
+    if (!note) {
+      return null;
+    }
+
     realm.write(() => {
-      const item = realm.objectForPrimaryKey<SyncQueueSchema>('SyncQueue', id);
-      if (item) {
-        item.attempts += 1;
+      Object.assign(note, {
+        ...updates,
+        updatedAt: new Date(),
+        serverSynced: false,
+      });
+    });
+
+    return note;
+  },
+
+  /**
+   * Delete a note
+   */
+  async delete(id: string): Promise<boolean> {
+    const realm = await getRealm();
+    const note = realm.objectForPrimaryKey('ParcelNote', id);
+
+    if (!note) {
+      return false;
+    }
+
+    realm.write(() => {
+      Object.assign(note, {
+        isDeleted: true,
+        updatedAt: new Date(),
+        serverSynced: false,
+      });
+
+      // Check if there are any other notes for this parcel
+      const parcelId = note.parcelId;
+      const remainingNotes = realm.objects('ParcelNote')
+        .filtered('parcelId = $0 AND isDeleted = false AND id != $1', parcelId, id);
+      
+      // If no remaining notes, update the parcel
+      if (remainingNotes.length === 0) {
+        const parcel = realm.objectForPrimaryKey('Parcel', parcelId);
+        if (parcel) {
+          parcel.hasNotes = false;
+          parcel.serverSynced = false;
+          parcel.updatedAt = new Date();
+        }
       }
     });
-  } catch (error) {
-    console.error('Error incrementing sync attempt:', error);
-    throw error;
-  }
-}
+
+    return true;
+  },
+
+  /**
+   * Mark a note as synced with server
+   */
+  async markSynced(id: string): Promise<void> {
+    const realm = await getRealm();
+    const note = realm.objectForPrimaryKey('ParcelNote', id);
+
+    if (note) {
+      realm.write(() => {
+        Object.assign(note, {
+          serverSynced: true,
+          lastSyncedAt: new Date(),
+        });
+      });
+    }
+  },
+};
+
+/**
+ * SyncQueue repository - functions for working with sync queue
+ */
+export const SyncQueueRepository = {
+  /**
+   * Get all items in the sync queue
+   */
+  async getAll(): Promise<any[]> {
+    const realm = await getRealm();
+    const items = realm.objects('SyncQueueItem');
+    return Array.from(items);
+  },
+
+  /**
+   * Add an item to the sync queue
+   */
+  async add(item: {
+    endpoint: string;
+    method: string;
+    body: any;
+  }): Promise<any> {
+    const realm = await getRealm();
+    let newItem;
+
+    realm.write(() => {
+      newItem = realm.create('SyncQueueItem', {
+        id: generateId(),
+        endpoint: item.endpoint,
+        method: item.method,
+        body: JSON.stringify(item.body),
+        timestamp: new Date(),
+        retryCount: 0,
+        isProcessing: false,
+      });
+    });
+
+    return newItem;
+  },
+
+  /**
+   * Remove an item from the sync queue
+   */
+  async remove(id: string): Promise<boolean> {
+    const realm = await getRealm();
+    const item = realm.objectForPrimaryKey('SyncQueueItem', id);
+
+    if (!item) {
+      return false;
+    }
+
+    realm.write(() => {
+      realm.delete(item);
+    });
+
+    return true;
+  },
+
+  /**
+   * Mark an item as processing
+   */
+  async markProcessing(id: string, isProcessing: boolean): Promise<boolean> {
+    const realm = await getRealm();
+    const item = realm.objectForPrimaryKey('SyncQueueItem', id);
+
+    if (!item) {
+      return false;
+    }
+
+    realm.write(() => {
+      item.isProcessing = isProcessing;
+    });
+
+    return true;
+  },
+
+  /**
+   * Increment retry count for an item
+   */
+  async incrementRetryCount(id: string): Promise<boolean> {
+    const realm = await getRealm();
+    const item = realm.objectForPrimaryKey('SyncQueueItem', id);
+
+    if (!item) {
+      return false;
+    }
+
+    realm.write(() => {
+      item.retryCount += 1;
+    });
+
+    return true;
+  },
+
+  /**
+   * Clear all items from the sync queue
+   */
+  async clearAll(): Promise<void> {
+    const realm = await getRealm();
+    const items = realm.objects('SyncQueueItem');
+
+    realm.write(() => {
+      realm.delete(items);
+    });
+  },
+};
+
+/**
+ * Settings repository - functions for working with app settings
+ */
+export const SettingsRepository = {
+  /**
+   * Get all settings
+   */
+  async getSettings(): Promise<any | null> {
+    const realm = await getRealm();
+    const settings = realm.objects('Settings').filtered('id = "app-settings"')[0];
+    return settings || null;
+  },
+
+  /**
+   * Update settings
+   */
+  async updateSettings(updates: any): Promise<any | null> {
+    const realm = await getRealm();
+    const settings = realm.objects('Settings').filtered('id = "app-settings"')[0];
+
+    if (!settings) {
+      return null;
+    }
+
+    realm.write(() => {
+      Object.assign(settings, updates);
+    });
+
+    return settings;
+  },
+
+  /**
+   * Update last sync time
+   */
+  async updateLastSyncTime(time: Date): Promise<void> {
+    const realm = await getRealm();
+    const settings = realm.objects('Settings').filtered('id = "app-settings"')[0];
+
+    if (settings) {
+      realm.write(() => {
+        settings.lastSyncTime = time;
+      });
+    }
+  },
+};
 
 export default {
   getRealm,
   closeRealm,
-  saveUser,
-  getUser,
-  deleteUser,
-  saveParcel,
-  getParcels,
-  getParcel,
-  saveParcelNote,
-  getNoteByParcelId,
-  addToSyncQueue,
-  getSyncQueue,
-  removeFromSyncQueue,
-  incrementSyncAttempt
+  generateId,
+  ParcelRepository,
+  ParcelNoteRepository,
+  SyncQueueRepository,
+  SettingsRepository,
 };
