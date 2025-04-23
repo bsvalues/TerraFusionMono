@@ -84,7 +84,11 @@ export default function MetricsPage() {
             <Progress 
               value={metricsData?.cpu?.value || 0} 
               className="h-2 mt-2"
-              indicatorClassName={metricsData?.cpu?.value > 80 ? "bg-red-500" : metricsData?.cpu?.value > 60 ? "bg-yellow-500" : "bg-green-500"}
+              indicatorClassName={
+                (metricsData?.cpu?.value || 0) > 80 ? "bg-red-500" : 
+                (metricsData?.cpu?.value || 0) > 60 ? "bg-yellow-500" : 
+                "bg-green-500"
+              }
             />
           </CardContent>
         </Card>
@@ -99,7 +103,11 @@ export default function MetricsPage() {
             <Progress 
               value={metricsData?.memory?.value || 0} 
               className="h-2 mt-2"
-              indicatorClassName={metricsData?.memory?.value > 80 ? "bg-red-500" : metricsData?.memory?.value > 60 ? "bg-yellow-500" : "bg-green-500"}
+              indicatorClassName={
+                (metricsData?.memory?.value || 0) > 80 ? "bg-red-500" : 
+                (metricsData?.memory?.value || 0) > 60 ? "bg-yellow-500" : 
+                "bg-green-500"
+              }
             />
           </CardContent>
         </Card>
@@ -114,7 +122,11 @@ export default function MetricsPage() {
             <Progress 
               value={metricsData?.disk?.value || 0} 
               className="h-2 mt-2"
-              indicatorClassName={metricsData?.disk?.value > 80 ? "bg-red-500" : metricsData?.disk?.value > 60 ? "bg-yellow-500" : "bg-green-500"}
+              indicatorClassName={
+                (metricsData?.disk?.value || 0) > 80 ? "bg-red-500" : 
+                (metricsData?.disk?.value || 0) > 60 ? "bg-yellow-500" : 
+                "bg-green-500"
+              }
             />
           </CardContent>
         </Card>
