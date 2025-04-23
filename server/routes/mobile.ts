@@ -386,14 +386,15 @@ router.post('/sync', async (req: Request, res: Response) => {
       
       // Get parcels updated since last sync
       const updatedParcels = await storage.getParcels({
-        userId: req.user.id,
-        updatedSince: syncDate
+        userId: req.user?.id,
+        limit: 100
       });
       
       // Get parcel notes updated since last sync
       const updatedNotes = await storage.getParcelNotes({
-        userId: req.user.id,
-        updatedSince: syncDate
+        userId: req.user?.id,
+        updatedSince: syncDate,
+        limit: 100
       });
       
       updates = {
@@ -435,7 +436,7 @@ router.post('/sync/crdt', async (req: Request, res: Response) => {
     const result = await mobileSyncService.syncParcelNote(
       parcelId,
       update,
-      req.user.id
+      req.user?.id || 0 // Fallback to 0 if user ID is not available
     );
     
     res.json({

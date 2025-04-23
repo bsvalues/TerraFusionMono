@@ -242,21 +242,35 @@ class CrdtService {
       // Check if note exists
       const existingNote = await ParcelNoteRepository.getByParcelId(parcelId);
       
+      // Get the current text content from the CRDT document
+      const currentText = this.docs.get(parcelId)?.getText('notes').toString() || '';
+      
       if (existingNote) {
         // Update existing note
         await ParcelNoteRepository.update(existingNote.id, {
           yDocData: encodedState,
-          text: this.docs.get(parcelId)?.getText('notes').toString() || '',
+          text: currentText,
           updatedAt: new Date(),
-          serverSynced: false
+          serverSynced: false,
+          syncCount: (existingNote.syncCount || 0) + 1
         });
       } else {
         // Create new note
         await ParcelNoteRepository.create({
           parcelId,
           yDocData: encodedState,
-          text: this.docs.get(parcelId)?.getText('notes').toString() || '',
+          text: currentText,
+          syncCount: 1,
           serverSynced: false
+        });
+      }
+      
+      // Update the associated parcel to indicate it has notes (if not already)
+      const parcel = await ParcelRepository.getById(parcelId);
+      if (parcel && !parcel.hasNotes) {
+        await ParcelRepository.update(parcelId, {
+          hasNotes: true,
+          updatedAt: new Date()
         });
       }
     } catch (error) {

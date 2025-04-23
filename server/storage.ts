@@ -8,7 +8,8 @@ import {
   systemMetrics, type SystemMetric, type InsertMetric,
   snapshotMetadata, type SnapshotMetadata,
   pluginProducts, type PluginProduct, type InsertPluginProduct,
-  userPlugins, type UserPlugin, type InsertUserPlugin
+  userPlugins, type UserPlugin, type InsertUserPlugin,
+  parcelNotes, type ParcelNote, type InsertParcelNote
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte } from "drizzle-orm";
@@ -503,12 +504,21 @@ export class DatabaseStorage implements IStorage {
   }
   
   // Parcel Note operations
-  async getParcelNotes(limit: number = 50): Promise<ParcelNote[]> {
-    return await db
+  async getParcelNotes(options?: { limit?: number, userId?: number, updatedSince?: Date }): Promise<ParcelNote[]> {
+    let query = db
       .select()
       .from(parcelNotes)
-      .orderBy(desc(parcelNotes.updatedAt))
-      .limit(limit);
+      .orderBy(desc(parcelNotes.updatedAt));
+    
+    if (options?.userId) {
+      query = query.where(eq(parcelNotes.userId, options.userId));
+    }
+    
+    if (options?.updatedSince) {
+      query = query.where(gte(parcelNotes.updatedAt, options.updatedSince));
+    }
+    
+    return await query.limit(options?.limit || 50);
   }
   
   async getParcelNote(id: number): Promise<ParcelNote | undefined> {
