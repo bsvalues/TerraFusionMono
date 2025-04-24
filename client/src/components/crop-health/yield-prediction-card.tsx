@@ -11,7 +11,8 @@ import {
   ResponsiveContainer,
   Legend,
   ReferenceLine,
-  ErrorBar
+  ErrorBar,
+  Cell
 } from "recharts";
 import {
   Tooltip,
@@ -87,13 +88,18 @@ export function YieldPredictionCard({
   }));
   
   // Add the prediction point
+  // Add the prediction data point
+  // Note: We're using a type assertion here to add custom error bounds for the chart
   chartData.push({
     year: new Date().getFullYear(),
     yield: predictedYield.value,
     isPrediction: true,
-    errorHigh: confidenceInterval.high - predictedYield.value,
-    errorLow: predictedYield.value - confidenceInterval.low
-  });
+    // Using any to add our custom error bounds for the chart
+    ...(confidenceInterval && {
+      errorHigh: confidenceInterval.high - predictedYield.value,
+      errorLow: predictedYield.value - confidenceInterval.low
+    })
+  } as any);
   
   // Calculate average historical yield
   const avgHistoricalYield = historicalYields.length > 0 
@@ -216,8 +222,15 @@ export function YieldPredictionCard({
                 <Bar
                   dataKey="yield"
                   name="Yield"
-                  fill={(data: any) => data.isPrediction ? "#82ca9d" : "#8884d8"}
+                  fill="#8884d8"
                 >
+                  {/* Add cells for custom coloring */}
+                  {chartData.map((entry, index) => (
+                    <Cell 
+                      key={`cell-${index}`} 
+                      fill={entry.isPrediction ? "#82ca9d" : "#8884d8"} 
+                    />
+                  ))}
                   <ErrorBar
                     dataKey="errorHigh"
                     direction="y"
