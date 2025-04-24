@@ -22,6 +22,7 @@ import GeocodePage from "@/pages/geocode";
 import CropHealthDashboard from "@/pages/crop-health-dashboard";
 import CropIdentifierPage from "@/pages/crop-identifier-page";
 import CropAnalysisPage from "@/pages/crop-analysis";
+import CollaborationDemo from "@/pages/CollaborationDemo";
 
 function Router() {
   return (
@@ -46,6 +47,7 @@ function Router() {
         <Route path="/crop-health" component={CropHealthDashboard} />
         <Route path="/crop-identifier" component={CropIdentifierPage} />
         <Route path="/crop-analysis" component={CropAnalysisPage} />
+        <Route path="/collaboration" component={CollaborationDemo} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />
