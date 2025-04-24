@@ -1,0 +1,21 @@
+{
+  "name": "@terrafusion/schema",
+  "version": "1.0.0",
+  "description": "TerraFusion data schema definitions",
+  "main": "dist/index.js",
+  "types": "dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "jest",
+    "lint": "eslint ."
+  },
+  "keywords": ["terrafusion", "schema", "data", "models"],
+  "author": "TerraFusion Team",
+  "license": "UNLICENSED",
+  "private": true,
+  "dependencies": {
+    "drizzle-orm": "^0.29.3",
+    "drizzle-zod": "^0.5.1",
+    "zod": "^3.22.4"
+  }
+}
