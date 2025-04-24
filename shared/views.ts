@@ -42,7 +42,7 @@ export async function createViews() {
         cha.growth_stage as growth_stage,
         cha.growth_progress as growth_progress,
         cha.estimated_harvest_date as harvest_date,
-        cha.created_at as analysis_date,
+        cha.timestamp as analysis_date,
         (SELECT COUNT(*) FROM disease_detections WHERE analysis_id = cha.id) as disease_count,
         (SELECT string_agg(disease_name, ', ') FROM disease_detections WHERE analysis_id = cha.id) as diseases,
         (SELECT AVG(confidence) FROM disease_detections WHERE analysis_id = cha.id) as avg_disease_confidence
@@ -50,8 +50,8 @@ export async function createViews() {
       LEFT JOIN crop_health_analyses cha ON p.external_id = cha.parcel_id
       WHERE cha.id IS NOT NULL
       GROUP BY p.external_id, p.name, p.current_crop, cha.id, cha.overall_health, cha.health_score, 
-               cha.confidence_level, cha.growth_stage, cha.growth_progress, cha.estimated_harvest_date, cha.created_at
-      ORDER BY cha.created_at DESC;
+               cha.confidence_level, cha.growth_stage, cha.growth_progress, cha.estimated_harvest_date, cha.timestamp
+      ORDER BY cha.timestamp DESC;
     `);
 
     // 3. Soil Analysis Trends View - Track soil health over time
@@ -69,15 +69,15 @@ export async function createViews() {
         sa.potassium_level as potassium_level,
         sa.water_retention as water_retention,
         sa.suitability_score as suitability_score,
-        sa.created_at as analysis_date,
+        sa.timestamp as analysis_date,
         sa.ai_generated as ai_generated,
         sa.lab_verified as lab_verified
       FROM parcels p
       JOIN soil_analyses sa ON p.external_id = sa.parcel_id
       GROUP BY p.external_id, p.name, sa.id, sa.soil_type, sa.ph, sa.organic_matter, 
                sa.nitrogen_level, sa.phosphorus_level, sa.potassium_level, sa.water_retention, 
-               sa.suitability_score, sa.created_at, sa.ai_generated, sa.lab_verified
-      ORDER BY p.external_id, sa.created_at;
+               sa.suitability_score, sa.timestamp, sa.ai_generated, sa.lab_verified
+      ORDER BY p.external_id, sa.timestamp;
     `);
 
     // 4. Yield Prediction Summary View - Consolidated yield predictions
@@ -99,15 +99,15 @@ export async function createViews() {
         yp.market_value_per_unit as market_value_per_unit,
         yp.market_value_total as market_value_total,
         yp.scenario as scenario,
-        yp.created_at as prediction_date
+        yp.timestamp as prediction_date
       FROM parcels p
       JOIN yield_predictions yp ON p.external_id = yp.parcel_id
       GROUP BY p.external_id, p.name, p.area_hectares, p.current_crop, 
                yp.predicted_yield_value, yp.predicted_yield_unit, yp.yield_per_hectare,
                yp.confidence_low, yp.confidence_high, yp.confidence_level, 
                yp.comparison_to_average, yp.harvest_date_estimate, 
-               yp.market_value_per_unit, yp.market_value_total, yp.scenario, yp.created_at
-      ORDER BY yp.created_at DESC;
+               yp.market_value_per_unit, yp.market_value_total, yp.scenario, yp.timestamp
+      ORDER BY yp.timestamp DESC;
     `);
 
     // 5. Weather Data Overview - Summarized weather conditions
@@ -125,13 +125,13 @@ export async function createViews() {
         wd.precipitation as precipitation,
         wd.wind_speed as wind_speed,
         wd.conditions as conditions,
-        wd.created_at as observation_date
+        wd.timestamp as observation_date
       FROM parcels p
       JOIN weather_data wd ON p.external_id = wd.parcel_id
       GROUP BY p.external_id, p.name, wd.data_type, wd.source, wd.temperature_min, 
                wd.temperature_max, wd.temperature_avg, wd.humidity, wd.precipitation, 
-               wd.wind_speed, wd.conditions, wd.created_at
-      ORDER BY wd.created_at DESC;
+               wd.wind_speed, wd.conditions, wd.timestamp
+      ORDER BY wd.timestamp DESC;
     `);
 
     console.log('Database views created successfully');
