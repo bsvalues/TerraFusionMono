@@ -21,6 +21,7 @@ import mobileAuthRoutes from "./routes/mobile-auth";
 import cropHealthRoutes from "./routes/crop-health";
 import cropIdentificationRouter from "./routes/crop-identification";
 import mobileSyncRoutes from "./routes/mobile-sync";
+import cropAnalysisRoutes from "./routes/crop-analysis";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -862,6 +863,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ error: "Failed to fetch weather data overview" });
     }
   });
+  
+  // AI-powered crop analysis routes (OpenAI integration)
+  app.use('/api/crop-analysis', cropAnalysisRoutes);
   
   const httpServer = createServer(app);
   
