@@ -1,0 +1,91 @@
+Here’s a turnkey plan to have the Replit AI Agent execute the next-phase roadmap for **TerraFusionMono**—from CI/CD to health checks to plugin sandboxing—fully hands-off. You can paste each prompt into the Agent and watch it update multiple files, commit, and open PRs for you.
+
+> **Summary:** We'll feed the Agent a sequence of targeted natural-language prompts that correspond to our top five priorities: CI pipeline, health endpoints, audit-trail subgraph, WASM sandbox enforcement, and E2E tests. Each prompt references specific files/folders so the Agent can make precise changes across the monorepo. Citations show best-practice sources for each area.
+
+---
+
+## 1. CI/CD Pipeline
+
+### Prompt for Replit AI Agent
+```text
+“Generate a GitHub Actions workflow at `.github/workflows/ci.yml` that:
+1. Checks out code.
+2. Sets up Node.js 18 and Python 3.9.
+3. Caches Nx, npm, and Poetry dependencies.
+4. Runs `nx affected:test,lint,build`.
+5. Runs `poetry run pytest`.
+6. Runs `terraform plan` (storing plan artifact) and `helm upgrade --install` for staging.
+Ensure jobs run in parallel where possible and fail fast on errors.”
+```
+This aligns with Nx monorepo caching & parallel best practices citeturn0search0 and Terraform Helm provider guidelines citeturn0search11.
+
+---
+
+## 2. Health-Check Endpoints
+
+### Prompt for Replit AI Agent
+```text
+“In `apps/core-gateway/src/main.ts` and `apps/backend/src/main.py`, add:
+- GET `/health/live` returning 200 always.
+- GET `/health/ready` that checks database and NATS connectivity.
+Use FastAPI’s startup event for readiness, and Apollo Server plugin for gateway health. Add unit tests using HTTPX/pytest and Jest.”
+```
+Following FastAPI health-check patterns citeturn0search2 and Apollo Gateway recommendations citeturn0search1.
+
+---
+
+## 3. Audit-Trail Subgraph
+
+### Prompt for Replit AI Agent
+```text
+“Scaffold a new subgraph service under `apps/audit-subgraph`:
+1. Initialize as an Apollo subgraph (`@apollo/subgraph`).
+2. Define `AuditEntry` type (fields: audit_id, record_key, operation, delta_json, timestamp).
+3. Add Query `auditHistory(recordKey: String!): [AuditEntry!]!` resolver that reads from `sync_audit` Postgres table.
+4. Update core-gateway’s supergraph config to include this subgraph.”
+```
+Implements Apollo Federation entity patterns citeturn0search12.
+
+---
+
+## 4. WASM Sandbox Enforcement
+
+### Prompt for Replit AI Agent
+```text
+“In `server/plugin/sandbox.ts`, integrate Wasmtime WASI-preview2:
+1. Parse each plugin’s `manifest.yaml` for fs and network permissions.
+2. Instantiate a Wasmtime `WasiCtx` with capability filters.
+3. Enforce CPU/memory quotas via resource limits.
+4. Audit-log every sandbox syscall to `sync_audit` table.
+Add unit tests simulating unauthorized syscalls.”
+```
+Based on Wasmtime sandbox best practices citeturn0search6.
+
+---
+
+## 5. End-to-End Testing
+
+### Prompt for Replit AI Agent
+```text
+“Set up Cypress in `cypress/`:
+1. Write E2E test `sync_flow_spec.ts` that:
+   - Visits `/`.
+   - Clicks “Run Sync” button.
+   - Asserts SyncStatusPanel shows updated count.
+2. Configure Nx e2e target and GitHub Action to run `npx cypress run`.
+3. Add baseUrl to `cypress.config.ts` pointing to `localhost:4200`.”
+```
+Follows Cypress E2E best practices citeturn0search9 and Nx integration patterns citeturn0search5.
+
+---
+
+## 6. How to Execute
+
+1. **Open the Replit AI Agent** panel in your workspace.  
+2. **Paste each prompt** one at a time, waiting for the Agent to finish file changes and commit.  
+3. **Review and merge** the PRs that the Agent opens.  
+4. **Run your workflows** via the Replit Workflows tab: Install, Test, Serve, Deploy.  
+
+---
+
+With these prompts, the Replit AI Agent will incrementally close our top five gaps—automating CI, hardening health checks, federating audit lineage, sandboxing plugins, and validating E2E flows—so TerraFusionMono becomes production-ready in minutes, not weeks.
