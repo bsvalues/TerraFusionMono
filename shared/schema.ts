@@ -41,6 +41,10 @@ export const users = pgTable("users", {
   stripeSubscriptionStatus: text("stripe_subscription_status").default("inactive"),
 });
 
+// Define the relations between users and other tables with foreign keys
+// For userPlugins: userId references users.id
+// For parcels: ownerId references users.id
+
 export const insertUserSchema = createInsertSchema(users).pick({
   username: true,
   password: true,
@@ -78,6 +82,10 @@ export const plugins = pgTable("plugins", {
   entryPoint: text("entry_point").default("index.js").notNull(),
   quotas: json("quotas").default({ cpuMs: 1000, memKb: 128000 }),
 });
+
+// Define the relations between plugins and other tables with foreign keys
+// For pluginProducts: pluginId references plugins.id
+// For userPlugins: pluginId references plugins.id
 
 export const insertPluginSchema = createInsertSchema(plugins).pick({
   name: true,
