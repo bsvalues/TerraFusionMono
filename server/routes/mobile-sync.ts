@@ -28,17 +28,20 @@ const tempAuth = (req: Request, res: Response, next: NextFunction) => {
 };
 
 // Get current sync status
-router.get('/status', tempAuth, (req: Request, res: Response) => {
+router.get('/status', (req: Request, res: Response) => {
+  console.log('Mobile sync status endpoint accessed');
   res.json(syncStatus);
 });
 
 // Get connected devices
-router.get('/devices', tempAuth, (req: Request, res: Response) => {
+router.get('/devices', (req: Request, res: Response) => {
+  console.log('Mobile devices endpoint accessed');
   res.json({ devices: connectedDevices });
 });
 
 // Trigger a sync operation
-router.post('/trigger', tempAuth, async (req: Request, res: Response) => {
+router.post('/trigger', async (req: Request, res: Response) => {
+  console.log('Mobile sync trigger endpoint accessed');
   // Start syncing
   syncStatus = {
     ...syncStatus,
@@ -92,7 +95,8 @@ router.post('/trigger', tempAuth, async (req: Request, res: Response) => {
 });
 
 // Simulate error state
-router.post('/simulate-error', tempAuth, async (req: Request, res: Response) => {
+router.post('/simulate-error', async (req: Request, res: Response) => {
+  console.log('Mobile sync error simulation endpoint accessed');
   syncStatus = {
     ...syncStatus,
     status: 'error',
@@ -112,7 +116,8 @@ router.post('/simulate-error', tempAuth, async (req: Request, res: Response) => 
 });
 
 // Simulate delayed state
-router.post('/simulate-delayed', tempAuth, async (req: Request, res: Response) => {
+router.post('/simulate-delayed', async (req: Request, res: Response) => {
+  console.log('Mobile sync delayed state endpoint accessed');
   syncStatus = {
     ...syncStatus,
     status: 'delayed',
