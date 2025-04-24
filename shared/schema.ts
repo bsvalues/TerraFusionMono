@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal, pgEnum } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal, pgEnum, index } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -312,6 +312,14 @@ export const parcels = pgTable("parcels", {
   syncStatus: text("sync_status").default("pending"),
   lastSynced: timestamp("last_synced"),
   version: integer("version").default(1).notNull(),
+}, (table) => {
+  return {
+    ownerIdIdx: index("parcels_owner_id_idx").on(table.ownerId),
+    statusIdx: index("parcels_status_idx").on(table.status),
+    createdAtIdx: index("parcels_created_at_idx").on(table.createdAt),
+    updatedAtIdx: index("parcels_updated_at_idx").on(table.updatedAt),
+    currentCropIdx: index("parcels_current_crop_idx").on(table.currentCrop),
+  };
 });
 
 export const insertParcelSchema = createInsertSchema(parcels)
@@ -338,6 +346,14 @@ export const parcelNotes = pgTable("parcel_notes", {
   attachments: json("attachments"), // References to photos, documents, etc.
   location: json("location"), // GPS coordinates where note was taken (might differ from parcel center)
   isImportant: boolean("is_important").default(false),
+}, (table) => {
+  return {
+    userIdIdx: index("parcel_notes_user_id_idx").on(table.userId),
+    createdAtIdx: index("parcel_notes_created_at_idx").on(table.createdAt),
+    updatedAtIdx: index("parcel_notes_updated_at_idx").on(table.updatedAt),
+    categoryIdx: index("parcel_notes_category_idx").on(table.category),
+    importantIdx: index("parcel_notes_important_idx").on(table.isImportant),
+  };
 });
 
 export const insertParcelNoteSchema = createInsertSchema(parcelNotes)
@@ -371,6 +387,15 @@ export const parcelMeasurements = pgTable("parcel_measurements", {
   notes: text("notes"),
   deviceId: text("device_id"), // ID of the device used for measurement
   syncStatus: text("sync_status").default("pending"),
+}, (table) => {
+  return {
+    parcelIdIdx: index("parcel_measurements_parcel_id_idx").on(table.parcelId),
+    userIdIdx: index("parcel_measurements_user_id_idx").on(table.userId),
+    timestampIdx: index("parcel_measurements_timestamp_idx").on(table.timestamp),
+    measurementTypeIdx: index("parcel_measurements_type_idx").on(table.measurementType),
+    deviceIdIdx: index("parcel_measurements_device_id_idx").on(table.deviceId),
+    syncStatusIdx: index("parcel_measurements_sync_status_idx").on(table.syncStatus),
+  };
 });
 
 export const insertParcelMeasurementSchema = createInsertSchema(parcelMeasurements)
@@ -396,6 +421,16 @@ export const cropHealthAnalyses = pgTable("crop_health_analyses", {
   rawResponse: json("raw_response"),
   recommendations: json("recommendations"),
   images: json("images"), // Array of image references
+}, (table) => {
+  return {
+    parcelIdIdx: index("crop_health_analyses_parcel_id_idx").on(table.parcelId),
+    userIdIdx: index("crop_health_analyses_user_id_idx").on(table.userId),
+    timestampIdx: index("crop_health_analyses_timestamp_idx").on(table.timestamp),
+    cropTypeIdx: index("crop_health_analyses_crop_type_idx").on(table.cropType),
+    healthScoreIdx: index("crop_health_analyses_health_score_idx").on(table.healthScore),
+    overallHealthIdx: index("crop_health_analyses_overall_health_idx").on(table.overallHealth),
+    growthStageIdx: index("crop_health_analyses_growth_stage_idx").on(table.growthStage),
+  };
 });
 
 export const insertCropHealthAnalysisSchema = createInsertSchema(cropHealthAnalyses)
@@ -421,6 +456,15 @@ export const diseaseDetections = pgTable("disease_detections", {
   detectedAt: timestamp("detected_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
   images: json("images"), // Array of image references
+}, (table) => {
+  return {
+    analysisIdIdx: index("disease_detections_analysis_id_idx").on(table.analysisId),
+    diseaseNameIdx: index("disease_detections_disease_name_idx").on(table.diseaseName),
+    diseaseTypeIdx: index("disease_detections_disease_type_idx").on(table.diseaseType),
+    severityIdx: index("disease_detections_severity_idx").on(table.severity),
+    progressionIdx: index("disease_detections_progression_idx").on(table.progression),
+    detectedAtIdx: index("disease_detections_detected_at_idx").on(table.detectedAt),
+  };
 });
 
 export const insertDiseaseDetectionSchema = createInsertSchema(diseaseDetections)
@@ -451,6 +495,15 @@ export const soilAnalyses = pgTable("soil_analyses", {
   recommendations: json("recommendations"), // Array of recommendation strings
   aiGenerated: boolean("ai_generated").default(false),
   labVerified: boolean("lab_verified").default(false),
+}, (table) => {
+  return {
+    parcelIdIdx: index("soil_analyses_parcel_id_idx").on(table.parcelId),
+    userIdIdx: index("soil_analyses_user_id_idx").on(table.userId),
+    timestampIdx: index("soil_analyses_timestamp_idx").on(table.timestamp),
+    soilTypeIdx: index("soil_analyses_soil_type_idx").on(table.soilType),
+    aiGeneratedIdx: index("soil_analyses_ai_generated_idx").on(table.aiGenerated),
+    labVerifiedIdx: index("soil_analyses_lab_verified_idx").on(table.labVerified),
+  };
 });
 
 export const insertSoilAnalysisSchema = createInsertSchema(soilAnalyses)
@@ -483,6 +536,15 @@ export const yieldPredictions = pgTable("yield_predictions", {
   qualityPrediction: json("quality_prediction"),
   aiModel: text("ai_model").notNull(),
   scenario: text("scenario").default("baseline"), // baseline, drought, excess_rain, etc.
+}, (table) => {
+  return {
+    parcelIdIdx: index("yield_predictions_parcel_id_idx").on(table.parcelId),
+    userIdIdx: index("yield_predictions_user_id_idx").on(table.userId),
+    timestampIdx: index("yield_predictions_timestamp_idx").on(table.timestamp),
+    cropTypeIdx: index("yield_predictions_crop_type_idx").on(table.cropType),
+    scenarioIdx: index("yield_predictions_scenario_idx").on(table.scenario),
+    harvestDateIdx: index("yield_predictions_harvest_date_idx").on(table.harvestDateEstimate),
+  };
 });
 
 export const insertYieldPredictionSchema = createInsertSchema(yieldPredictions)
@@ -506,6 +568,15 @@ export const cropHealthImages = pgTable("crop_health_images", {
   analysisResults: json("analysis_results"),
   location: json("location"), // Geolocation where the image was taken
   tags: json("tags"), // Array of tags
+}, (table) => {
+  return {
+    parcelIdIdx: index("crop_health_images_parcel_id_idx").on(table.parcelId),
+    userIdIdx: index("crop_health_images_user_id_idx").on(table.userId),
+    timestampIdx: index("crop_health_images_timestamp_idx").on(table.timestamp),
+    typeIdx: index("crop_health_images_type_idx").on(table.type),
+    categoryIdx: index("crop_health_images_category_idx").on(table.category),
+    aiAnalyzedIdx: index("crop_health_images_ai_analyzed_idx").on(table.aiAnalyzed),
+  };
 });
 
 export const insertCropHealthImageSchema = createInsertSchema(cropHealthImages)
@@ -532,6 +603,14 @@ export const weatherData = pgTable("weather_data", {
   windDirection: integer("wind_direction"),
   conditions: text("conditions"), // clear, cloudy, rain, etc.
   additionalData: json("additional_data"),
+}, (table) => {
+  return {
+    parcelIdIdx: index("weather_data_parcel_id_idx").on(table.parcelId),
+    timestampIdx: index("weather_data_timestamp_idx").on(table.timestamp),
+    dataTypeIdx: index("weather_data_data_type_idx").on(table.dataType),
+    sourceIdx: index("weather_data_source_idx").on(table.source),
+    conditionsIdx: index("weather_data_conditions_idx").on(table.conditions),
+  };
 });
 
 export const insertWeatherDataSchema = createInsertSchema(weatherData)
