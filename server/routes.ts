@@ -14,6 +14,7 @@ import { billingService } from "./services/billing";
 import { geocodeService } from "./services/geocode";
 import { usageService } from "./services/metering/usage";
 import { mobileSyncService } from "./services/mobile-sync";
+import { collaborationService } from "./services/collaboration";
 import Stripe from "stripe";
 import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
@@ -22,6 +23,7 @@ import cropHealthRoutes from "./routes/crop-health";
 import cropIdentificationRouter from "./routes/crop-identification";
 import mobileSyncRoutes from "./routes/mobile-sync";
 import cropAnalysisRoutes from "./routes/crop-analysis";
+import collaborationRoutes from "./routes/collaboration";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -867,14 +869,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-powered crop analysis routes (OpenAI integration)
   app.use('/api/crop-analysis', cropAnalysisRoutes);
   
+  // Collaboration routes for real-time editing features
+  app.use('/api/collaboration', collaborationRoutes);
+  
   const httpServer = createServer(app);
   
-  // Set up the WebSocket server for real-time updates
+  // Set up the WebSocket server for real-time updates with multiple paths
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  const collaborationWss = new WebSocketServer({ server: httpServer, path: '/ws/collaboration' });
   
-  // Store active connections
+  // Store active general connections
   const clients = new Set<WebSocket>();
   
+  // Map to store client IDs for the collaboration WebSocket connections
+  const clientMap = new Map<WebSocket, { clientId: string, userId: number, sessionId: string }>();
+  
+  // Start the collaboration session maintenance job
+  const sessionMaintenanceJob = collaborationService.startSessionMaintenanceJob(5);
+  
+  // Handle general WebSocket connections
   wss.on('connection', (ws) => {
     clients.add(ws);
     
@@ -894,9 +907,282 @@ export async function registerRoutes(app: Express): Promise<Server> {
       try {
         const data = JSON.parse(message.toString());
         console.log('WebSocket message received:', data);
+        
+        // Handle different message types
+        switch (data.type) {
+          case 'ping':
+            ws.send(JSON.stringify({ type: 'pong', timestamp: Date.now() }));
+            break;
+            
+          case 'subscribe':
+            // Subscribe to specific channels or topics
+            if (data.channel) {
+              console.log(`Client subscribed to channel: ${data.channel}`);
+              ws.send(JSON.stringify({ 
+                type: 'subscribed', 
+                channel: data.channel,
+                message: `Subscribed to ${data.channel}`
+              }));
+            }
+            break;
+            
+          default:
+            // Handle other message types as needed
+            break;
+        }
       } catch (error) {
         console.error('Invalid WebSocket message:', error);
       }
+    });
+  });
+  
+  // Handle collaboration-specific WebSocket connections
+  collaborationWss.on('connection', async (ws, req) => {
+    console.log('New collaboration WebSocket connection');
+    
+    // Initial state - not authenticated yet
+    let isAuthenticated = false;
+    let clientId: string | null = null;
+    let sessionId: string | null = null;
+    let userId: number | null = null;
+    
+    // Welcome message
+    ws.send(JSON.stringify({
+      type: 'welcome',
+      message: 'Connected to TerraFusion Collaboration Service'
+    }));
+    
+    // Handle messages
+    ws.on('message', async (message) => {
+      try {
+        const data = JSON.parse(message.toString());
+        
+        // Handle different message types
+        switch (data.type) {
+          case 'auth':
+            // Authenticate the user
+            // This should match your authentication system
+            if (data.token) {
+              try {
+                // Verify JWT token or session token
+                // For now, we'll just use a simple check
+                if (data.userId && Number.isInteger(data.userId)) {
+                  isAuthenticated = true;
+                  userId = data.userId;
+                  
+                  ws.send(JSON.stringify({
+                    type: 'auth_success',
+                    userId
+                  }));
+                } else {
+                  ws.send(JSON.stringify({
+                    type: 'auth_error',
+                    message: 'Invalid user ID'
+                  }));
+                }
+              } catch (error) {
+                ws.send(JSON.stringify({
+                  type: 'auth_error',
+                  message: 'Invalid authentication token'
+                }));
+              }
+            } else {
+              ws.send(JSON.stringify({
+                type: 'auth_error',
+                message: 'Authentication token required'
+              }));
+            }
+            break;
+            
+          case 'join_session':
+            // Join a collaboration session
+            if (!isAuthenticated || !userId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Authentication required'
+              }));
+              break;
+            }
+            
+            if (!data.sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Session ID required'
+              }));
+              break;
+            }
+            
+            try {
+              // Initialize the session if needed
+              const initResult = await collaborationService.initializeSession(
+                data.sessionId, 
+                false
+              );
+              
+              if (!initResult.success) {
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  message: initResult.message
+                }));
+                break;
+              }
+              
+              // Add the client to the session
+              const result = await collaborationService.addClientToSession(
+                ws,
+                data.sessionId,
+                userId,
+                data.username || `User-${userId}`
+              );
+              
+              if (result.success) {
+                clientId = result.clientId!;
+                sessionId = data.sessionId;
+                
+                // Store the client info
+                clientMap.set(ws, { clientId, userId, sessionId });
+              } else {
+                ws.send(JSON.stringify({
+                  type: 'error',
+                  message: result.message
+                }));
+              }
+            } catch (error) {
+              console.error('Error joining collaboration session:', error);
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to join collaboration session'
+              }));
+            }
+            break;
+            
+          case 'update':
+            // Process Y.js update
+            if (!clientId || !sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Not joined to a session'
+              }));
+              break;
+            }
+            
+            try {
+              // Decode the base64 update
+              const updateBuffer = Buffer.from(data.update, 'base64');
+              
+              // Process the update
+              await collaborationService.processYjsUpdate(
+                clientId,
+                sessionId,
+                updateBuffer
+              );
+            } catch (error) {
+              console.error('Error processing Y.js update:', error);
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Failed to process update'
+              }));
+            }
+            break;
+            
+          case 'cursor':
+            // Update cursor position
+            if (!clientId || !sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Not joined to a session'
+              }));
+              break;
+            }
+            
+            try {
+              await collaborationService.updateCursorPosition(
+                clientId,
+                sessionId,
+                data.position,
+                data.selection
+              );
+            } catch (error) {
+              console.error('Error updating cursor position:', error);
+            }
+            break;
+            
+          case 'presence':
+            // Update presence state
+            if (!clientId || !sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Not joined to a session'
+              }));
+              break;
+            }
+            
+            try {
+              await collaborationService.updatePresence(
+                clientId,
+                sessionId,
+                data.state
+              );
+            } catch (error) {
+              console.error('Error updating presence:', error);
+            }
+            break;
+            
+          case 'comment':
+            // Add a comment
+            if (!clientId || !sessionId) {
+              ws.send(JSON.stringify({
+                type: 'error',
+                message: 'Not joined to a session'
+              }));
+              break;
+            }
+            
+            try {
+              await collaborationService.addComment(
+                clientId,
+                sessionId,
+                data.comment
+              );
+            } catch (error) {
+              console.error('Error adding comment:', error);
+            }
+            break;
+            
+          case 'ping':
+            // Simple ping-pong to keep the connection alive
+            ws.send(JSON.stringify({
+              type: 'pong',
+              timestamp: Date.now()
+            }));
+            break;
+            
+          default:
+            console.log('Unknown message type:', data.type);
+            break;
+        }
+      } catch (error) {
+        console.error('Error processing WebSocket message:', error);
+      }
+    });
+    
+    // Handle disconnection
+    ws.on('close', async () => {
+      // Clean up the client
+      const clientInfo = clientMap.get(ws);
+      if (clientInfo) {
+        try {
+          await collaborationService.removeClientFromSession(clientInfo.clientId);
+          clientMap.delete(ws);
+        } catch (error) {
+          console.error('Error removing client from session:', error);
+        }
+      }
+    });
+    
+    // Handle errors
+    ws.on('error', (error) => {
+      console.error('WebSocket error:', error);
     });
   });
   
