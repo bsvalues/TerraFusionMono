@@ -258,7 +258,7 @@ export type InsertUserPlugin = z.infer<typeof insertUserPluginSchema>;
 // Geocode call tracking for metered billing
 export const geocodeCalls = pgTable("geocode_calls", {
   id: serial("id").primaryKey(),
-  tenantId: integer("tenant_id").notNull(), // The customer/tenant ID
+  tenantId: integer("tenant_id").notNull().references(() => users.id), // The customer/tenant ID references users
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   address: text("address"),
   success: boolean("success").default(true),
@@ -465,7 +465,7 @@ export const insertSoilAnalysisSchema = createInsertSchema(soilAnalyses)
 // Yield predictions
 export const yieldPredictions = pgTable("yield_predictions", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
@@ -495,7 +495,7 @@ export const insertYieldPredictionSchema = createInsertSchema(yieldPredictions)
 // Crop health images
 export const cropHealthImages = pgTable("crop_health_images", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   imageUrl: text("image_url").notNull(),
@@ -519,7 +519,7 @@ export const insertCropHealthImageSchema = createInsertSchema(cropHealthImages)
 // Weather data for crop health analysis
 export const weatherData = pgTable("weather_data", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   dataType: text("data_type").notNull(), // forecast, historical, current
   source: text("source").notNull(), // weather service name
