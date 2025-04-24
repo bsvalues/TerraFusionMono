@@ -4,6 +4,39 @@ import { db } from '../server/db';
 // Defining view creation function
 export async function createViews() {
   try {
+    // Create additional composite indexes for performance optimization
+    // These indexes target common join patterns and frequently filtered columns
+    await db.execute(sql`
+      -- Composite indexes for Parcels
+      CREATE INDEX IF NOT EXISTS parcels_crop_status_idx ON parcels (current_crop, status);
+      
+      -- Composite indexes for Crop Health Analyses
+      CREATE INDEX IF NOT EXISTS crop_health_analyses_parcel_timestamp_idx 
+        ON crop_health_analyses (parcel_id, "timestamp");
+      CREATE INDEX IF NOT EXISTS crop_health_analyses_health_score_timestamp_idx 
+        ON crop_health_analyses (health_score, "timestamp");
+        
+      -- Composite indexes for Soil Analyses
+      CREATE INDEX IF NOT EXISTS soil_analyses_parcel_timestamp_idx 
+        ON soil_analyses (parcel_id, "timestamp");
+        
+      -- Composite indexes for Weather Data
+      CREATE INDEX IF NOT EXISTS weather_data_parcel_timestamp_idx 
+        ON weather_data (parcel_id, "timestamp");
+      CREATE INDEX IF NOT EXISTS weather_data_type_timestamp_idx 
+        ON weather_data (data_type, "timestamp");
+        
+      -- Composite indexes for Yield Predictions
+      CREATE INDEX IF NOT EXISTS yield_predictions_parcel_timestamp_idx 
+        ON yield_predictions (parcel_id, "timestamp");
+      CREATE INDEX IF NOT EXISTS yield_predictions_crop_harvest_idx 
+        ON yield_predictions (crop_type, harvest_date_estimate);
+        
+      -- Text search index for parcels (GIN index)
+      CREATE INDEX IF NOT EXISTS parcels_name_description_idx ON parcels 
+        USING gin(to_tsvector('english', name || ' ' || COALESCE(description, '')));
+    `);
+
     // 1. Parcel Summary View - Shows summary statistics for each parcel
     await db.execute(sql`
       CREATE OR REPLACE VIEW parcel_summary_view AS
@@ -23,9 +56,17 @@ export async function createViews() {
         (SELECT COUNT(*) FROM weather_data WHERE parcel_id = p.external_id) as weather_data_count,
         (SELECT AVG(health_score) FROM crop_health_analyses WHERE parcel_id = p.external_id) as avg_health_score,
         (SELECT MAX(created_at) FROM parcel_notes WHERE parcel_id = p.external_id) as last_note_date,
-        (SELECT MAX(created_at) FROM crop_health_analyses WHERE parcel_id = p.external_id) as last_health_analysis_date
+        (SELECT MAX(timestamp) FROM crop_health_analyses WHERE parcel_id = p.external_id) as last_health_analysis_date
       FROM parcels p
       GROUP BY p.external_id, p.name, p.area_hectares, p.description, p.current_crop, p.status;
+    `);
+
+    // Create a materialized view for parcel summary since this is expensive and doesn't change often
+    await db.execute(sql`
+      CREATE MATERIALIZED VIEW IF NOT EXISTS parcel_summary_mv AS
+      SELECT * FROM parcel_summary_view;
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS parcel_summary_mv_id_idx ON parcel_summary_mv (parcel_id);
     `);
 
     // 2. Crop Health Dashboard View - Aggregated crop health data for dashboard displays
@@ -133,8 +174,40 @@ export async function createViews() {
                wd.wind_speed, wd.conditions, wd.timestamp
       ORDER BY wd.timestamp DESC;
     `);
+    
+    // 6. Recent Crop Health Materialized View - for faster dashboard loading
+    await db.execute(sql`
+      CREATE MATERIALIZED VIEW IF NOT EXISTS recent_crop_health_mv AS
+      SELECT * FROM crop_health_dashboard_view
+      WHERE analysis_date > NOW() - INTERVAL '90 days'
+      ORDER BY analysis_date DESC;
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS recent_crop_health_mv_idx ON recent_crop_health_mv (parcel_id, analysis_id);
+    `);
+    
+    // 7. Weather Forecast Materialized View - for faster current forecasts
+    await db.execute(sql`
+      CREATE MATERIALIZED VIEW IF NOT EXISTS weather_forecast_mv AS
+      SELECT * FROM weather_data_overview_view
+      WHERE data_type = 'forecast'
+      ORDER BY observation_date DESC;
+      
+      CREATE UNIQUE INDEX IF NOT EXISTS weather_forecast_mv_idx ON weather_forecast_mv (parcel_id, observation_date);
+    `);
+    
+    // Add a function to refresh materialized views
+    await db.execute(sql`
+      CREATE OR REPLACE FUNCTION refresh_materialized_views()
+      RETURNS void AS $$
+      BEGIN
+        REFRESH MATERIALIZED VIEW CONCURRENTLY parcel_summary_mv;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY recent_crop_health_mv;
+        REFRESH MATERIALIZED VIEW CONCURRENTLY weather_forecast_mv;
+      END;
+      $$ LANGUAGE plpgsql;
+    `);
 
-    console.log('Database views created successfully');
+    console.log('Database views and optimizations created successfully');
   } catch (error) {
     console.error('Error creating database views:', error);
     throw error;
