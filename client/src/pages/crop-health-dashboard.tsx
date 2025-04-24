@@ -35,7 +35,8 @@ import {
   RefreshCwIcon, 
   AlertTriangleIcon, 
   FolderOpenIcon,
-  PlantIcon 
+  Leaf, // Replacing PlantIcon with Leaf
+  SproutIcon 
 } from "lucide-react";
 
 export default function CropHealthDashboard() {
@@ -507,7 +508,7 @@ export default function CropHealthDashboard() {
           ) : (
             <Card>
               <CardContent className="p-6 flex flex-col items-center justify-center text-center h-60">
-                <PlantIcon className="h-10 w-10 text-muted-foreground mb-4" />
+                <Leaf className="h-10 w-10 text-muted-foreground mb-4" />
                 <h3 className="font-medium">Health Data Unavailable</h3>
                 <p className="text-sm text-muted-foreground mt-1 max-w-[200px]">
                   Unable to retrieve crop health data for this parcel.
