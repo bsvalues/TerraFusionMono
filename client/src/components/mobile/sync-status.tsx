@@ -21,7 +21,7 @@ export function SyncStatus({ className = '' }: SyncStatusProps) {
 
   // Query to fetch the current sync status from the server
   const { data, isLoading, error } = useQuery({
-    queryKey: ['/api/mobile/sync/status'],
+    queryKey: ['/api/sync/status'],
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 

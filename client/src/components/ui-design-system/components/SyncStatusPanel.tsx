@@ -55,20 +55,20 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
 
   // Query to fetch the current sync status from the server
   const { data, isLoading, error, refetch } = useQuery({
-    queryKey: ['/api/mobile/sync/status'],
+    queryKey: ['/api/sync/status'],
     refetchInterval: 30000, // Refetch every 30 seconds
   });
 
   // Query to fetch connected devices
   const { data: deviceData } = useQuery({
-    queryKey: ['/api/mobile/devices'],
+    queryKey: ['/api/sync/devices'],
     refetchInterval: 60000, // Refetch every minute
   });
 
   // Trigger manual sync
   const triggerSync = async () => {
     try {
-      await fetch('/api/mobile/sync/trigger', {
+      await fetch('/api/sync/trigger', {
         method: 'POST',
       });
       refetch();
