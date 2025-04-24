@@ -738,6 +738,441 @@ export class DatabaseStorage implements IStorage {
       .returning();
     return updatedIdentification;
   }
+  
+  // ==== WebSocket Collaboration operations ====
+  
+  // Collaboration Session operations
+  async getCollaborationSessions(options?: { limit?: number, ownerId?: number, status?: string, documentType?: string, documentId?: string }): Promise<CollaborationSession[]> {
+    let query = db.select().from(collaborationSessions);
+    
+    if (options?.ownerId) {
+      query = query.where(eq(collaborationSessions.ownerId, options.ownerId));
+    }
+    
+    if (options?.status) {
+      query = query.where(eq(collaborationSessions.status, options.status));
+    }
+    
+    if (options?.documentType) {
+      query = query.where(eq(collaborationSessions.documentType, options.documentType));
+    }
+    
+    if (options?.documentId) {
+      query = query.where(eq(collaborationSessions.documentId, options.documentId));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(collaborationSessions.createdAt));
+  }
+  
+  async getCollaborationSession(id: number): Promise<CollaborationSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(collaborationSessions)
+      .where(eq(collaborationSessions.id, id));
+    return session;
+  }
+  
+  async getCollaborationSessionBySessionId(sessionId: string): Promise<CollaborationSession | undefined> {
+    const [session] = await db
+      .select()
+      .from(collaborationSessions)
+      .where(eq(collaborationSessions.sessionId, sessionId));
+    return session;
+  }
+  
+  async createCollaborationSession(session: InsertCollaborationSession): Promise<CollaborationSession> {
+    const [newSession] = await db
+      .insert(collaborationSessions)
+      .values(session)
+      .returning();
+    return newSession;
+  }
+  
+  async updateCollaborationSession(id: number, updates: Partial<CollaborationSession>): Promise<CollaborationSession | undefined> {
+    const [updatedSession] = await db
+      .update(collaborationSessions)
+      .set(updates)
+      .where(eq(collaborationSessions.id, id))
+      .returning();
+    return updatedSession;
+  }
+  
+  // Session Participant operations
+  async getSessionParticipants(sessionId: string): Promise<SessionParticipant[]> {
+    return await db
+      .select()
+      .from(sessionParticipants)
+      .where(eq(sessionParticipants.sessionId, sessionId))
+      .orderBy(desc(sessionParticipants.joinedAt));
+  }
+  
+  async getSessionParticipant(id: number): Promise<SessionParticipant | undefined> {
+    const [participant] = await db
+      .select()
+      .from(sessionParticipants)
+      .where(eq(sessionParticipants.id, id));
+    return participant;
+  }
+  
+  async getActiveSessionParticipant(sessionId: string, userId: number): Promise<SessionParticipant | undefined> {
+    const [participant] = await db
+      .select()
+      .from(sessionParticipants)
+      .where(
+        and(
+          eq(sessionParticipants.sessionId, sessionId),
+          eq(sessionParticipants.userId, userId)
+        )
+      );
+    return participant;
+  }
+  
+  async createSessionParticipant(participant: InsertSessionParticipant): Promise<SessionParticipant> {
+    const [newParticipant] = await db
+      .insert(sessionParticipants)
+      .values(participant)
+      .returning();
+    return newParticipant;
+  }
+  
+  async updateSessionParticipant(id: number, updates: Partial<SessionParticipant>): Promise<SessionParticipant | undefined> {
+    const [updatedParticipant] = await db
+      .update(sessionParticipants)
+      .set(updates)
+      .where(eq(sessionParticipants.id, id))
+      .returning();
+    return updatedParticipant;
+  }
+  
+  // Document Version operations
+  async getDocumentVersions(options: { sessionId?: string, documentType?: string, documentId?: string, limit?: number }): Promise<DocumentVersion[]> {
+    let query = db.select().from(documentVersions);
+    
+    if (options.sessionId) {
+      query = query.where(eq(documentVersions.sessionId, options.sessionId));
+    }
+    
+    if (options.documentType && options.documentId) {
+      query = query.where(
+        and(
+          eq(documentVersions.documentType, options.documentType),
+          eq(documentVersions.documentId, options.documentId)
+        )
+      );
+    }
+    
+    if (options.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(documentVersions.createdAt), desc(documentVersions.version));
+  }
+  
+  async getLatestDocumentVersion(documentType: string, documentId: string): Promise<DocumentVersion | undefined> {
+    const [version] = await db
+      .select()
+      .from(documentVersions)
+      .where(
+        and(
+          eq(documentVersions.documentType, documentType),
+          eq(documentVersions.documentId, documentId)
+        )
+      )
+      .orderBy(desc(documentVersions.version))
+      .limit(1);
+    return version;
+  }
+  
+  async createDocumentVersion(version: InsertDocumentVersion): Promise<DocumentVersion> {
+    const [newVersion] = await db
+      .insert(documentVersions)
+      .values(version)
+      .returning();
+    return newVersion;
+  }
+  
+  // Collaboration Event operations
+  async getCollaborationEvents(options: { sessionId: string, limit?: number, since?: Date }): Promise<CollaborationEvent[]> {
+    let query = db
+      .select()
+      .from(collaborationEvents)
+      .where(eq(collaborationEvents.sessionId, options.sessionId));
+    
+    if (options.since) {
+      query = query.where(gte(collaborationEvents.timestamp, options.since));
+    }
+    
+    if (options.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(collaborationEvents.timestamp));
+  }
+  
+  async createCollaborationEvent(event: InsertCollaborationEvent): Promise<CollaborationEvent> {
+    const [newEvent] = await db
+      .insert(collaborationEvents)
+      .values(event)
+      .returning();
+    return newEvent;
+  }
+  
+  // ==== Field Data Collection operations ====
+  
+  // Field Observation operations
+  async getFieldObservations(options?: { limit?: number, userId?: number, parcelId?: string, observationType?: string, since?: Date }): Promise<FieldObservation[]> {
+    let query = db.select().from(fieldObservations);
+    
+    if (options?.userId) {
+      query = query.where(eq(fieldObservations.userId, options.userId));
+    }
+    
+    if (options?.parcelId) {
+      query = query.where(eq(fieldObservations.parcelId, options.parcelId));
+    }
+    
+    if (options?.observationType) {
+      query = query.where(eq(fieldObservations.observationType, options.observationType));
+    }
+    
+    if (options?.since) {
+      query = query.where(gte(fieldObservations.timestamp, options.since));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(fieldObservations.timestamp));
+  }
+  
+  async getFieldObservation(id: number): Promise<FieldObservation | undefined> {
+    const [observation] = await db
+      .select()
+      .from(fieldObservations)
+      .where(eq(fieldObservations.id, id));
+    return observation;
+  }
+  
+  async getFieldObservationByObservationId(observationId: string): Promise<FieldObservation | undefined> {
+    const [observation] = await db
+      .select()
+      .from(fieldObservations)
+      .where(eq(fieldObservations.observationId, observationId));
+    return observation;
+  }
+  
+  async createFieldObservation(observation: InsertFieldObservation): Promise<FieldObservation> {
+    const [newObservation] = await db
+      .insert(fieldObservations)
+      .values(observation)
+      .returning();
+    return newObservation;
+  }
+  
+  async updateFieldObservation(id: number, updates: Partial<FieldObservation>): Promise<FieldObservation | undefined> {
+    const [updatedObservation] = await db
+      .update(fieldObservations)
+      .set(updates)
+      .where(eq(fieldObservations.id, id))
+      .returning();
+    return updatedObservation;
+  }
+  
+  // Sensor Reading operations
+  async getSensorReadings(options?: { limit?: number, sensorId?: string, parcelId?: string, readingType?: string, since?: Date }): Promise<SensorReading[]> {
+    let query = db.select().from(sensorReadings);
+    
+    if (options?.sensorId) {
+      query = query.where(eq(sensorReadings.sensorId, options.sensorId));
+    }
+    
+    if (options?.parcelId) {
+      query = query.where(eq(sensorReadings.parcelId, options.parcelId));
+    }
+    
+    if (options?.readingType) {
+      query = query.where(eq(sensorReadings.readingType, options.readingType));
+    }
+    
+    if (options?.since) {
+      query = query.where(gte(sensorReadings.timestamp, options.since));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(sensorReadings.timestamp));
+  }
+  
+  async getSensorReading(id: number): Promise<SensorReading | undefined> {
+    const [reading] = await db
+      .select()
+      .from(sensorReadings)
+      .where(eq(sensorReadings.id, id));
+    return reading;
+  }
+  
+  async getSensorReadingByReadingId(readingId: string): Promise<SensorReading | undefined> {
+    const [reading] = await db
+      .select()
+      .from(sensorReadings)
+      .where(eq(sensorReadings.readingId, readingId));
+    return reading;
+  }
+  
+  async createSensorReading(reading: InsertSensorReading): Promise<SensorReading> {
+    const [newReading] = await db
+      .insert(sensorReadings)
+      .values(reading)
+      .returning();
+    return newReading;
+  }
+  
+  async updateSensorReading(id: number, updates: Partial<SensorReading>): Promise<SensorReading | undefined> {
+    const [updatedReading] = await db
+      .update(sensorReadings)
+      .set(updates)
+      .where(eq(sensorReadings.id, id))
+      .returning();
+    return updatedReading;
+  }
+  
+  // ==== Plugin Marketplace operations ====
+  
+  // Plugin Review operations
+  async getPluginReviews(options?: { limit?: number, pluginId?: number, status?: string }): Promise<PluginReview[]> {
+    let query = db.select().from(pluginReviews);
+    
+    if (options?.pluginId) {
+      query = query.where(eq(pluginReviews.pluginId, options.pluginId));
+    }
+    
+    if (options?.status) {
+      query = query.where(eq(pluginReviews.status, options.status));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(pluginReviews.createdAt));
+  }
+  
+  async getPluginReview(id: number): Promise<PluginReview | undefined> {
+    const [review] = await db
+      .select()
+      .from(pluginReviews)
+      .where(eq(pluginReviews.id, id));
+    return review;
+  }
+  
+  async getUserPluginReview(userId: number, pluginId: number): Promise<PluginReview | undefined> {
+    const [review] = await db
+      .select()
+      .from(pluginReviews)
+      .where(
+        and(
+          eq(pluginReviews.userId, userId),
+          eq(pluginReviews.pluginId, pluginId)
+        )
+      );
+    return review;
+  }
+  
+  async createPluginReview(review: InsertPluginReview): Promise<PluginReview> {
+    const [newReview] = await db
+      .insert(pluginReviews)
+      .values(review)
+      .returning();
+    return newReview;
+  }
+  
+  async updatePluginReview(id: number, updates: Partial<PluginReview>): Promise<PluginReview | undefined> {
+    const [updatedReview] = await db
+      .update(pluginReviews)
+      .set(updates)
+      .where(eq(pluginReviews.id, id))
+      .returning();
+    return updatedReview;
+  }
+  
+  // Plugin Category operations
+  async getPluginCategories(includeInactive?: boolean): Promise<PluginCategory[]> {
+    let query = db.select().from(pluginCategories);
+    
+    if (!includeInactive) {
+      query = query.where(eq(pluginCategories.isActive, true));
+    }
+    
+    return await query.orderBy(asc(pluginCategories.displayOrder), asc(pluginCategories.name));
+  }
+  
+  async getPluginCategory(id: number): Promise<PluginCategory | undefined> {
+    const [category] = await db
+      .select()
+      .from(pluginCategories)
+      .where(eq(pluginCategories.id, id));
+    return category;
+  }
+  
+  async getPluginCategoryBySlug(slug: string): Promise<PluginCategory | undefined> {
+    const [category] = await db
+      .select()
+      .from(pluginCategories)
+      .where(eq(pluginCategories.slug, slug));
+    return category;
+  }
+  
+  async createPluginCategory(category: InsertPluginCategory): Promise<PluginCategory> {
+    const [newCategory] = await db
+      .insert(pluginCategories)
+      .values(category)
+      .returning();
+    return newCategory;
+  }
+  
+  async updatePluginCategory(id: number, updates: Partial<PluginCategory>): Promise<PluginCategory | undefined> {
+    const [updatedCategory] = await db
+      .update(pluginCategories)
+      .set(updates)
+      .where(eq(pluginCategories.id, id))
+      .returning();
+    return updatedCategory;
+  }
+  
+  // Plugin Category Relation operations
+  async getPluginCategoryRelations(pluginId: number): Promise<PluginCategoryRelation[]> {
+    return await db
+      .select()
+      .from(pluginCategoryRelations)
+      .where(eq(pluginCategoryRelations.pluginId, pluginId));
+  }
+  
+  async createPluginCategoryRelation(relation: InsertPluginCategoryRelation): Promise<PluginCategoryRelation> {
+    const [newRelation] = await db
+      .insert(pluginCategoryRelations)
+      .values(relation)
+      .returning();
+    return newRelation;
+  }
+  
+  async deletePluginCategoryRelation(pluginId: number, categoryId: number): Promise<boolean> {
+    const result = await db
+      .delete(pluginCategoryRelations)
+      .where(
+        and(
+          eq(pluginCategoryRelations.pluginId, pluginId),
+          eq(pluginCategoryRelations.categoryId, categoryId)
+        )
+      );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
 }
 
 // Create and export the storage instance

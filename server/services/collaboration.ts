@@ -1,13 +1,14 @@
-import { WebSocket } from 'ws';
-import { v4 as uuidv4 } from 'uuid';
 import * as Y from 'yjs';
+import { WebSocket } from 'ws';
 import { storage } from '../storage';
+import { v4 as uuid } from 'uuid';
 import { 
-  DocumentVersion, 
-  CollaborationSession, 
-  SessionParticipant, 
-  CollaborationEvent,
-  collaborationEventTypeEnum
+  InsertCollaborationEvent, 
+  InsertCollaborationSession, 
+  InsertDocumentVersion, 
+  InsertSessionParticipant,
+  CollaborationSession,
+  DocumentVersion
 } from '@shared/schema';
 
 interface YDocMap {
@@ -30,33 +31,38 @@ interface WebSocketClient {
   lastActivity: Date;
 }
 
-// Maps sessionId -> YDoc and connected clients
+// Store Y.js documents and active client connections in memory
 const sessions: YDocMap = {};
 
-// Maps clientId -> WebSocketClient for easy lookup
-const clientsMap = new Map<string, WebSocketClient>();
-
-// Color palette for user cursors (hex colors)
+// Create a map of cursor colors for different clients
 const cursorColors = [
-  '#F44336', '#E91E63', '#9C27B0', '#673AB7', 
-  '#3F51B5', '#2196F3', '#03A9F4', '#00BCD4',
-  '#009688', '#4CAF50', '#8BC34A', '#CDDC39',
-  '#FFEB3B', '#FFC107', '#FF9800', '#FF5722'
+  '#FF5733', // Red
+  '#33FF57', // Green
+  '#3357FF', // Blue
+  '#FF33F5', // Pink
+  '#33FFF5', // Cyan
+  '#F5FF33', // Yellow
+  '#FF8333', // Orange
+  '#8333FF', // Purple
+  '#33FF83', // Mint
+  '#FF3383', // Magenta
 ];
 
 /**
  * Get a random color from the cursor colors palette
  */
 function getRandomColor(): string {
-  return cursorColors[Math.floor(Math.random() * cursorColors.length)];
+  const index = Math.floor(Math.random() * cursorColors.length);
+  return cursorColors[index];
 }
 
 /**
  * Encode a Y.js document to a base64 string for storage
  */
 function encodeYDoc(ydoc: Y.Doc): string {
-  const state = Y.encodeStateAsUpdate(ydoc);
-  return Buffer.from(state).toString('base64');
+  const update = Y.encodeStateAsUpdate(ydoc);
+  const updateArray = Array.from(update);
+  return Buffer.from(updateArray).toString('base64');
 }
 
 /**
@@ -64,8 +70,17 @@ function encodeYDoc(ydoc: Y.Doc): string {
  */
 function decodeYDoc(base64State: string): Y.Doc {
   const ydoc = new Y.Doc();
-  const binaryState = Buffer.from(base64State, 'base64');
-  Y.applyUpdate(ydoc, binaryState);
+  
+  if (base64State) {
+    try {
+      const buffer = Buffer.from(base64State, 'base64');
+      const update = new Uint8Array(buffer);
+      Y.applyUpdate(ydoc, update);
+    } catch (error) {
+      console.error('Error decoding Y.js document:', error);
+    }
+  }
+  
   return ydoc;
 }
 
@@ -73,42 +88,47 @@ function decodeYDoc(base64State: string): Y.Doc {
  * Process Y.js update from a client and apply it to the shared document
  */
 export async function processYjsUpdate(
-  clientId: string, 
-  sessionId: string, 
+  clientId: string,
+  sessionId: string,
   update: Uint8Array
 ): Promise<void> {
-  const client = clientsMap.get(clientId);
-  if (!client) {
-    console.error(`Client ${clientId} not found`);
-    return;
-  }
-
-  const session = sessions[sessionId];
-  if (!session) {
+  // Get or initialize session
+  const sessionData = sessions[sessionId];
+  if (!sessionData) {
     console.error(`Session ${sessionId} not found`);
     return;
   }
-
-  // Apply update to the Y.js document
-  Y.applyUpdate(session.ydoc, update);
-  session.lastUpdate = new Date();
-
-  // Log the collaboration event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId: client.userId,
-    eventType: 'update',
-    data: { clientId },
-    clientId,
-  });
-
-  // Broadcast the update to all other clients in the session
+  
+  // Apply update to the shared document
+  Y.applyUpdate(sessionData.ydoc, update);
+  
+  // Update last activity timestamp
+  const client = sessionData.clients.get(clientId);
+  if (client) {
+    client.lastActivity = new Date();
+  }
+  
+  // Update the lastUpdate timestamp
+  sessionData.lastUpdate = new Date();
+  
+  // Broadcast update to other clients
   broadcastYjsUpdate(sessionId, update, clientId);
-
-  // Periodically save document versions (e.g., every 10 updates)
-  const updatesCount = session.ydoc.store.clients.size;
-  if (updatesCount % 10 === 0) {
-    await saveDocumentVersion(sessionId);
+  
+  // Log the event
+  try {
+    await storage.createCollaborationEvent({
+      sessionId,
+      userId: client?.userId || 0,
+      username: client?.username || 'Unknown',
+      eventType: 'update',
+      eventData: JSON.stringify({
+        clientId,
+        updateSize: update.length
+      }),
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Error logging collaboration event:', error);
   }
 }
 
@@ -116,19 +136,23 @@ export async function processYjsUpdate(
  * Broadcast Y.js update to all clients in a session except the sender
  */
 function broadcastYjsUpdate(sessionId: string, update: Uint8Array, excludeClientId: string): void {
-  const session = sessions[sessionId];
-  if (!session) return;
-
-  const updateBuffer = Buffer.from(update);
-  const updateBase64 = updateBuffer.toString('base64');
-
-  for (const [clientId, client] of session.clients) {
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
+  
+  // Convert update to base64 for transmission
+  const updateBase64 = Buffer.from(update).toString('base64');
+  
+  // Prepare the message
+  const message = JSON.stringify({
+    type: 'yjsUpdate',
+    update: updateBase64,
+    clientId: excludeClientId
+  });
+  
+  // Send to all clients except the sender
+  for (const [clientId, client] of sessionData.clients.entries()) {
     if (clientId !== excludeClientId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify({
-        type: 'yjsUpdate',
-        sessionId,
-        update: updateBase64
-      }));
+      client.ws.send(message);
     }
   }
 }
@@ -137,48 +161,35 @@ function broadcastYjsUpdate(sessionId: string, update: Uint8Array, excludeClient
  * Update a client's cursor position and broadcast to other clients in the session
  */
 export async function updateCursorPosition(
-  clientId: string, 
-  sessionId: string, 
+  clientId: string,
+  sessionId: string,
   position: { x: number, y: number },
   selection?: { anchor: number, head: number }
 ): Promise<void> {
-  const client = clientsMap.get(clientId);
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
+  
+  const client = sessionData.clients.get(clientId);
   if (!client) return;
-
-  const session = sessions[sessionId];
-  if (!session) return;
-
-  // Update the client's position and selection
+  
+  // Update client's cursor position
   client.position = position;
   client.selection = selection;
   client.lastActivity = new Date();
-
-  // Create the cursor update message
-  const cursorData = {
-    clientId,
-    userId: client.userId,
-    username: client.username,
-    color: client.color,
-    position,
-    selection
-  };
-
-  // Log the cursor movement event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId: client.userId,
-    eventType: 'cursor',
-    data: cursorData,
-    clientId,
+  
+  // Broadcast to other clients
+  const message = JSON.stringify({
+    type: 'cursor',
+    data: {
+      clientId,
+      position,
+      selection
+    }
   });
-
-  // Broadcast to all other clients
-  for (const [otherClientId, otherClient] of session.clients) {
-    if (otherClientId !== clientId && otherClient.ws.readyState === WebSocket.OPEN) {
-      otherClient.ws.send(JSON.stringify({
-        type: 'cursor',
-        data: cursorData
-      }));
+  
+  for (const [otherId, otherClient] of sessionData.clients.entries()) {
+    if (otherId !== clientId && otherClient.ws.readyState === WebSocket.OPEN) {
+      otherClient.ws.send(message);
     }
   }
 }
@@ -189,47 +200,42 @@ export async function updateCursorPosition(
 export async function updatePresence(
   clientId: string,
   sessionId: string,
-  presenceState: 'active' | 'inactive' | 'away'
+  state: 'active' | 'inactive' | 'away'
 ): Promise<void> {
-  const client = clientsMap.get(clientId);
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
+  
+  const client = sessionData.clients.get(clientId);
   if (!client) return;
-
-  const session = sessions[sessionId];
-  if (!session) return;
-
-  // Update client's last activity
+  
+  // Update last activity timestamp
   client.lastActivity = new Date();
-
-  // Log the presence event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId: client.userId,
-    eventType: 'presence',
-    data: { 
-      clientId, 
-      userId: client.userId, 
-      username: client.username, 
-      state: presenceState 
-    },
+  
+  // Broadcast to other clients
+  const message = JSON.stringify({
+    type: 'presence',
     clientId,
+    state
   });
-
-  // Broadcast to all other clients
-  for (const [otherClientId, otherClient] of session.clients) {
-    if (otherClientId !== clientId && otherClient.ws.readyState === WebSocket.OPEN) {
-      otherClient.ws.send(JSON.stringify({
-        type: 'presence',
-        clientId,
-        userId: client.userId,
-        username: client.username,
-        state: presenceState
-      }));
+  
+  for (const [otherId, otherClient] of sessionData.clients.entries()) {
+    if (otherId !== clientId && otherClient.ws.readyState === WebSocket.OPEN) {
+      otherClient.ws.send(message);
     }
   }
-
-  // Update the database if needed (e.g., if user is leaving)
-  if (presenceState === 'away') {
-    await updateParticipantStatus(sessionId, client.userId, false);
+  
+  // Log the event
+  try {
+    await storage.createCollaborationEvent({
+      sessionId,
+      userId: client.userId,
+      username: client.username,
+      eventType: 'presence',
+      eventData: JSON.stringify({ state }),
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Error logging presence event:', error);
   }
 }
 
@@ -237,133 +243,113 @@ export async function updatePresence(
  * Save the current state of a document as a version
  */
 async function saveDocumentVersion(sessionId: string): Promise<DocumentVersion | undefined> {
-  const session = sessions[sessionId];
-  if (!session) return undefined;
-
-  // Get session info from database
-  const sessionInfo = await storage.getCollaborationSessionBySessionId(sessionId);
-  if (!sessionInfo) return undefined;
-
-  // Encode the document state
-  const snapshot = encodeYDoc(session.ydoc);
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
   
-  // Get the highest version currently in the database
-  const existingVersions = await storage.getDocumentVersions({
-    documentType: sessionInfo.documentType,
-    documentId: sessionInfo.documentId,
-    limit: 1
-  });
-  
-  const nextVersion = existingVersions.length > 0 
-    ? Math.max(...existingVersions.map(v => v.version)) + 1 
-    : 1;
-
-  // Save the new version
-  const docVersion = await storage.createDocumentVersion({
-    sessionId,
-    documentType: sessionInfo.documentType,
-    documentId: sessionInfo.documentId,
-    version: nextVersion,
-    snapshot,
-    yState: snapshot, // We're storing the same data in both fields for now
-    userId: sessionInfo.ownerId, // Use the session owner as the creator
-    metadata: {
-      clientCount: session.clients.size,
-      timestamp: new Date().toISOString()
-    }
-  });
-
-  return docVersion;
+  try {
+    // Get the session
+    const session = await storage.getCollaborationSessionBySessionId(sessionId);
+    if (!session) return;
+    
+    // Encode the document state
+    const encodedState = encodeYDoc(sessionData.ydoc);
+    
+    // Get the latest version number
+    const latestVersion = await storage.getLatestDocumentVersion(
+      session.documentType,
+      session.documentId
+    );
+    
+    const versionNumber = latestVersion ? latestVersion.version + 1 : 1;
+    
+    // Create a new version
+    const newVersion = await storage.createDocumentVersion({
+      sessionId,
+      documentType: session.documentType,
+      documentId: session.documentId,
+      version: versionNumber,
+      state: encodedState,
+      createdAt: new Date(),
+      createdBy: session.ownerId,
+      description: `Auto-saved version ${versionNumber}`
+    });
+    
+    console.log(`Saved document version ${versionNumber} for session ${sessionId}`);
+    
+    return newVersion;
+  } catch (error) {
+    console.error('Error saving document version:', error);
+    return undefined;
+  }
 }
 
 /**
  * Initialize a collaboration session
  */
 export async function initializeSession(
-  sessionId: string, 
-  createIfNotExists: boolean = false,
-  initialData?: any
+  sessionId: string,
+  createIfNotExists: boolean = false
 ): Promise<{ success: boolean, message?: string, session?: CollaborationSession }> {
-  // Check if the session already exists in memory
-  if (sessions[sessionId]) {
-    return { 
-      success: true, 
-      session: await storage.getCollaborationSessionBySessionId(sessionId)
-    };
-  }
-
-  // Retrieve the session from database
-  let sessionInfo = await storage.getCollaborationSessionBySessionId(sessionId);
-  
-  if (!sessionInfo && createIfNotExists) {
-    // Session doesn't exist yet, so we can't create it without more info
-    return { 
-      success: false, 
-      message: 'Session not found and not enough information to create it' 
-    };
-  }
-  
-  if (!sessionInfo) {
-    return { success: false, message: 'Session not found' };
-  }
-
-  // Initialize a new Y.js document
-  const ydoc = new Y.Doc();
-  
-  // Try to load the latest version from database
-  const latestVersion = await storage.getLatestDocumentVersion(
-    sessionInfo.documentType, 
-    sessionInfo.documentId
-  );
-  
-  if (latestVersion) {
-    // Apply the stored state to the document
-    try {
-      const binaryState = Buffer.from(latestVersion.yState, 'base64');
-      Y.applyUpdate(ydoc, binaryState);
-    } catch (error) {
-      console.error('Error loading document state:', error);
-    }
-  } else if (initialData) {
-    // Initialize with provided data
-    // This depends on the document type, here's a simple example for text
-    const ytext = ydoc.getText('content');
-    if (typeof initialData === 'string') {
-      ytext.insert(0, initialData);
-    } else if (initialData.text) {
-      ytext.insert(0, initialData.text);
+  try {
+    // Check if session already exists in memory
+    if (sessions[sessionId]) {
+      return { success: true, session: await storage.getCollaborationSessionBySessionId(sessionId) };
     }
     
-    // Save the initial version
-    await storage.createDocumentVersion({
-      sessionId,
-      documentType: sessionInfo.documentType,
-      documentId: sessionInfo.documentId,
-      version: 1,
-      snapshot: encodeYDoc(ydoc),
-      yState: encodeYDoc(ydoc),
-      userId: sessionInfo.ownerId,
-      metadata: { initial: true }
-    });
+    // Check if session exists in database
+    const session = await storage.getCollaborationSessionBySessionId(sessionId);
+    
+    if (!session) {
+      if (!createIfNotExists) {
+        return { success: false, message: 'Collaboration session not found' };
+      }
+      
+      // Session doesn't exist but createIfNotExists is true
+      return { success: false, message: 'Session must be created first via API' };
+    }
+    
+    // Initialize Y.js document
+    const ydoc = new Y.Doc();
+    
+    // Apply initial state if available
+    if (session.initialState) {
+      try {
+        const buffer = Buffer.from(session.initialState, 'base64');
+        const update = new Uint8Array(buffer);
+        Y.applyUpdate(ydoc, update);
+      } catch (error) {
+        console.error('Error applying initial state:', error);
+      }
+    } else {
+      // Try to load the latest version
+      const latestVersion = await storage.getLatestDocumentVersion(
+        session.documentType,
+        session.documentId
+      );
+      
+      if (latestVersion && latestVersion.state) {
+        try {
+          const buffer = Buffer.from(latestVersion.state, 'base64');
+          const update = new Uint8Array(buffer);
+          Y.applyUpdate(ydoc, update);
+        } catch (error) {
+          console.error('Error applying latest version:', error);
+        }
+      }
+    }
+    
+    // Add session to the in-memory store
+    sessions[sessionId] = {
+      ydoc,
+      clients: new Map(),
+      lastUpdate: new Date()
+    };
+    
+    return { success: true, session };
+  } catch (error) {
+    console.error('Error initializing session:', error);
+    return { success: false, message: 'Failed to initialize session' };
   }
-
-  // Store the session in memory
-  sessions[sessionId] = {
-    ydoc,
-    clients: new Map(),
-    lastUpdate: new Date()
-  };
-
-  // Update the session status to active
-  await storage.updateCollaborationSession(sessionInfo.id, {
-    status: 'active',
-    lastActivity: new Date()
-  });
-
-  // Get the updated session info
-  sessionInfo = await storage.getCollaborationSessionBySessionId(sessionId);
-
-  return { success: true, session: sessionInfo };
 }
 
 /**
@@ -374,107 +360,115 @@ export async function addClientToSession(
   sessionId: string,
   userId: number,
   username: string
-): Promise<{ success: boolean, clientId?: string, message?: string }> {
-  // Check if the session exists
-  const session = sessions[sessionId];
-  if (!session) {
-    return { success: false, message: 'Session not found' };
-  }
-
-  // Generate a client ID
-  const clientId = uuidv4();
-  
-  // Assign a random color to the user
-  const color = getRandomColor();
-  
-  // Create the client object
-  const client: WebSocketClient = {
-    userId,
-    username,
-    sessionId,
-    clientId,
-    ws,
-    color,
-    lastActivity: new Date()
-  };
-  
-  // Store the client
-  session.clients.set(clientId, client);
-  clientsMap.set(clientId, client);
-  
-  // Update the participant in the database
-  await updateParticipantStatus(sessionId, userId, true);
-  
-  // Log the join event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId,
-    eventType: 'join',
-    data: { 
-      clientId, 
-      username, 
-      color 
-    },
-    clientId,
-  });
-  
-  // Send the current state to the new client
-  const stateUpdate = Y.encodeStateAsUpdate(session.ydoc);
-  const stateBase64 = Buffer.from(stateUpdate).toString('base64');
-  
-  ws.send(JSON.stringify({
-    type: 'initialState',
-    clientId,
-    sessionId,
-    state: stateBase64,
-    color
-  }));
-  
-  // Notify other clients about the new client
-  broadcastClientJoin(sessionId, clientId, userId, username, color);
-  
-  // Send the current presence of all clients to the new client
-  const clients = Array.from(session.clients.entries())
-    .filter(([otherId]) => otherId !== clientId)
-    .map(([otherId, otherClient]) => ({
-      clientId: otherId,
-      userId: otherClient.userId,
-      username: otherClient.username,
-      color: otherClient.color,
-      position: otherClient.position,
-      selection: otherClient.selection
+): Promise<{ success: boolean, message?: string, clientId?: string }> {
+  try {
+    // Check if session exists
+    const sessionData = sessions[sessionId];
+    if (!sessionData) {
+      return { success: false, message: 'Session not initialized' };
+    }
+    
+    // Generate a new client ID
+    const clientId = uuid();
+    
+    // Create client
+    const client: WebSocketClient = {
+      userId,
+      username,
+      sessionId,
+      clientId,
+      ws,
+      color: getRandomColor(),
+      lastActivity: new Date()
+    };
+    
+    // Add client to the session
+    sessionData.clients.set(clientId, client);
+    
+    // Get list of other clients in the session
+    const otherClients = Array.from(sessionData.clients.entries())
+      .filter(([id]) => id !== clientId)
+      .map(([_, c]) => ({
+        clientId: c.clientId,
+        userId: c.userId,
+        username: c.username,
+        color: c.color,
+        position: c.position,
+        selection: c.selection
+      }));
+    
+    // Send initial state to the client
+    ws.send(JSON.stringify({
+      type: 'initialState',
+      clientId,
+      state: encodeYDoc(sessionData.ydoc),
     }));
-  
-  ws.send(JSON.stringify({
-    type: 'clientList',
-    clients
-  }));
-  
-  return { success: true, clientId };
+    
+    // Send list of other clients
+    ws.send(JSON.stringify({
+      type: 'clientList',
+      clients: otherClients
+    }));
+    
+    // Notify other clients about the new client
+    broadcastClientJoin(sessionId, clientId, userId, username, client.color);
+    
+    // Record the participant in the database
+    const participantData: InsertSessionParticipant = {
+      sessionId,
+      userId,
+      username,
+      clientId,
+      joinedAt: new Date(),
+      status: 'active',
+      color: client.color
+    };
+    
+    await storage.createSessionParticipant(participantData);
+    
+    // Log the join event
+    await storage.createCollaborationEvent({
+      sessionId,
+      userId,
+      username,
+      eventType: 'join',
+      eventData: JSON.stringify({ clientId }),
+      timestamp: new Date()
+    });
+    
+    console.log(`Client ${clientId} (${username}) joined session ${sessionId}`);
+    
+    return { success: true, clientId };
+  } catch (error) {
+    console.error('Error adding client to session:', error);
+    return { success: false, message: 'Failed to add client to session' };
+  }
 }
 
 /**
  * Broadcast a client join event to all other clients in a session
  */
 function broadcastClientJoin(
-  sessionId: string, 
-  clientId: string, 
-  userId: number, 
-  username: string, 
+  sessionId: string,
+  clientId: string,
+  userId: number,
+  username: string,
   color: string
 ): void {
-  const session = sessions[sessionId];
-  if (!session) return;
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
   
-  for (const [otherId, client] of session.clients) {
+  const message = JSON.stringify({
+    type: 'clientJoin',
+    clientId,
+    userId,
+    username,
+    color
+  });
+  
+  for (const [otherId, client] of sessionData.clients.entries()) {
     if (otherId !== clientId && client.ws.readyState === WebSocket.OPEN) {
-      client.ws.send(JSON.stringify({
-        type: 'clientJoin',
-        clientId,
-        userId,
-        username,
-        color
-      }));
+      client.ws.send(message);
     }
   }
 }
@@ -483,93 +477,77 @@ function broadcastClientJoin(
  * Remove a client from a session
  */
 export async function removeClientFromSession(clientId: string): Promise<void> {
-  const client = clientsMap.get(clientId);
-  if (!client) return;
-  
-  const { sessionId, userId, username } = client;
-  const session = sessions[sessionId];
-  if (!session) return;
-  
-  // Remove the client
-  session.clients.delete(clientId);
-  clientsMap.delete(clientId);
-  
-  // Log the leave event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId,
-    eventType: 'leave',
-    data: { 
-      clientId, 
-      username 
-    },
-    clientId,
-  });
-  
-  // If this was the last client, save the final state and clean up
-  if (session.clients.size === 0) {
-    await saveDocumentVersion(sessionId);
-    delete sessions[sessionId];
+  // Find the session that contains this client
+  for (const [sessionId, sessionData] of Object.entries(sessions)) {
+    const client = sessionData.clients.get(clientId);
     
-    // Update the session status
-    const sessionInfo = await storage.getCollaborationSessionBySessionId(sessionId);
-    if (sessionInfo) {
-      await storage.updateCollaborationSession(sessionInfo.id, {
-        status: 'paused',
-        lastActivity: new Date()
+    if (client) {
+      // Remove the client from the session
+      sessionData.clients.delete(clientId);
+      
+      // Update participant status in the database
+      await updateParticipantStatus(sessionId, clientId, 'disconnected');
+      
+      // Log the leave event
+      await storage.createCollaborationEvent({
+        sessionId,
+        userId: client.userId,
+        username: client.username,
+        eventType: 'leave',
+        eventData: JSON.stringify({ clientId }),
+        timestamp: new Date()
       });
-    }
-  } else {
-    // Notify other clients
-    for (const [, client] of session.clients) {
-      if (client.ws.readyState === WebSocket.OPEN) {
-        client.ws.send(JSON.stringify({
-          type: 'clientLeave',
-          clientId,
-          userId,
-          username
-        }));
+      
+      // Notify other clients
+      const message = JSON.stringify({
+        type: 'clientLeave',
+        clientId
+      });
+      
+      for (const [_, otherClient] of sessionData.clients.entries()) {
+        if (otherClient.ws.readyState === WebSocket.OPEN) {
+          otherClient.ws.send(message);
+        }
       }
+      
+      console.log(`Client ${clientId} left session ${sessionId}`);
+      
+      // If this was the last client, save the document state
+      if (sessionData.clients.size === 0) {
+        await saveDocumentVersion(sessionId);
+        
+        // Consider cleaning up the session from memory
+        // if (Object.keys(sessions).length > MAX_INACTIVE_SESSIONS) {
+        //   delete sessions[sessionId];
+        // }
+      }
+      
+      break;
     }
   }
-  
-  // Update the participant status in the database
-  await updateParticipantStatus(sessionId, userId, false);
 }
 
 /**
  * Update a participant's status in the database
  */
 async function updateParticipantStatus(
-  sessionId: string, 
-  userId: number, 
-  isActive: boolean
+  sessionId: string,
+  clientId: string,
+  status: 'active' | 'inactive' | 'away' | 'disconnected'
 ): Promise<void> {
-  // Check if the participant exists
-  const participant = await storage.getActiveSessionParticipant(sessionId, userId);
-  
-  if (participant) {
-    if (isActive) {
-      // Update the participant's activity timestamp
-      await storage.updateSessionParticipant(participant.id, {
-        isActive: true,
-        lastActivity: new Date()
-      });
-    } else {
-      // Mark the participant as inactive
-      await storage.updateSessionParticipant(participant.id, {
-        isActive: false,
-        leftAt: new Date()
-      });
+  try {
+    // Get all participants for this session
+    const participants = await storage.getSessionParticipants(sessionId);
+    
+    // Find the participant by clientId
+    const participant = participants.find(p => p.clientId === clientId);
+    
+    if (participant) {
+      // Update status
+      await storage.updateSessionParticipant(participant.id, { status });
     }
-  } else if (isActive) {
-    // Create a new participant entry
-    await storage.createSessionParticipant({
-      sessionId,
-      userId,
-      isActive: true,
-      color: getRandomColor()
-    });
+  } catch (error) {
+    console.error('Error updating participant status:', error);
   }
 }
 
@@ -577,36 +555,57 @@ async function updateParticipantStatus(
  * Create a new collaboration session
  */
 export async function createCollaborationSession(
-  ownerId: number, 
-  documentType: string, 
-  documentId: string, 
-  name: string,
-  initialData?: any
-): Promise<{ success: boolean, sessionId?: string, message?: string }> {
+  data: Omit<InsertCollaborationSession, 'sessionId' | 'createdAt' | 'status'>
+): Promise<{ success: boolean, message?: string, session?: CollaborationSession }> {
   try {
-    // Create a session ID
-    const sessionId = uuidv4();
+    // Generate a unique session ID
+    const sessionId = uuid();
     
     // Create the session in the database
-    const session = await storage.createCollaborationSession({
+    const sessionData: InsertCollaborationSession = {
+      ...data,
       sessionId,
-      name,
-      documentType,
-      documentId,
-      ownerId,
-      status: 'active',
-      metadata: { createdAt: new Date().toISOString() },
-      config: { allowAnonymous: false, autoSave: true }
-    });
+      createdAt: new Date(),
+      status: 'active'
+    };
     
-    // Initialize the session
-    const result = await initializeSession(sessionId, false, initialData);
+    const session = await storage.createCollaborationSession(sessionData);
     
-    if (!result.success) {
-      return { success: false, message: result.message };
+    // Initialize the session in memory
+    const ydoc = new Y.Doc();
+    
+    // Apply initial state if available
+    if (data.initialState) {
+      try {
+        const buffer = Buffer.from(data.initialState, 'base64');
+        const update = new Uint8Array(buffer);
+        Y.applyUpdate(ydoc, update);
+      } catch (error) {
+        console.error('Error applying initial state:', error);
+      }
     }
     
-    return { success: true, sessionId };
+    // Add session to the in-memory store
+    sessions[sessionId] = {
+      ydoc,
+      clients: new Map(),
+      lastUpdate: new Date()
+    };
+    
+    // Log the creation event
+    await storage.createCollaborationEvent({
+      sessionId,
+      userId: data.ownerId,
+      username: 'System',
+      eventType: 'create',
+      eventData: JSON.stringify({
+        documentType: data.documentType,
+        documentId: data.documentId
+      }),
+      timestamp: new Date()
+    });
+    
+    return { success: true, session };
   } catch (error) {
     console.error('Error creating collaboration session:', error);
     return { success: false, message: 'Failed to create collaboration session' };
@@ -621,42 +620,48 @@ export async function addComment(
   sessionId: string,
   comment: { 
     text: string, 
-    position?: { x: number, y: number },
-    range?: { start: number, end: number }
+    position?: { x: number, y: number }, 
+    range?: { start: number, end: number } 
   }
 ): Promise<void> {
-  const client = clientsMap.get(clientId);
+  const sessionData = sessions[sessionId];
+  if (!sessionData) return;
+  
+  const client = sessionData.clients.get(clientId);
   if (!client) return;
   
-  const session = sessions[sessionId];
-  if (!session) return;
+  // Update last activity timestamp
+  client.lastActivity = new Date();
   
-  // Log the comment event
-  await storage.createCollaborationEvent({
-    sessionId,
-    userId: client.userId,
-    eventType: 'comment',
-    data: { 
-      clientId, 
-      userId: client.userId,
-      username: client.username,
-      comment,
-      timestamp: new Date().toISOString()
-    },
+  // Broadcast to other clients
+  const message = JSON.stringify({
+    type: 'comment',
     clientId,
+    userId: client.userId,
+    username: client.username,
+    color: client.color,
+    comment,
+    timestamp: new Date()
   });
   
-  // Broadcast to all other clients
-  for (const [otherId, otherClient] of session.clients) {
-    if (otherId !== clientId && otherClient.ws.readyState === WebSocket.OPEN) {
-      otherClient.ws.send(JSON.stringify({
-        type: 'comment',
-        clientId,
-        userId: client.userId,
-        username: client.username,
-        comment
-      }));
+  for (const [_, otherClient] of sessionData.clients.entries()) {
+    if (otherClient.ws.readyState === WebSocket.OPEN) {
+      otherClient.ws.send(message);
     }
+  }
+  
+  // Log the comment event
+  try {
+    await storage.createCollaborationEvent({
+      sessionId,
+      userId: client.userId,
+      username: client.username,
+      eventType: 'comment',
+      eventData: JSON.stringify(comment),
+      timestamp: new Date()
+    });
+  } catch (error) {
+    console.error('Error logging comment event:', error);
   }
 }
 
@@ -664,45 +669,59 @@ export async function addComment(
  * Periodic check for inactive sessions to save their state
  */
 export function startSessionMaintenanceJob(intervalMinutes: number = 5): NodeJS.Timeout {
+  const interval = intervalMinutes * 60 * 1000; // Convert to milliseconds
+  
   return setInterval(async () => {
+    console.log('Running collaboration session maintenance job');
+    
     const now = new Date();
     
-    for (const [sessionId, session] of Object.entries(sessions)) {
-      // Check if the session has been inactive for too long
-      const timeSinceLastUpdate = now.getTime() - session.lastUpdate.getTime();
-      
-      // Save the state periodically regardless of activity
-      if (timeSinceLastUpdate > 5 * 60 * 1000) { // 5 minutes
-        await saveDocumentVersion(sessionId);
-        session.lastUpdate = now;
-      }
-      
-      // If session has been inactive for too long, clean it up
-      if (session.clients.size === 0 && timeSinceLastUpdate > 30 * 60 * 1000) { // 30 minutes
-        delete sessions[sessionId];
+    // Process each active session
+    for (const [sessionId, sessionData] of Object.entries(sessions)) {
+      try {
+        // Check if the session has been updated since last save
+        const timeSinceUpdate = now.getTime() - sessionData.lastUpdate.getTime();
         
-        // Update the session status
-        const sessionInfo = await storage.getCollaborationSessionBySessionId(sessionId);
-        if (sessionInfo) {
-          await storage.updateCollaborationSession(sessionInfo.id, {
-            status: 'completed',
-            lastActivity: now
-          });
+        if (timeSinceUpdate > 60000) { // 1 minute
+          // Save the current state
+          await saveDocumentVersion(sessionId);
+          
+          // Update the last update time
+          sessionData.lastUpdate = now;
         }
+        
+        // Check for inactive clients (no activity for 30 minutes)
+        for (const [clientId, client] of sessionData.clients.entries()) {
+          const timeSinceActivity = now.getTime() - client.lastActivity.getTime();
+          
+          if (timeSinceActivity > 30 * 60000) { // 30 minutes
+            // Update participant status
+            await updateParticipantStatus(sessionId, clientId, 'inactive');
+            
+            // If the client is still connected, send a ping to check
+            if (client.ws.readyState === WebSocket.OPEN) {
+              client.ws.send(JSON.stringify({ type: 'ping' }));
+            } else {
+              // WebSocket is not open, remove the client
+              await removeClientFromSession(clientId);
+            }
+          }
+        }
+      } catch (error) {
+        console.error(`Error processing session ${sessionId}:`, error);
       }
     }
-  }, intervalMinutes * 60 * 1000);
+  }, interval);
 }
 
-// Export the collaboration service
 export const collaborationService = {
   initializeSession,
-  createCollaborationSession,
   addClientToSession,
   removeClientFromSession,
   processYjsUpdate,
   updateCursorPosition,
   updatePresence,
+  createCollaborationSession,
   addComment,
   startSessionMaintenanceJob
 };
