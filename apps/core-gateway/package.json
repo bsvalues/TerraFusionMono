@@ -8,7 +8,8 @@
     "start": "node dist/index.js",
     "dev": "tsx src/index.ts",
     "test": "jest",
-    "lint": "eslint ."
+    "lint": "eslint .",
+    "federation": "tsx src/examples/start-federation.ts"
   },
   "keywords": ["terrafusion", "api", "gateway", "fastify"],
   "author": "TerraFusion Team",
