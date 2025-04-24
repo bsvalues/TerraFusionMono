@@ -42,7 +42,7 @@ export default function IdentificationForm({ onSuccess, parcels = [] }: Identifi
   const form = useForm<IdentificationFormValues>({
     resolver: zodResolver(identificationFormSchema),
     defaultValues: {
-      parcelId: undefined,
+      parcelId: "none",
     },
   });
 
@@ -177,8 +177,8 @@ export default function IdentificationForm({ onSuccess, parcels = [] }: Identifi
     // Create form data for file upload
     const formData = new FormData();
     
-    // Add parcel ID if selected
-    if (values.parcelId) {
+    // Add parcel ID if selected and not "none"
+    if (values.parcelId && values.parcelId !== "none") {
       formData.append("parcelId", values.parcelId);
     }
     
@@ -214,7 +214,7 @@ export default function IdentificationForm({ onSuccess, parcels = [] }: Identifi
                     </SelectTrigger>
                   </FormControl>
                   <SelectContent>
-                    <SelectItem value="">None</SelectItem>
+                    <SelectItem value="none">None</SelectItem>
                     {parcels.map((parcel) => (
                       <SelectItem key={parcel.id} value={parcel.id}>
                         {parcel.name}
