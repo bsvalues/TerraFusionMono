@@ -1,6 +1,32 @@
-import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal, pgEnum } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
+
+// Enums for crop health
+export const cropHealthStatusEnum = pgEnum('crop_health_status', [
+  'excellent', 'good', 'fair', 'poor', 'critical'
+]);
+
+export const riskLevelEnum = pgEnum('risk_level', [
+  'low', 'medium', 'high', 'severe'
+]);
+
+export const growthStageEnum = pgEnum('growth_stage', [
+  'germination', 'seedling', 'vegetative', 'flowering', 'fruiting', 'maturity', 'senescence'
+]);
+
+export const weatherRiskTypeEnum = pgEnum('weather_risk_type', [
+  'drought', 'frost', 'flood', 'heat_stress', 'wind_damage', 'hail'
+]);
+
+export const pestRiskTypeEnum = pgEnum('pest_risk_type', [
+  'insect', 'fungal', 'bacterial', 'viral', 'weed'
+]);
+
+export const nutritionalDeficiencyTypeEnum = pgEnum('nutritional_deficiency_type', [
+  'nitrogen', 'phosphorus', 'potassium', 'calcium', 'magnesium', 
+  'sulfur', 'iron', 'zinc', 'manganese', 'boron'
+]);
 
 // User accounts
 export const users = pgTable("users", {
@@ -345,7 +371,168 @@ export const insertParcelMeasurementSchema = createInsertSchema(parcelMeasuremen
     location: z.any().optional(),
   });
 
-// Export types for all new schemas
+// Crop Health Analysis tables
+export const cropHealthAnalyses = pgTable("crop_health_analyses", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  userId: integer("user_id").notNull(),
+  cropType: text("crop_type").notNull(),
+  overallHealth: cropHealthStatusEnum("overall_health").notNull(),
+  healthScore: integer("health_score").notNull(), // 0-100
+  confidenceLevel: decimal("confidence_level", { precision: 4, scale: 3 }).notNull(), // 0-1
+  growthStage: growthStageEnum("growth_stage").notNull(),
+  growthProgress: decimal("growth_progress", { precision: 5, scale: 2 }).notNull(), // 0-100
+  estimatedHarvestDate: timestamp("estimated_harvest_date"),
+  aiModel: text("ai_model").notNull(),
+  rawResponse: json("raw_response"),
+  recommendations: json("recommendations"),
+  images: json("images"), // Array of image references
+});
+
+export const insertCropHealthAnalysisSchema = createInsertSchema(cropHealthAnalyses)
+  .omit({ id: true })
+  .extend({
+    recommendations: z.any().optional(),
+    images: z.any().optional(),
+    rawResponse: z.any().optional()
+  });
+
+// Disease detections
+export const diseaseDetections = pgTable("disease_detections", {
+  id: serial("id").primaryKey(),
+  analysisId: integer("analysis_id").notNull(), // Reference to crop_health_analyses
+  diseaseName: text("disease_name").notNull(),
+  diseaseType: pestRiskTypeEnum("disease_type").notNull(),
+  confidence: decimal("confidence", { precision: 4, scale: 3 }).notNull(), // 0-1
+  severity: riskLevelEnum("severity").notNull(),
+  affectedArea: decimal("affected_area", { precision: 5, scale: 2 }), // percentage
+  symptoms: json("symptoms"), // Array of symptom descriptions
+  progression: text("progression"), // early, developing, advanced
+  recommendations: json("recommendations"), // Array of treatment recommendations
+  detectedAt: timestamp("detected_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  images: json("images"), // Array of image references
+});
+
+export const insertDiseaseDetectionSchema = createInsertSchema(diseaseDetections)
+  .omit({ id: true, detectedAt: true, updatedAt: true })
+  .extend({
+    symptoms: z.any().optional(),
+    recommendations: z.any().optional(),
+    images: z.any().optional()
+  });
+
+// Soil analysis results
+export const soilAnalyses = pgTable("soil_analyses", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  userId: integer("user_id").notNull(),
+  soilType: text("soil_type"),
+  ph: decimal("ph", { precision: 4, scale: 2 }),
+  organicMatter: decimal("organic_matter", { precision: 5, scale: 2 }),
+  nitrogenLevel: decimal("nitrogen_level", { precision: 6, scale: 2 }),
+  phosphorusLevel: decimal("phosphorus_level", { precision: 6, scale: 2 }),
+  potassiumLevel: decimal("potassium_level", { precision: 6, scale: 2 }),
+  otherNutrients: json("other_nutrients"),
+  waterRetention: text("water_retention"),
+  texture: json("texture"), // sand/silt/clay percentages
+  suitabilityScore: integer("suitability_score"), // 0-100
+  deficiencies: json("deficiencies"), // Array of deficiency objects
+  recommendations: json("recommendations"), // Array of recommendation strings
+  aiGenerated: boolean("ai_generated").default(false),
+  labVerified: boolean("lab_verified").default(false),
+});
+
+export const insertSoilAnalysisSchema = createInsertSchema(soilAnalyses)
+  .omit({ id: true })
+  .extend({
+    otherNutrients: z.any().optional(),
+    texture: z.any().optional(),
+    deficiencies: z.any().optional(),
+    recommendations: z.any().optional()
+  });
+
+// Yield predictions
+export const yieldPredictions = pgTable("yield_predictions", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  userId: integer("user_id").notNull(),
+  cropType: text("crop_type").notNull(),
+  predictedYieldValue: decimal("predicted_yield_value", { precision: 10, scale: 2 }).notNull(),
+  predictedYieldUnit: text("predicted_yield_unit").notNull(),
+  yieldPerHectare: decimal("yield_per_hectare", { precision: 10, scale: 2 }),
+  confidenceLow: decimal("confidence_low", { precision: 10, scale: 2 }),
+  confidenceHigh: decimal("confidence_high", { precision: 10, scale: 2 }),
+  confidenceLevel: decimal("confidence_level", { precision: 4, scale: 3 }),
+  factorsAffecting: json("factors_affecting"),
+  comparisonToAverage: integer("comparison_to_average"), // percentage +/-
+  harvestDateEstimate: timestamp("harvest_date_estimate"),
+  marketValuePerUnit: decimal("market_value_per_unit", { precision: 10, scale: 2 }),
+  marketValueTotal: decimal("market_value_total", { precision: 12, scale: 2 }),
+  qualityPrediction: json("quality_prediction"),
+  aiModel: text("ai_model").notNull(),
+  scenario: text("scenario").default("baseline"), // baseline, drought, excess_rain, etc.
+});
+
+export const insertYieldPredictionSchema = createInsertSchema(yieldPredictions)
+  .omit({ id: true })
+  .extend({
+    factorsAffecting: z.any().optional(),
+    qualityPrediction: z.any().optional()
+  });
+
+// Crop health images
+export const cropHealthImages = pgTable("crop_health_images", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  userId: integer("user_id").notNull(),
+  imageUrl: text("image_url").notNull(),
+  thumbnailUrl: text("thumbnail_url"),
+  type: text("type").notNull(), // satellite, drone, mobile, etc.
+  category: text("category").notNull(), // general, disease, soil, crop
+  aiAnalyzed: boolean("ai_analyzed").default(false),
+  analysisResults: json("analysis_results"),
+  location: json("location"), // Geolocation where the image was taken
+  tags: json("tags"), // Array of tags
+});
+
+export const insertCropHealthImageSchema = createInsertSchema(cropHealthImages)
+  .omit({ id: true })
+  .extend({
+    analysisResults: z.any().optional(),
+    location: z.any().optional(),
+    tags: z.any().optional()
+  });
+
+// Weather data for crop health analysis
+export const weatherData = pgTable("weather_data", {
+  id: serial("id").primaryKey(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  dataType: text("data_type").notNull(), // forecast, historical, current
+  source: text("source").notNull(), // weather service name
+  temperatureMin: decimal("temperature_min", { precision: 5, scale: 2 }),
+  temperatureMax: decimal("temperature_max", { precision: 5, scale: 2 }),
+  temperatureAvg: decimal("temperature_avg", { precision: 5, scale: 2 }),
+  humidity: decimal("humidity", { precision: 5, scale: 2 }),
+  precipitation: decimal("precipitation", { precision: 6, scale: 2 }),
+  windSpeed: decimal("wind_speed", { precision: 5, scale: 2 }),
+  windDirection: integer("wind_direction"),
+  conditions: text("conditions"), // clear, cloudy, rain, etc.
+  additionalData: json("additional_data"),
+});
+
+export const insertWeatherDataSchema = createInsertSchema(weatherData)
+  .omit({ id: true })
+  .extend({
+    additionalData: z.any().optional()
+  });
+
+// Export types for all schemas
 export type Parcel = typeof parcels.$inferSelect;
 export type InsertParcel = z.infer<typeof insertParcelSchema>;
 
@@ -354,3 +541,22 @@ export type InsertParcelNote = z.infer<typeof insertParcelNoteSchema>;
 
 export type ParcelMeasurement = typeof parcelMeasurements.$inferSelect;
 export type InsertParcelMeasurement = z.infer<typeof insertParcelMeasurementSchema>;
+
+// Export types for crop health schemas
+export type CropHealthAnalysis = typeof cropHealthAnalyses.$inferSelect;
+export type InsertCropHealthAnalysis = z.infer<typeof insertCropHealthAnalysisSchema>;
+
+export type DiseaseDetection = typeof diseaseDetections.$inferSelect;
+export type InsertDiseaseDetection = z.infer<typeof insertDiseaseDetectionSchema>;
+
+export type SoilAnalysis = typeof soilAnalyses.$inferSelect;
+export type InsertSoilAnalysis = z.infer<typeof insertSoilAnalysisSchema>;
+
+export type YieldPrediction = typeof yieldPredictions.$inferSelect;
+export type InsertYieldPrediction = z.infer<typeof insertYieldPredictionSchema>;
+
+export type CropHealthImage = typeof cropHealthImages.$inferSelect;
+export type InsertCropHealthImage = z.infer<typeof insertCropHealthImageSchema>;
+
+export type WeatherData = typeof weatherData.$inferSelect;
+export type InsertWeatherData = z.infer<typeof insertWeatherDataSchema>;
