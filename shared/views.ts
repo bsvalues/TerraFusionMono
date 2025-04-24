@@ -10,9 +10,9 @@ export async function createViews() {
       SELECT 
         p.external_id as parcel_id,
         p.name as parcel_name,
-        p.area as parcel_area,
-        p.address as parcel_address,
-        p.crop_type as parcel_crop_type,
+        p.area_hectares as parcel_area,
+        p.description as parcel_description,
+        p.current_crop as parcel_crop_type,
         p.status as parcel_status,
         (SELECT COUNT(*) FROM parcel_notes WHERE parcel_id = p.external_id) as note_count,
         (SELECT COUNT(*) FROM parcel_measurements WHERE parcel_id = p.external_id) as measurement_count,
@@ -33,7 +33,7 @@ export async function createViews() {
       SELECT 
         p.external_id as parcel_id,
         p.name as parcel_name,
-        p.crop_type as crop_type,
+        p.current_crop as crop_type,
         cha.id as analysis_id,
         cha.overall_health as health_status,
         cha.health_score as health_score,
@@ -80,8 +80,8 @@ export async function createViews() {
       SELECT 
         p.external_id as parcel_id,
         p.name as parcel_name,
-        p.area as parcel_area,
-        p.crop_type as crop_type,
+        p.area_hectares as parcel_area,
+        p.current_crop as crop_type,
         yp.predicted_yield_value as predicted_yield,
         yp.predicted_yield_unit as yield_unit,
         yp.yield_per_hectare as yield_per_hectare,

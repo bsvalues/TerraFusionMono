@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
+import { sql } from "drizzle-orm";
 import { storage } from "./storage";
 import { coreService } from "./services/core";
 import { jobService } from "./services/jobs";
@@ -761,6 +762,52 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   app.get('/api/geocode/metrics', async (req, res) => {
     await getMetricsHandler(req, res);
+  });
+  
+  // API endpoints for database views
+  app.get("/api/reports/parcel-summary", async (req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT * FROM parcel_summary_view`);
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch parcel summary" });
+    }
+  });
+  
+  app.get("/api/reports/crop-health", async (req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT * FROM crop_health_dashboard_view`);
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch crop health dashboard data" });
+    }
+  });
+  
+  app.get("/api/reports/soil-analysis", async (req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT * FROM soil_analysis_trends_view`);
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch soil analysis trends" });
+    }
+  });
+  
+  app.get("/api/reports/yield-predictions", async (req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT * FROM yield_prediction_summary_view`);
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch yield prediction summary" });
+    }
+  });
+  
+  app.get("/api/reports/weather-data", async (req, res) => {
+    try {
+      const result = await db.execute(sql`SELECT * FROM weather_data_overview_view`);
+      res.json(result.rows);
+    } catch (error) {
+      res.status(500).json({ error: "Failed to fetch weather data overview" });
+    }
   });
   
   const httpServer = createServer(app);
