@@ -2,6 +2,7 @@ import { Link, useLocation } from "wouter";
 import { BellIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
+import { SyncStatusPanel } from "@/components/ui-design-system";
 
 export default function Navbar() {
   const [location] = useLocation();
@@ -69,6 +70,9 @@ export default function Navbar() {
         
         {/* User Menu and Notifications */}
         <div className="flex items-center space-x-4">
+          {/* Sync Status Panel */}
+          <SyncStatusPanel />
+          
           <div className="relative">
             <Button variant="ghost" size="icon" className="relative p-1 rounded-full text-gray-500 hover:bg-gray-100 focus:outline-none">
               <BellIcon className="h-5 w-5" />
