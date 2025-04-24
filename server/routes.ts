@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import { WebSocketServer, WebSocket } from "ws";
 import { sql } from "drizzle-orm";
+import { db } from "./db";
 import { storage } from "./storage";
 import { coreService } from "./services/core";
 import { jobService } from "./services/jobs";
