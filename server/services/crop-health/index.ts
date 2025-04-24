@@ -1,657 +1,502 @@
 import { storage } from "../../storage";
 import OpenAI from "openai";
-import { logsService } from "../logs";
 
-// Check for OpenAI API key
-const openaiApiKey = process.env.OPENAI_API_KEY;
-const openai = openaiApiKey ? new OpenAI({ apiKey: openaiApiKey }) : null;
+// Make sure we have an OpenAI API key
+if (!process.env.OPENAI_API_KEY) {
+  console.warn("Warning: OPENAI_API_KEY is not set. Crop health AI analysis will not work.");
+}
 
-class CropHealthService {
-  private readonly SERVICE_NAME = "crop-health";
+// Initialize OpenAI client
+const openai = process.env.OPENAI_API_KEY ? 
+  new OpenAI({ apiKey: process.env.OPENAI_API_KEY }) : 
+  null;
 
-  async getCropHealthData(parcelId: string) {
+// Soil Analyzer
+class SoilAnalyzer {
+  async analyzeSoil(parcelId: string) {
     try {
-      // Log the request
-      await logsService.createLog({
-        level: "INFO",
-        service: this.SERVICE_NAME,
-        message: `Fetching crop health data for parcel: ${parcelId}`
-      });
-
-      // Get parcel details
+      // Get parcel data
       const parcel = await storage.getParcelByExternalId(parcelId);
       if (!parcel) {
         throw new Error(`Parcel with ID ${parcelId} not found`);
       }
-
-      // Get the latest crop health measurements for this parcel
-      const measurements = await storage.getParcelMeasurements({
-        parcelId,
-        measurementType: "crop-health",
-        limit: 1
-      });
-
-      // If we already have recent data, return it
-      if (measurements.length > 0) {
-        const latestMeasurement = measurements[0];
-        // Check if the data is less than 24 hours old
-        const measurementTime = new Date(latestMeasurement.timestamp);
-        const now = new Date();
-        const hoursSinceUpdate = (now.getTime() - measurementTime.getTime()) / (1000 * 60 * 60);
-
-        if (hoursSinceUpdate < 24) {
-          return JSON.parse(latestMeasurement.data as string);
-        }
-      }
-
-      // Generate crop health data using AI
-      return this.generateCropHealthData(parcel);
-    } catch (error: any) {
-      // Log the error
-      await logsService.createLog({
-        level: "ERROR",
-        service: this.SERVICE_NAME,
-        message: `Error fetching crop health data: ${error.message}`
-      });
-      throw error;
-    }
-  }
-
-  async getSoilAnalysis(parcelId: string) {
-    try {
-      await logsService.createLog({
-        level: "INFO",
-        service: this.SERVICE_NAME,
-        message: `Fetching soil analysis for parcel: ${parcelId}`
-      });
-
-      // Get parcel details
-      const parcel = await storage.getParcelByExternalId(parcelId);
-      if (!parcel) {
-        throw new Error(`Parcel with ID ${parcelId} not found`);
-      }
-
-      // Get the latest soil measurements for this parcel
-      const measurements = await storage.getParcelMeasurements({
-        parcelId,
-        measurementType: "soil-analysis",
-        limit: 1
-      });
-
-      if (measurements.length > 0) {
-        const latestMeasurement = measurements[0];
-        // Check if the data is less than 48 hours old
-        const measurementTime = new Date(latestMeasurement.timestamp);
-        const now = new Date();
-        const hoursSinceUpdate = (now.getTime() - measurementTime.getTime()) / (1000 * 60 * 60);
-
-        if (hoursSinceUpdate < 48) {
-          return JSON.parse(latestMeasurement.data as string);
-        }
-      }
-
-      // Generate soil analysis data using AI
-      return this.generateSoilAnalysis(parcel);
-    } catch (error: any) {
-      await logsService.createLog({
-        level: "ERROR",
-        service: this.SERVICE_NAME,
-        message: `Error fetching soil analysis: ${error.message}`
-      });
-      throw error;
-    }
-  }
-
-  async getDiseaseDetections(parcelId: string) {
-    try {
-      await logsService.createLog({
-        level: "INFO",
-        service: this.SERVICE_NAME,
-        message: `Fetching disease detections for parcel: ${parcelId}`
-      });
-
-      // Get parcel details
-      const parcel = await storage.getParcelByExternalId(parcelId);
-      if (!parcel) {
-        throw new Error(`Parcel with ID ${parcelId} not found`);
-      }
-
-      // Get the latest disease detection measurements for this parcel
-      const measurements = await storage.getParcelMeasurements({
-        parcelId,
-        measurementType: "disease-detection",
-        limit: 1
-      });
-
-      if (measurements.length > 0) {
-        const latestMeasurement = measurements[0];
-        // Disease detection data is considered valid for only 24 hours
-        const measurementTime = new Date(latestMeasurement.timestamp);
-        const now = new Date();
-        const hoursSinceUpdate = (now.getTime() - measurementTime.getTime()) / (1000 * 60 * 60);
-
-        if (hoursSinceUpdate < 24) {
-          return JSON.parse(latestMeasurement.data as string);
-        }
-      }
-
-      // Generate disease detection data using AI
-      return this.generateDiseaseDetections(parcel);
-    } catch (error: any) {
-      await logsService.createLog({
-        level: "ERROR",
-        service: this.SERVICE_NAME,
-        message: `Error fetching disease detections: ${error.message}`
-      });
-      throw error;
-    }
-  }
-
-  async getYieldPrediction(parcelId: string) {
-    try {
-      await logsService.createLog({
-        level: "INFO",
-        service: this.SERVICE_NAME,
-        message: `Fetching yield predictions for parcel: ${parcelId}`
-      });
-
-      // Get parcel details
-      const parcel = await storage.getParcelByExternalId(parcelId);
-      if (!parcel) {
-        throw new Error(`Parcel with ID ${parcelId} not found`);
-      }
-
-      // Get the latest yield prediction measurements for this parcel
-      const measurements = await storage.getParcelMeasurements({
-        parcelId,
-        measurementType: "yield-prediction",
-        limit: 1
-      });
-
-      if (measurements.length > 0) {
-        const latestMeasurement = measurements[0];
-        // Yield predictions are valid for up to 3 days (72 hours)
-        const measurementTime = new Date(latestMeasurement.timestamp);
-        const now = new Date();
-        const hoursSinceUpdate = (now.getTime() - measurementTime.getTime()) / (1000 * 60 * 60);
-
-        if (hoursSinceUpdate < 72) {
-          return JSON.parse(latestMeasurement.data as string);
-        }
-      }
-
-      // Generate yield prediction data using AI
-      return this.generateYieldPrediction(parcel);
-    } catch (error: any) {
-      await logsService.createLog({
-        level: "ERROR",
-        service: this.SERVICE_NAME,
-        message: `Error fetching yield predictions: ${error.message}`
-      });
-      throw error;
-    }
-  }
-
-  async getWeatherData(parcelId: string) {
-    try {
-      await logsService.createLog({
-        level: "INFO",
-        service: this.SERVICE_NAME,
-        message: `Fetching weather data for parcel: ${parcelId}`
-      });
-
-      // Get parcel details
-      const parcel = await storage.getParcelByExternalId(parcelId);
-      if (!parcel) {
-        throw new Error(`Parcel with ID ${parcelId} not found`);
-      }
-
-      // Weather data is always generated fresh since it changes rapidly
-      // In a real implementation, this would call a weather API using the parcel coordinates
-      return this.generateWeatherData(parcel);
-    } catch (error: any) {
-      await logsService.createLog({
-        level: "ERROR",
-        service: this.SERVICE_NAME,
-        message: `Error fetching weather data: ${error.message}`
-      });
-      throw error;
-    }
-  }
-
-  // Private helper methods for data generation
-  private async generateCropHealthData(parcel: any) {
-    // Generate data with OpenAI if available, otherwise create sample data
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-          messages: [
-            {
-              role: "system",
-              content: "You are an agricultural AI assistant specialized in crop health analysis. Generate realistic crop health data based on the provided parcel information."
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                parcelId: parcel.externalId,
-                parcelName: parcel.name,
-                location: parcel.location,
-                acreage: parcel.acreage,
-                cropType: parcel.cropType || "corn",
-                soilType: parcel.soilType || "loam",
-                plantingDate: parcel.plantingDate || "2025-03-15",
-                lastIrrigation: parcel.lastIrrigation || "2025-04-20",
-                instruction: "Generate complete crop health data including overall health, health score, growth prediction, and risk factors."
-              })
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        });
-
-        const generatedData = JSON.parse(response.choices[0].message.content);
-        
-        // Store the generated data for future use
-        await storage.createParcelMeasurement({
-          parcelId: parcel.externalId,
-          userId: parcel.userId,
-          measurementType: "crop-health",
-          data: JSON.stringify(generatedData),
-          timestamp: new Date().toISOString()
-        });
-
-        return generatedData;
-      } catch (error: any) {
-        await logsService.createLog({
-          level: "ERROR",
-          service: this.SERVICE_NAME,
-          message: `Error generating crop health data with AI: ${error.message}`
-        });
-        // Fall back to sample data if AI fails
-      }
-    }
-
-    // Sample crop health data for demonstration
-    const cropHealthData = {
-      parcelId: parcel.externalId,
-      parcelName: parcel.name,
-      cropType: parcel.cropType || "corn",
-      overallHealth: "good",
-      healthScore: 82,
-      analysisDate: new Date().toISOString(),
-      growthPrediction: {
-        currentStage: "V6 - Six Leaf",
-        daysToHarvest: 95,
-        estimatedHarvestDate: "2025-07-15",
-        growthRateStatus: "normal"
-      },
-      riskFactors: [
-        {
-          type: "water",
-          level: "medium",
-          description: "Moderate water stress detected in northwestern section"
-        },
-        {
-          type: "nutrient",
-          level: "low",
-          description: "Minor nitrogen deficiency"
-        }
-      ]
-    };
-
-    // Store the sample data
-    await storage.createParcelMeasurement({
-      parcelId: parcel.externalId,
-      userId: parcel.userId,
-      measurementType: "crop-health",
-      data: JSON.stringify(cropHealthData),
-      timestamp: new Date().toISOString()
-    });
-
-    return cropHealthData;
-  }
-
-  private async generateSoilAnalysis(parcel: any) {
-    // Generate data with OpenAI if available, otherwise create sample data
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-          messages: [
-            {
-              role: "system",
-              content: "You are an agricultural AI assistant specialized in soil analysis. Generate realistic soil analysis data based on the provided parcel information."
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                parcelId: parcel.externalId,
-                parcelName: parcel.name,
-                location: parcel.location,
-                acreage: parcel.acreage,
-                cropType: parcel.cropType || "corn",
-                soilType: parcel.soilType || "loam",
-                instruction: "Generate complete soil analysis including pH, organic matter, nutrient levels, water retention, and suitability score."
-              })
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        });
-
-        const generatedData = JSON.parse(response.choices[0].message.content);
-        
-        // Store the generated data for future use
-        await storage.createParcelMeasurement({
-          parcelId: parcel.externalId,
-          userId: parcel.userId,
-          measurementType: "soil-analysis",
-          data: JSON.stringify(generatedData),
-          timestamp: new Date().toISOString()
-        });
-
-        return generatedData;
-      } catch (error: any) {
-        await logsService.createLog({
-          level: "ERROR",
-          service: this.SERVICE_NAME,
-          message: `Error generating soil analysis with AI: ${error.message}`
-        });
-        // Fall back to sample data if AI fails
-      }
-    }
-
-    // Sample soil analysis data for demonstration
-    const soilAnalysis = {
-      parcelId: parcel.externalId,
-      soilType: parcel.soilType || "loam",
-      ph: 6.8,
-      organicMatter: 3.2,
-      nitrogenLevel: 42,
-      phosphorusLevel: 28,
-      potassiumLevel: 195,
-      waterRetention: "good",
-      deficiencies: [
-        {
-          nutrient: "magnesium",
-          severity: "mild"
-        }
-      ],
-      suitabilityScore: 87,
-      timestamp: new Date().toISOString(),
-      recommendations: [
-        "Apply magnesium supplement at 15 lbs/acre",
-        "Maintain current irrigation schedule"
-      ]
-    };
-
-    // Store the sample data
-    await storage.createParcelMeasurement({
-      parcelId: parcel.externalId,
-      userId: parcel.userId,
-      measurementType: "soil-analysis",
-      data: JSON.stringify(soilAnalysis),
-      timestamp: new Date().toISOString()
-    });
-
-    return soilAnalysis;
-  }
-
-  private async generateDiseaseDetections(parcel: any) {
-    // Generate data with OpenAI if available, otherwise create sample data
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-          messages: [
-            {
-              role: "system",
-              content: "You are an agricultural AI assistant specialized in crop disease detection. Generate realistic disease detection data based on the provided parcel information."
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                parcelId: parcel.externalId,
-                parcelName: parcel.name,
-                location: parcel.location,
-                acreage: parcel.acreage,
-                cropType: parcel.cropType || "corn",
-                soilType: parcel.soilType || "loam",
-                instruction: "Generate realistic crop disease detection data including detected diseases, severity, spread percentage, and treatment recommendations."
-              })
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        });
-
-        const generatedData = JSON.parse(response.choices[0].message.content);
-        
-        // Store the generated data for future use
-        await storage.createParcelMeasurement({
-          parcelId: parcel.externalId,
-          userId: parcel.userId,
-          measurementType: "disease-detection",
-          data: JSON.stringify(generatedData),
-          timestamp: new Date().toISOString()
-        });
-
-        return generatedData;
-      } catch (error: any) {
-        await logsService.createLog({
-          level: "ERROR",
-          service: this.SERVICE_NAME,
-          message: `Error generating disease detection data with AI: ${error.message}`
-        });
-        // Fall back to sample data if AI fails
-      }
-    }
-
-    // Sample disease detection data for demonstration
-    const diseaseData = {
-      parcelId: parcel.externalId,
-      scanDate: new Date().toISOString(),
-      cropType: parcel.cropType || "corn",
-      detectedDiseases: [
-        {
-          name: "Northern Corn Leaf Blight",
-          scientificName: "Exserohilum turcicum",
-          severity: "low",
-          spreadPercentage: 8,
-          affectedAreas: ["northeastern corner"],
-          symptoms: ["Long elliptical gray-green lesions", "Brown spots with yellow halos"],
-          treatmentRecommendations: [
-            "Apply foliar fungicide - Propiconazole",
-            "Monitor spread every 3 days"
-          ],
-          images: [
-            {
-              url: "/assets/diseases/northern-corn-leaf-blight.jpg",
-              timestamp: new Date().toISOString(),
-              location: "Section A, Northeast"
-            }
-          ]
-        }
-      ],
-      riskAssessment: {
-        spreadRisk: "moderate",
-        economicImpact: "low",
-        controlDifficulty: "easy"
-      }
-    };
-
-    // Store the sample data
-    await storage.createParcelMeasurement({
-      parcelId: parcel.externalId,
-      userId: parcel.userId,
-      measurementType: "disease-detection",
-      data: JSON.stringify(diseaseData),
-      timestamp: new Date().toISOString()
-    });
-
-    return diseaseData;
-  }
-
-  private async generateYieldPrediction(parcel: any) {
-    // Generate data with OpenAI if available, otherwise create sample data
-    if (openai) {
-      try {
-        const response = await openai.chat.completions.create({
-          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
-          messages: [
-            {
-              role: "system",
-              content: "You are an agricultural AI assistant specialized in crop yield prediction. Generate realistic yield prediction data based on the provided parcel information."
-            },
-            {
-              role: "user",
-              content: JSON.stringify({
-                parcelId: parcel.externalId,
-                parcelName: parcel.name,
-                location: parcel.location,
-                acreage: parcel.acreage,
-                cropType: parcel.cropType || "corn",
-                soilType: parcel.soilType || "loam",
-                plantingDate: parcel.plantingDate || "2025-03-15",
-                instruction: "Generate complete yield prediction data including predicted yield, confidence interval, different scenarios, market value estimates, and historical yields."
-              })
-            }
-          ],
-          temperature: 0.7,
-          response_format: { type: "json_object" }
-        });
-
-        const generatedData = JSON.parse(response.choices[0].message.content);
-        
-        // Store the generated data for future use
-        await storage.createParcelMeasurement({
-          parcelId: parcel.externalId,
-          userId: parcel.userId,
-          measurementType: "yield-prediction",
-          data: JSON.stringify(generatedData),
-          timestamp: new Date().toISOString()
-        });
-
-        return generatedData;
-      } catch (error: any) {
-        await logsService.createLog({
-          level: "ERROR",
-          service: this.SERVICE_NAME,
-          message: `Error generating yield prediction with AI: ${error.message}`
-        });
-        // Fall back to sample data if AI fails
-      }
-    }
-
-    // Sample yield prediction data for demonstration
-    const yieldData = {
-      parcelId: parcel.externalId,
-      cropType: parcel.cropType || "corn",
-      predictedYield: {
-        value: 175,
-        unit: "bushels/acre"
-      },
-      confidenceInterval: {
-        low: 162,
-        high: 189
-      },
-      confidenceLevel: 0.95,
-      scenarios: [
-        {
-          name: "Drought conditions",
-          yieldChange: -23,
-          probability: 0.15
-        },
-        {
-          name: "Optimal conditions",
-          yieldChange: 12,
-          probability: 0.35
-        },
-        {
-          name: "Heavy rainfall",
-          yieldChange: -10,
-          probability: 0.20
-        }
-      ],
-      marketValueEstimate: {
-        perUnit: 4.75,
-        total: parcel.acreage * 175 * 4.75,
-        currency: "USD"
-      },
-      harvestDateEstimate: "2025-07-15",
-      historicalYields: [
-        { year: 2024, yield: 168 },
-        { year: 2023, yield: 172 },
-        { year: 2022, yield: 159 },
-        { year: 2021, yield: 183 }
-      ],
-      lastUpdated: new Date().toISOString()
-    };
-
-    // Store the sample data
-    await storage.createParcelMeasurement({
-      parcelId: parcel.externalId,
-      userId: parcel.userId,
-      measurementType: "yield-prediction",
-      data: JSON.stringify(yieldData),
-      timestamp: new Date().toISOString()
-    });
-
-    return yieldData;
-  }
-
-  private async generateWeatherData(parcel: any) {
-    // Sample weather data for demonstration
-    const now = new Date();
-    
-    // Generate a 7-day forecast
-    const forecast = Array.from({ length: 7 }, (_, i) => {
-      const forecastDate = new Date();
-      forecastDate.setDate(now.getDate() + i + 1);
       
-      // Generate pseudo-random but realistic values
-      const tempMin = 65 + Math.floor(Math.sin(i * 0.5) * 8);
-      const tempMax = 85 + Math.floor(Math.sin(i * 0.5) * 8);
-      const conditions = ["Sunny", "Partly Cloudy", "Cloudy", "Light Rain", "Thunderstorms"];
-      const conditionIndex = Math.floor(Math.abs(Math.sin(i * 0.8) * 5)) % conditions.length;
+      // Get parcel measurements related to soil
+      const soilMeasurements = await storage.getParcelMeasurements({
+        parcelId,
+        measurementType: 'soil'
+      });
       
-      return {
-        date: forecastDate.toISOString().split('T')[0],
-        conditions: conditions[conditionIndex],
-        temperatureMin: tempMin,
-        temperatureMax: tempMax,
-        temperatureAvg: Math.round((tempMin + tempMax) / 2),
-        precipitation: conditionIndex > 2 ? 0.1 + Math.random() * 0.9 : 0,
-        humidity: 40 + Math.floor(Math.sin(i * 0.7) * 25),
-        windSpeed: 5 + Math.floor(Math.sin(i * 0.4) * 10),
-        windDirection: Math.floor(Math.random() * 360)
-      };
-    });
-    
-    const weatherData = {
-      parcelId: parcel.externalId,
-      current: {
-        temperature: 78,
-        humidity: 65,
-        precipitation: 0,
-        windSpeed: 8,
-        windDirection: 225,
-        conditions: "Partly Cloudy",
-        timestamp: now.toISOString()
-      },
-      forecast: forecast,
-      alerts: [],
-      advisories: [
-        {
-          type: "irrigation",
-          message: "Consider irrigation in the next 48 hours due to dry conditions"
-        }
-      ]
-    };
-
-    return weatherData;
+      // If we have OpenAI available, we can generate soil analysis
+      if (openai) {
+        const prompt = `
+          Generate a comprehensive soil analysis for a ${parcel.cropType} field based on these measurements:
+          ${JSON.stringify(soilMeasurements)}
+          
+          Include the following information in your analysis:
+          - Soil type
+          - pH level
+          - Organic matter percentage
+          - Nitrogen levels (ppm)
+          - Phosphorus levels (ppm)
+          - Potassium levels (ppm)
+          - Water retention quality (poor, fair, good, excellent)
+          - Any nutrient deficiencies with severity (mild, moderate, severe)
+          - Overall suitability score for the crop (0-100)
+          - Specific recommendations for improving soil quality
+          
+          Format your response as a valid JSON object with these exact fields:
+          {
+            "soilType": string,
+            "ph": number,
+            "organicMatter": number,
+            "nitrogenLevel": number,
+            "phosphorusLevel": number,
+            "potassiumLevel": number,
+            "waterRetention": string,
+            "deficiencies": [{"nutrient": string, "severity": string}],
+            "suitabilityScore": number,
+            "recommendations": [string]
+          }
+        `;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+          messages: [
+            { role: "system", content: "You are an expert agricultural soil analyst providing detailed soil analysis." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        // Parse the response
+        const soilAnalysis = JSON.parse(response.choices[0].message.content);
+        
+        // Add parcel ID and timestamp
+        return {
+          parcelId,
+          ...soilAnalysis,
+          timestamp: new Date().toISOString()
+        };
+      } else {
+        // If no OpenAI available, return a message
+        throw new Error("OpenAI API key not available for soil analysis");
+      }
+    } catch (error: any) {
+      console.error(`Error in soil analysis: ${error.message}`);
+      throw error;
+    }
   }
 }
 
+// Disease Detector
+class DiseaseDetector {
+  async detectDiseases(parcelId: string) {
+    try {
+      // Get parcel data
+      const parcel = await storage.getParcelByExternalId(parcelId);
+      if (!parcel) {
+        throw new Error(`Parcel with ID ${parcelId} not found`);
+      }
+      
+      // Get image measurements that might show diseases
+      const imageMeasurements = await storage.getParcelMeasurements({
+        parcelId,
+        measurementType: 'image'
+      });
+      
+      // If we have OpenAI available, we can detect diseases
+      if (openai) {
+        const prompt = `
+          Analyze these crop images and data for a ${parcel.cropType} field:
+          ${JSON.stringify(imageMeasurements)}
+          
+          Identify any potential crop diseases, including:
+          - Disease name and scientific name
+          - Severity level (low, moderate, high, severe)
+          - Estimated spread percentage
+          - Affected areas of the field
+          - Visible symptoms
+          - Treatment recommendations
+          
+          Also provide a risk assessment including:
+          - Spread risk (low, moderate, high)
+          - Economic impact (low, moderate, high)
+          - Control difficulty (easy, moderate, difficult)
+          
+          Format your response as a valid JSON object with these exact fields:
+          {
+            "detectedDiseases": [
+              {
+                "name": string,
+                "scientificName": string,
+                "severity": string,
+                "spreadPercentage": number,
+                "affectedAreas": [string],
+                "symptoms": [string],
+                "treatmentRecommendations": [string],
+                "images": [{"url": string, "timestamp": string, "location": string}]
+              }
+            ],
+            "riskAssessment": {
+              "spreadRisk": string,
+              "economicImpact": string,
+              "controlDifficulty": string
+            }
+          }
+        `;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+          messages: [
+            { role: "system", content: "You are an expert agricultural pathologist specializing in crop disease identification." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        // Parse the response
+        const diseaseAnalysis = JSON.parse(response.choices[0].message.content);
+        
+        // Add parcel ID and scan date
+        return {
+          parcelId,
+          cropType: parcel.cropType,
+          scanDate: new Date().toISOString(),
+          ...diseaseAnalysis
+        };
+      } else {
+        // If no OpenAI available, return a message
+        throw new Error("OpenAI API key not available for disease detection");
+      }
+    } catch (error: any) {
+      console.error(`Error in disease detection: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+// Yield Predictor
+class YieldPredictor {
+  async predictYield(parcelId: string) {
+    try {
+      // Get parcel data
+      const parcel = await storage.getParcelByExternalId(parcelId);
+      if (!parcel) {
+        throw new Error(`Parcel with ID ${parcelId} not found`);
+      }
+      
+      // Get relevant measurements for yield prediction
+      const yieldMeasurements = await storage.getParcelMeasurements({
+        parcelId
+      });
+      
+      // Get historical yield data
+      const notes = await storage.getParcelNoteByParcelId(parcelId);
+      
+      // If we have OpenAI available, we can predict yield
+      if (openai) {
+        const prompt = `
+          Generate a yield prediction for a ${parcel.cropType} field based on:
+          Field measurements: ${JSON.stringify(yieldMeasurements)}
+          Historical notes: ${notes ? JSON.stringify(notes) : "No historical notes available"}
+          
+          Include in your analysis:
+          - Predicted yield value and unit (e.g., bushels/acre)
+          - Confidence interval (low and high values)
+          - Confidence level (0-1)
+          - Alternative yield scenarios based on different conditions
+          - Estimated market value (per unit and total)
+          - Estimated harvest date
+          - Historical yield comparisons for the past few years
+          
+          Format your response as a valid JSON object with these exact fields:
+          {
+            "predictedYield": {
+              "value": number,
+              "unit": string
+            },
+            "confidenceInterval": {
+              "low": number,
+              "high": number
+            },
+            "confidenceLevel": number,
+            "scenarios": [
+              {
+                "name": string,
+                "yieldChange": number,
+                "probability": number
+              }
+            ],
+            "marketValueEstimate": {
+              "perUnit": number,
+              "total": number,
+              "currency": string
+            },
+            "harvestDateEstimate": string,
+            "historicalYields": [
+              {"year": number, "yield": number}
+            ]
+          }
+        `;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+          messages: [
+            { role: "system", content: "You are an expert agricultural yield analyst with deep knowledge of crop prediction models." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        // Parse the response
+        const yieldPrediction = JSON.parse(response.choices[0].message.content);
+        
+        // Add parcel ID, crop type, and last updated timestamp
+        return {
+          parcelId,
+          cropType: parcel.cropType,
+          ...yieldPrediction,
+          lastUpdated: new Date().toISOString()
+        };
+      } else {
+        // If no OpenAI available, return a message
+        throw new Error("OpenAI API key not available for yield prediction");
+      }
+    } catch (error: any) {
+      console.error(`Error in yield prediction: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+// Weather Service
+class WeatherService {
+  async getWeatherData(parcelId: string) {
+    try {
+      // Get parcel data
+      const parcel = await storage.getParcelByExternalId(parcelId);
+      if (!parcel) {
+        throw new Error(`Parcel with ID ${parcelId} not found`);
+      }
+      
+      // Get weather measurements
+      const weatherMeasurements = await storage.getParcelMeasurements({
+        parcelId,
+        measurementType: 'weather'
+      });
+      
+      // If we have OpenAI available, we can generate weather analysis
+      if (openai) {
+        const prompt = `
+          Generate a comprehensive weather forecast for a ${parcel.cropType} field based on:
+          Weather measurements: ${JSON.stringify(weatherMeasurements)}
+          
+          Include in your analysis:
+          - Current weather conditions (temperature, humidity, precipitation, wind)
+          - 7-day forecast with daily conditions, temperature ranges, and precipitation
+          - Any severe weather alerts
+          - Agricultural advisories related to the weather
+          
+          Format your response as a valid JSON object with these exact fields:
+          {
+            "current": {
+              "temperature": number,
+              "humidity": number,
+              "precipitation": number,
+              "windSpeed": number,
+              "windDirection": number,
+              "conditions": string,
+              "timestamp": string
+            },
+            "forecast": [
+              {
+                "date": string,
+                "conditions": string,
+                "temperatureMin": number,
+                "temperatureMax": number,
+                "temperatureAvg": number,
+                "precipitation": number,
+                "humidity": number,
+                "windSpeed": number,
+                "windDirection": number
+              }
+            ],
+            "alerts": [
+              {
+                "type": string,
+                "message": string,
+                "severity": string,
+                "expiresAt": string
+              }
+            ],
+            "advisories": [
+              {
+                "type": string,
+                "message": string
+              }
+            ]
+          }
+        `;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+          messages: [
+            { role: "system", content: "You are an expert agricultural meteorologist providing detailed weather analysis and forecasts." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        // Parse the response
+        const weatherData = JSON.parse(response.choices[0].message.content);
+        
+        // Add parcel ID
+        return {
+          parcelId,
+          ...weatherData
+        };
+      } else {
+        // If no OpenAI available, return a message
+        throw new Error("OpenAI API key not available for weather analysis");
+      }
+    } catch (error: any) {
+      console.error(`Error in weather analysis: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+// Health Status
+class HealthStatusService {
+  async getCropHealthStatus(parcelId: string) {
+    try {
+      // Get parcel data
+      const parcel = await storage.getParcelByExternalId(parcelId);
+      if (!parcel) {
+        throw new Error(`Parcel with ID ${parcelId} not found`);
+      }
+      
+      // Get all measurements for health assessment
+      const measurements = await storage.getParcelMeasurements({
+        parcelId
+      });
+      
+      // If we have OpenAI available, we can generate health status
+      if (openai) {
+        const prompt = `
+          Generate a comprehensive crop health status for a ${parcel.cropType} field based on:
+          Field measurements: ${JSON.stringify(measurements)}
+          
+          Include in your analysis:
+          - Overall health rating (poor, fair, good, excellent)
+          - Health score (0-100)
+          - Current growth stage
+          - Days remaining until estimated harvest
+          - Estimated harvest date
+          - Any alerts or issues that need attention
+          
+          Format your response as a valid JSON object with these exact fields:
+          {
+            "parcelName": string,
+            "overallHealth": string,
+            "healthScore": number,
+            "growthStage": string,
+            "daysToHarvest": number,
+            "estimatedHarvestDate": string,
+            "alerts": [
+              {
+                "type": string,
+                "message": string
+              }
+            ]
+          }
+        `;
+        
+        const response = await openai.chat.completions.create({
+          model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+          messages: [
+            { role: "system", content: "You are an expert agricultural crop health analyst providing detailed status assessments." },
+            { role: "user", content: prompt }
+          ],
+          response_format: { type: "json_object" }
+        });
+        
+        // Parse the response
+        const healthStatus = JSON.parse(response.choices[0].message.content);
+        
+        // Add parcel ID, crop type, and timestamp
+        return {
+          parcelId,
+          cropType: parcel.cropType,
+          ...healthStatus,
+          lastUpdated: new Date().toISOString()
+        };
+      } else {
+        // If no OpenAI available, return a message
+        throw new Error("OpenAI API key not available for health status assessment");
+      }
+    } catch (error: any) {
+      console.error(`Error in health status assessment: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+// Instantiate the analyzers
+const soilAnalyzer = new SoilAnalyzer();
+const diseaseDetector = new DiseaseDetector();
+const yieldPredictor = new YieldPredictor();
+const weatherService = new WeatherService();
+const healthStatusService = new HealthStatusService();
+
+// Main Crop Health Service that coordinates the analyzers
+class CropHealthService {
+  async getCropHealthData(parcelId: string) {
+    try {
+      return await healthStatusService.getCropHealthStatus(parcelId);
+    } catch (error: any) {
+      console.error(`Error in crop health service: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async getSoilAnalysis(parcelId: string) {
+    try {
+      return await soilAnalyzer.analyzeSoil(parcelId);
+    } catch (error: any) {
+      console.error(`Error in soil analysis: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async getDiseaseDetections(parcelId: string) {
+    try {
+      return await diseaseDetector.detectDiseases(parcelId);
+    } catch (error: any) {
+      console.error(`Error in disease detection: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async getYieldPrediction(parcelId: string) {
+    try {
+      return await yieldPredictor.predictYield(parcelId);
+    } catch (error: any) {
+      console.error(`Error in yield prediction: ${error.message}`);
+      throw error;
+    }
+  }
+  
+  async getWeatherData(parcelId: string) {
+    try {
+      return await weatherService.getWeatherData(parcelId);
+    } catch (error: any) {
+      console.error(`Error in weather data: ${error.message}`);
+      throw error;
+    }
+  }
+}
+
+// Export the service
 export const cropHealthService = new CropHealthService();

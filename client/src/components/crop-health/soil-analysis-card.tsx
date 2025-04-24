@@ -1,236 +1,198 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { Separator } from "@/components/ui/separator";
+import { SoilIcon, DropletIcon, LeafIcon, MoveUpRightIcon } from "lucide-react";
 import { Progress } from "@/components/ui/progress";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { RiskLevel } from "@shared/schema";
-import { DropletIcon, InfoIcon, Leaf, Waves } from "lucide-react";
+
+interface Deficiency {
+  nutrient: string;
+  severity: string;
+}
 
 interface SoilAnalysisCardProps {
   parcelId: string;
-  parcelName: string;
   soilType: string;
   ph: number;
   organicMatter: number;
-  nutrients: {
-    nitrogen: number;
-    phosphorus: number;
-    potassium: number;
-  };
+  nitrogenLevel: number;
+  phosphorusLevel: number;
+  potassiumLevel: number;
   waterRetention: string;
-  deficiencies: Array<{
-    nutrient: string;
-    severity: RiskLevel;
-    recommendations: string[];
-  }>;
+  deficiencies: Deficiency[];
   suitabilityScore: number;
-  lastUpdated: string;
-  onClick?: () => void;
+  timestamp: string;
+  recommendations: string[];
 }
 
 /**
- * A card showing soil analysis data for a specific parcel
+ * Card displaying soil analysis data for a crop parcel
  */
 export function SoilAnalysisCard({
   parcelId,
-  parcelName,
   soilType,
   ph,
   organicMatter,
-  nutrients,
+  nitrogenLevel,
+  phosphorusLevel,
+  potassiumLevel,
   waterRetention,
   deficiencies,
   suitabilityScore,
-  lastUpdated,
-  onClick
+  timestamp,
+  recommendations
 }: SoilAnalysisCardProps) {
-  // Get color for pH value
-  const getPhColor = (ph: number) => {
-    if (ph < 5.5) return "text-red-500";
-    if (ph < 6.0) return "text-orange-500";
-    if (ph <= 7.5) return "text-green-500";
-    if (ph < 8.0) return "text-orange-500";
-    return "text-red-500";
-  };
-
-  // Get color for nutrient level
-  const getNutrientColor = (value: number, nutrient: string) => {
-    // Different optimal ranges for different nutrients
-    const ranges: Record<string, [number, number]> = {
-      nitrogen: [30, 60],
-      phosphorus: [20, 40],
-      potassium: [150, 250],
+  // Helper function to determine colors for values
+  const getNutrientColor = (value: number, type: 'N' | 'P' | 'K') => {
+    const ranges = {
+      N: { low: 30, medium: 60, high: 100 },
+      P: { low: 20, medium: 40, high: 70 },
+      K: { low: 150, medium: 200, high: 300 }
     };
-
-    const [min, max] = ranges[nutrient.toLowerCase()] || [0, 100];
-
-    if (value < min * 0.5) return "text-red-500";
-    if (value < min) return "text-orange-500";
-    if (value <= max) return "text-green-500";
-    if (value < max * 1.5) return "text-orange-500";
-    return "text-red-500";
+    
+    const range = ranges[type];
+    
+    if (value < range.low) return "text-red-600";
+    if (value < range.medium) return "text-yellow-600";
+    if (value < range.high) return "text-green-600";
+    return "text-blue-600";
   };
-
-  // Get severity badge color
-  const getSeverityColor = (severity: RiskLevel) => {
-    switch (severity) {
-      case "low":
-        return "bg-green-100 text-green-800 border-green-200";
-      case "medium":
-        return "bg-yellow-100 text-yellow-800 border-yellow-200";
-      case "high":
-        return "bg-orange-100 text-orange-800 border-orange-200";
-      case "severe":
-        return "bg-red-100 text-red-800 border-red-200";
-      default:
-        return "bg-gray-100 text-gray-800 border-gray-200";
+  
+  // Helper to format soil type display
+  const formatSoilType = (type: string) => {
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  };
+  
+  // Helper to determine pH suitability
+  const getPhColor = () => {
+    if (ph < 5.5) return "text-red-600";
+    if (ph < 6.0 || ph > 7.5) return "text-yellow-600";
+    return "text-green-600";
+  };
+  
+  // Helper for water retention badge color
+  const getWaterRetentionColor = () => {
+    switch (waterRetention.toLowerCase()) {
+      case 'poor': return "bg-red-100 text-red-800";
+      case 'fair': return "bg-yellow-100 text-yellow-800";
+      case 'good': return "bg-green-100 text-green-800";
+      case 'excellent': return "bg-blue-100 text-blue-800";
+      default: return "bg-gray-100 text-gray-800";
     }
   };
 
-  // Format nutrient value with unit
-  const formatNutrient = (value: number) => {
-    return `${value} ppm`;
-  };
-
+  // Determine score color
+  const scoreColor = 
+    suitabilityScore >= 80 ? "bg-green-200" :
+    suitabilityScore >= 60 ? "bg-yellow-200" :
+    "bg-red-200";
+  
   return (
-    <Card
-      className="hover:shadow-md transition-shadow cursor-pointer"
-      onClick={onClick}
-    >
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-lg">Soil Analysis</CardTitle>
-            <CardDescription>{parcelName}</CardDescription>
-          </div>
-          <Badge variant="outline">
-            {soilType.charAt(0).toUpperCase() + soilType.slice(1)}
+    <Card className="overflow-hidden">
+      <CardHeader className="space-y-1 pb-4">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-xl">Soil Analysis</CardTitle>
+          <Badge 
+            variant="outline" 
+            className={getWaterRetentionColor()}
+          >
+            {waterRetention.toUpperCase()} WATER RETENTION
           </Badge>
         </div>
+        <CardDescription>
+          {formatSoilType(soilType)} Soil
+        </CardDescription>
       </CardHeader>
-      <CardContent className="pb-2">
-        <div className="space-y-4">
-          {/* pH Level */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-sm font-medium">Soil pH</span>
-              <span className={`text-sm font-medium ${getPhColor(ph)}`}>{ph}</span>
-            </div>
-            <div className="relative h-2 bg-gray-200 rounded-full overflow-hidden">
-              <div className="absolute inset-0 flex">
-                <div className="h-full bg-red-400" style={{ width: '14%' }}></div>
-                <div className="h-full bg-orange-400" style={{ width: '8%' }}></div>
-                <div className="h-full bg-green-400" style={{ width: '26%' }}></div>
-                <div className="h-full bg-orange-400" style={{ width: '8%' }}></div>
-                <div className="h-full bg-red-400" style={{ width: '44%' }}></div>
-              </div>
-              <div 
-                className="absolute top-0 h-full w-1 bg-black" 
-                style={{ left: `${(ph / 14) * 100}%`, transform: 'translateX(-50%)' }}
-              ></div>
-            </div>
-            <div className="flex justify-between mt-1 text-xs text-gray-500">
-              <span>Acidic</span>
-              <span>Neutral</span>
-              <span>Alkaline</span>
-            </div>
+      
+      <CardContent className="pb-6 space-y-4">
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <p className="text-sm font-medium">Suitability Score</p>
+            <p className="text-sm font-bold">{suitabilityScore}%</p>
           </div>
-
-          {/* Organic Matter */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-sm font-medium">Organic Matter</span>
-              <span className="text-sm font-medium">{organicMatter}%</span>
-            </div>
-            <Progress value={Math.min(organicMatter / 10 * 100, 100)} className="h-2" />
+          <Progress 
+            value={suitabilityScore} 
+            className={`h-2 ${scoreColor}`}
+          />
+        </div>
+        
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">pH Level</p>
+            <p className={`text-lg font-semibold ${getPhColor()}`}>{ph.toFixed(1)}</p>
           </div>
-
-          {/* Nutrients */}
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <Leaf className="h-4 w-4 mr-1 text-green-500" />
-                <span className="text-sm">Nitrogen</span>
-              </div>
-              <span className={`text-sm font-medium ${getNutrientColor(nutrients.nitrogen, 'nitrogen')}`}>
-                {formatNutrient(nutrients.nitrogen)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <Leaf className="h-4 w-4 mr-1 text-blue-500" />
-                <span className="text-sm">Phosphorus</span>
-              </div>
-              <span className={`text-sm font-medium ${getNutrientColor(nutrients.phosphorus, 'phosphorus')}`}>
-                {formatNutrient(nutrients.phosphorus)}
-              </span>
-            </div>
-            <div className="flex justify-between items-center">
-              <div className="flex items-center">
-                <Leaf className="h-4 w-4 mr-1 text-purple-500" />
-                <span className="text-sm">Potassium</span>
-              </div>
-              <span className={`text-sm font-medium ${getNutrientColor(nutrients.potassium, 'potassium')}`}>
-                {formatNutrient(nutrients.potassium)}
-              </span>
-            </div>
-          </div>
-
-          {/* Water Retention */}
-          <div className="flex justify-between items-center">
-            <div className="flex items-center">
-              <DropletIcon className="h-4 w-4 mr-1 text-blue-500" />
-              <span className="text-sm">Water Retention</span>
-            </div>
-            <span className="text-sm font-medium capitalize">{waterRetention}</span>
-          </div>
-
-          {/* Deficiencies */}
-          {deficiencies.length > 0 && (
-            <div className="mt-2 space-y-2">
-              <h4 className="text-sm font-semibold">Nutrient Deficiencies</h4>
-              <div className="flex flex-wrap gap-1">
-                {deficiencies.map((deficiency, index) => (
-                  <TooltipProvider key={index}>
-                    <Tooltip>
-                      <TooltipTrigger asChild>
-                        <Badge
-                          variant="outline"
-                          className={`${getSeverityColor(deficiency.severity)}`}
-                        >
-                          {deficiency.nutrient}
-                        </Badge>
-                      </TooltipTrigger>
-                      <TooltipContent className="max-w-xs">
-                        <p className="font-semibold">Recommendations:</p>
-                        <ul className="list-disc pl-4 text-xs">
-                          {deficiency.recommendations.map((rec, i) => (
-                            <li key={i}>{rec}</li>
-                          ))}
-                        </ul>
-                      </TooltipContent>
-                    </Tooltip>
-                  </TooltipProvider>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Suitability Score */}
-          <div>
-            <div className="flex justify-between mb-1">
-              <span className="text-sm font-medium">Crop Suitability</span>
-              <span className="text-sm font-medium">{suitabilityScore}/100</span>
-            </div>
-            <Progress value={suitabilityScore} className="h-2" />
+          
+          <div className="space-y-1">
+            <p className="text-sm text-muted-foreground">Organic Matter</p>
+            <p className="text-lg font-semibold">{organicMatter.toFixed(1)}%</p>
           </div>
         </div>
+        
+        <Separator />
+        
+        <div>
+          <p className="text-sm font-medium mb-2">NPK Levels</p>
+          <div className="grid grid-cols-3 gap-2">
+            <div className="flex flex-col items-center p-2 rounded-md bg-gray-50">
+              <span className="text-xs text-muted-foreground">Nitrogen</span>
+              <span className={`text-lg font-semibold ${getNutrientColor(nitrogenLevel, 'N')}`}>
+                {nitrogenLevel}
+              </span>
+              <span className="text-xs">ppm</span>
+            </div>
+            
+            <div className="flex flex-col items-center p-2 rounded-md bg-gray-50">
+              <span className="text-xs text-muted-foreground">Phosphorus</span>
+              <span className={`text-lg font-semibold ${getNutrientColor(phosphorusLevel, 'P')}`}>
+                {phosphorusLevel}
+              </span>
+              <span className="text-xs">ppm</span>
+            </div>
+            
+            <div className="flex flex-col items-center p-2 rounded-md bg-gray-50">
+              <span className="text-xs text-muted-foreground">Potassium</span>
+              <span className={`text-lg font-semibold ${getNutrientColor(potassiumLevel, 'K')}`}>
+                {potassiumLevel}
+              </span>
+              <span className="text-xs">ppm</span>
+            </div>
+          </div>
+        </div>
+        
+        {deficiencies.length > 0 && (
+          <div>
+            <p className="text-sm font-medium mb-2">Deficiencies</p>
+            <div className="space-y-1">
+              {deficiencies.map((def, index) => (
+                <div key={index} className="flex items-center gap-2">
+                  <LeafIcon className="h-4 w-4 text-yellow-600" />
+                  <p className="text-sm">
+                    <span className="font-medium">{def.nutrient}</span>
+                    <span className="text-muted-foreground"> - {def.severity} deficiency</span>
+                  </p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        {recommendations.length > 0 && (
+          <div>
+            <p className="text-sm font-medium mb-2">Recommendations</p>
+            <div className="space-y-1">
+              {recommendations.map((rec, index) => (
+                <div key={index} className="flex items-start gap-2">
+                  <MoveUpRightIcon className="h-4 w-4 text-green-600 mt-0.5" />
+                  <p className="text-sm">{rec}</p>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
+        
+        <p className="text-xs text-muted-foreground pt-2">
+          Last updated: {timestamp}
+        </p>
       </CardContent>
-      <CardFooter className="pt-2 text-xs text-muted-foreground">
-        <div className="flex items-center">
-          <InfoIcon className="h-3 w-3 mr-1" />
-          Last updated: {lastUpdated}
-        </div>
-      </CardFooter>
     </Card>
   );
 }
