@@ -756,6 +756,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register crop health routes
   app.use('/api/crop-health', cropHealthRoutes);
+  
+  // Register crop identification routes
+  app.use('/api/crop-identification', cropIdentificationRoutes);
 
   // Register geocoding API endpoints
   app.post('/api/geocode/search', async (req, res) => {
