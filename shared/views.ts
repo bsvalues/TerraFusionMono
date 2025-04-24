@@ -24,7 +24,8 @@ export async function createViews() {
         (SELECT AVG(health_score) FROM crop_health_analyses WHERE parcel_id = p.external_id) as avg_health_score,
         (SELECT MAX(created_at) FROM parcel_notes WHERE parcel_id = p.external_id) as last_note_date,
         (SELECT MAX(created_at) FROM crop_health_analyses WHERE parcel_id = p.external_id) as last_health_analysis_date
-      FROM parcels p;
+      FROM parcels p
+      GROUP BY p.external_id, p.name, p.area_hectares, p.description, p.current_crop, p.status;
     `);
 
     // 2. Crop Health Dashboard View - Aggregated crop health data for dashboard displays
@@ -48,6 +49,8 @@ export async function createViews() {
       FROM parcels p
       LEFT JOIN crop_health_analyses cha ON p.external_id = cha.parcel_id
       WHERE cha.id IS NOT NULL
+      GROUP BY p.external_id, p.name, p.current_crop, cha.id, cha.overall_health, cha.health_score, 
+               cha.confidence_level, cha.growth_stage, cha.growth_progress, cha.estimated_harvest_date, cha.created_at
       ORDER BY cha.created_at DESC;
     `);
 
@@ -71,6 +74,9 @@ export async function createViews() {
         sa.lab_verified as lab_verified
       FROM parcels p
       JOIN soil_analyses sa ON p.external_id = sa.parcel_id
+      GROUP BY p.external_id, p.name, sa.id, sa.soil_type, sa.ph, sa.organic_matter, 
+               sa.nitrogen_level, sa.phosphorus_level, sa.potassium_level, sa.water_retention, 
+               sa.suitability_score, sa.created_at, sa.ai_generated, sa.lab_verified
       ORDER BY p.external_id, sa.created_at;
     `);
 
@@ -96,6 +102,11 @@ export async function createViews() {
         yp.created_at as prediction_date
       FROM parcels p
       JOIN yield_predictions yp ON p.external_id = yp.parcel_id
+      GROUP BY p.external_id, p.name, p.area_hectares, p.current_crop, 
+               yp.predicted_yield_value, yp.predicted_yield_unit, yp.yield_per_hectare,
+               yp.confidence_low, yp.confidence_high, yp.confidence_level, 
+               yp.comparison_to_average, yp.harvest_date_estimate, 
+               yp.market_value_per_unit, yp.market_value_total, yp.scenario, yp.created_at
       ORDER BY yp.created_at DESC;
     `);
 
@@ -117,6 +128,9 @@ export async function createViews() {
         wd.created_at as observation_date
       FROM parcels p
       JOIN weather_data wd ON p.external_id = wd.parcel_id
+      GROUP BY p.external_id, p.name, wd.data_type, wd.source, wd.temperature_min, 
+               wd.temperature_max, wd.temperature_avg, wd.humidity, wd.precipitation, 
+               wd.wind_speed, wd.conditions, wd.created_at
       ORDER BY wd.created_at DESC;
     `);
 
