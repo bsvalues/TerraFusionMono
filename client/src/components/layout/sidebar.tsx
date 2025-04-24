@@ -17,7 +17,9 @@ import {
   WrenchIcon,
   MapIcon,
   SproutIcon,
-  ScanLine
+  ScanLine,
+  LeafIcon,
+  ImageIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -54,7 +56,8 @@ export default function Sidebar() {
     { name: "Parcels", icon: LayersIcon, path: "/parcels" },
     { name: "Field Map", icon: MapIcon, path: "/map" },
     { name: "Crop Health", icon: SproutIcon, path: "/crop-health" },
-    { name: "Crop Identifier", icon: ScanLine, path: "/crop-identifier" }
+    { name: "Crop Identifier", icon: ScanLine, path: "/crop-identifier" },
+    { name: "Crop Analysis", icon: LeafIcon, path: "/crop-analysis" }
   ];
 
   return (
