@@ -49,6 +49,7 @@ import { pluginService } from "./services/plugins";
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
+import { initializeJobs } from "./jobs";
 
 (async () => {
   const server = await registerRoutes(app);
@@ -69,6 +70,9 @@ import { marketplaceService } from "./services/marketplace";
     
     // Create database views for reporting and analytics
     await createViews();
+    
+    // Initialize scheduled jobs (including materialized view refresh)
+    await initializeJobs();
     
     log("Services initialized successfully");
   } catch (error) {
