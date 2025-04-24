@@ -1,0 +1,115 @@
+🔥 Let’s build **Option 1: GraphQL Federation Gateway** inside `apps/core-gateway` using Apollo Federation 2.
+
+---
+
+### 🏗️ Step-by-Step Build Plan for Federation Gateway
+
+We’ll:
+
+1. **Install Dependencies**
+2. **Set Up Apollo Gateway**
+3. **Add Subgraph Service Placeholders**
+4. **Define Federation Config**
+5. **Expose Health Check & Playground**
+
+---
+
+### ✅ 1. Install Dependencies
+
+In Replit terminal (project root):
+
+```bash
+npm install @apollo/server @apollo/subgraph graphql @apollo/gateway
+```
+
+---
+
+### ✅ 2. Generate Federation Gateway Entry
+
+📁 `apps/core-gateway/src/main.ts`
+
+```ts
+import { ApolloServer } from '@apollo/server';
+import { startStandaloneServer } from '@apollo/server/standalone';
+import { ApolloGateway } from '@apollo/gateway';
+
+const gateway = new ApolloGateway({
+  supergraphSdl: new IntrospectAndCompose({
+    subgraphs: [
+      { name: 'backend', url: 'http://localhost:4001/graphql' },
+      { name: 'gisHub', url: 'http://localhost:4002/graphql' },
+      { name: 'levyCalc', url: 'http://localhost:4003/graphql' }
+    ],
+  }),
+});
+
+const server = new ApolloServer({ gateway });
+
+const { url } = await startStandaloneServer(server, {
+  listen: { port: 4000 },
+});
+
+console.log(`🚀 Federation gateway ready at ${url}`);
+```
+
+---
+
+### ✅ 3. Directory for Schema & Config
+
+```bash
+mkdir -p apps/core-gateway/src/graphql
+```
+
+📁 `apps/core-gateway/src/graphql/subgraphs.config.json` (placeholder)
+
+```json
+{
+  "backend": "http://localhost:4001/graphql",
+  "gisHub": "http://localhost:4002/graphql",
+  "levyCalc": "http://localhost:4003/graphql"
+}
+```
+
+---
+
+### ✅ 4. Add Nx Target (Optional)
+
+📁 `project.json` for `core-gateway`:
+
+```json
+{
+  "targets": {
+    "serve": {
+      "executor": "@nrwl/node:node",
+      "options": {
+        "buildTarget": "core-gateway:build",
+        "port": 4000,
+        "main": "apps/core-gateway/src/main.ts",
+        "tsConfig": "apps/core-gateway/tsconfig.app.json"
+      }
+    }
+  }
+}
+```
+
+---
+
+### ✅ 5. Test Run
+
+Run in Replit terminal:
+
+```bash
+nx serve core-gateway
+```
+
+You should see:
+
+```bash
+🚀 Federation gateway ready at http://localhost:4000/
+```
+
+---
+
+✅ Ready for **Option 2: SyncStatusPanel UI component** next?
+
+Or want to **spin up a mock subgraph** (e.g. `backend`) to test the gateway live?
