@@ -325,7 +325,7 @@ export const insertParcelSchema = createInsertSchema(parcels)
 // Parcel notes for mobile sync
 export const parcelNotes = pgTable("parcel_notes", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().unique(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().unique().references(() => parcels.externalId),
   content: text("content").default(""), // Plain text content
   yDocData: text("y_doc_data"), // Base64 encoded Y.Doc update (CRDT)
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -361,7 +361,7 @@ export const insertParcelNoteSchema = createInsertSchema(parcelNotes)
 // Parcel measurements for tracking field data
 export const parcelMeasurements = pgTable("parcel_measurements", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   measurementType: text("measurement_type").notNull(), // soil, crop, water, pest, etc.
@@ -382,7 +382,7 @@ export const insertParcelMeasurementSchema = createInsertSchema(parcelMeasuremen
 // Crop Health Analysis tables
 export const cropHealthAnalyses = pgTable("crop_health_analyses", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
@@ -434,7 +434,7 @@ export const insertDiseaseDetectionSchema = createInsertSchema(diseaseDetections
 // Soil analysis results
 export const soilAnalyses = pgTable("soil_analyses", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull(),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   soilType: text("soil_type"),
