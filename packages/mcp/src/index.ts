@@ -1,290 +1,218 @@
 /**
- * TerraFusion Marketplace Contract Protocol (MCP) v1.0
+ * TerraFusion Marketplace Contract Protocol (MCP)
  * 
- * This defines the interface contract that all TerraFusion plugins
- * must implement to be compatible with the marketplace.
+ * This module defines the contract and interfaces for plugins in the TerraFusion marketplace.
+ * It provides the foundation for plugin distribution, licensing, and integration.
  */
+import { z } from 'zod';
 
-export enum PluginType {
-  TYPESCRIPT = 'typescript',
+/**
+ * Plugin manifest schema
+ * Defines the structure and requirements for a valid plugin
+ */
+export const pluginManifestSchema = z.object({
+  name: z.string().min(1).max(100),
+  version: z.string().regex(/^\d+\.\d+\.\d+$/),
+  description: z.string().max(500),
+  author: z.string().min(1),
+  license: z.string(),
+  peerVersion: z.string().regex(/^\d+\.\d+\.\d+$/),
+  homepage: z.string().url().optional(),
+  repository: z.string().url().optional(),
+  main: z.string(),
+  dependencies: z.record(z.string()).optional(),
+  engines: z.object({
+    terrafusion: z.string(),
+    node: z.string().optional(),
+    python: z.string().optional(),
+  }),
+  capabilities: z.array(z.string()).optional(),
+  permissions: z.array(z.string()).optional(),
+});
+
+export type PluginManifest = z.infer<typeof pluginManifestSchema>;
+
+/**
+ * Plugin runtime environment
+ */
+export enum PluginRuntime {
+  NODE = 'node',
   PYTHON = 'python',
+  WASM = 'wasm',
 }
 
-export enum PluginCategory {
-  VALUATION = 'valuation',
-  GIS = 'gis',
-  VISUALIZATION = 'visualization',
-  DATA_QUALITY = 'data-quality',
-  WORKFLOW = 'workflow',
-  INTEGRATION = 'integration',
-  UTILITY = 'utility',
+/**
+ * Plugin capability levels 
+ */
+export enum PluginCapabilityLevel {
+  BASIC = 'basic',      // Basic API access, no system resources
+  STANDARD = 'standard', // Limited system resource access
+  ADVANCED = 'advanced', // Full system resource access
+  ADMIN = 'admin',      // Administrative capabilities
 }
 
+/**
+ * Plugin permission types
+ */
 export enum PluginPermission {
-  READ_PARCELS = 'read:parcels',
-  WRITE_PARCELS = 'write:parcels',
-  READ_VALUATIONS = 'read:valuations',
-  WRITE_VALUATIONS = 'write:valuations',
-  READ_GIS_DATA = 'read:gis',
-  WRITE_GIS_DATA = 'write:gis',
-  ADMIN_ACCESS = 'admin:access',
+  READ_FILES = 'read:files',
+  WRITE_FILES = 'write:files',
+  READ_DB = 'read:database',
+  WRITE_DB = 'write:database',
+  NETWORK = 'network',
+  EXECUTE_COMMANDS = 'execute:commands',
+  ACCESS_USER_DATA = 'access:user-data',
 }
 
-export interface PluginMetadata {
-  id: string;
-  name: string;
-  description: string;
-  version: string;
-  author: string;
-  license: string;
-  homepage?: string;
-  repository?: string;
-  type: PluginType;
-  category: PluginCategory;
-  entryPoint: string;
-  dependencies: Record<string, string>;
-  permissions: PluginPermission[];
-  configSchema?: Record<string, any>;
-  minCoreVersion: string;
-  maxCoreVersion?: string;
-  tags: string[];
-  icon?: string;
+/**
+ * Plugin interface
+ * The contract that all plugins must fulfill
+ */
+export interface IPlugin {
+  // Core lifecycle methods
+  initialize(): Promise<void>;
+  start(): Promise<void>;
+  stop(): Promise<void>;
+  uninstall(): Promise<void>;
+  
+  // Configuration
+  getConfig(): Record<string, any>;
+  setConfig(config: Record<string, any>): Promise<void>;
+  
+  // Status
+  getStatus(): Promise<PluginStatus>;
+  
+  // Capabilities
+  getCapabilities(): string[];
+  
+  // Event handling
+  onEvent(event: PluginEvent): Promise<void>;
 }
 
-export interface PluginContext {
-  tenant: {
-    id: string;
-    name: string;
-    settings: Record<string, any>;
-  };
-  user: {
-    id: string;
-    name: string;
-    email: string;
-    role: string;
-  };
-  config: Record<string, any>;
-  storage: PluginStorage;
-  api: CoreApiClient;
-  events: EventBus;
-  logger: Logger;
+/**
+ * Plugin status
+ */
+export interface PluginStatus {
+  active: boolean;
+  health: 'healthy' | 'degraded' | 'error';
+  message?: string;
+  lastActive?: Date;
+  metrics?: Record<string, any>;
 }
 
-export interface PluginStorage {
-  get(key: string): Promise<any>;
-  set(key: string, value: any): Promise<void>;
-  delete(key: string): Promise<void>;
-  clear(): Promise<void>;
-  getKeys(): Promise<string[]>;
-}
-
-export interface CoreApiClient {
-  parcels: ParcelApi;
-  valuations: ValuationApi;
-  gis: GisApi;
-  users: UserApi;
-  system: SystemApi;
-}
-
-export interface ParcelApi {
-  getAll(options?: QueryOptions): Promise<Parcel[]>;
-  getById(id: string): Promise<Parcel>;
-  create(parcel: Partial<Parcel>): Promise<Parcel>;
-  update(id: string, updates: Partial<Parcel>): Promise<Parcel>;
-  delete(id: string): Promise<void>;
-}
-
-export interface ValuationApi {
-  getAll(options?: QueryOptions): Promise<Valuation[]>;
-  getById(id: string): Promise<Valuation>;
-  getByParcelId(parcelId: string): Promise<Valuation[]>;
-  create(valuation: Partial<Valuation>): Promise<Valuation>;
-  update(id: string, updates: Partial<Valuation>): Promise<Valuation>;
-  delete(id: string): Promise<void>;
-}
-
-export interface GisApi {
-  getLayers(): Promise<GisLayer[]>;
-  getLayerData(layerId: string, bounds?: GeoBounds): Promise<GeoFeature[]>;
-  saveFeature(layerId: string, feature: GeoFeature): Promise<GeoFeature>;
-  deleteFeature(layerId: string, featureId: string): Promise<void>;
-  runSpatialQuery(query: SpatialQuery): Promise<GeoFeature[]>;
-}
-
-export interface UserApi {
-  getCurrent(): Promise<User>;
-  getAll(): Promise<User[]>;
-  getById(id: string): Promise<User>;
-}
-
-export interface SystemApi {
-  getInfo(): Promise<SystemInfo>;
-  getMetrics(): Promise<SystemMetrics>;
-  getLogs(options?: LogQueryOptions): Promise<LogEntry[]>;
-}
-
-export interface EventBus {
-  on(event: string, handler: (data: any) => void): void;
-  off(event: string, handler: (data: any) => void): void;
-  emit(event: string, data: any): void;
-}
-
-export interface Logger {
-  debug(message: string, ...args: any[]): void;
-  info(message: string, ...args: any[]): void;
-  warn(message: string, ...args: any[]): void;
-  error(message: string, ...args: any[]): void;
-}
-
-// Basic data types
-
-export interface QueryOptions {
-  limit?: number;
-  offset?: number;
-  sortBy?: string;
-  sortOrder?: 'asc' | 'desc';
-  filter?: Record<string, any>;
-}
-
-export interface LogQueryOptions extends QueryOptions {
-  level?: 'debug' | 'info' | 'warn' | 'error';
-  startDate?: string;
-  endDate?: string;
-}
-
-export interface Parcel {
-  id: string;
-  externalId?: string;
-  address: string;
-  owner: string;
-  areaM2: number;
-  geoJson: any;
-  attributes: Record<string, any>;
-  status: string;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface Valuation {
-  id: string;
-  parcelId: string;
-  assessmentYear: number;
-  landValue: number;
-  improvementValue: number;
-  totalValue: number;
-  method: string;
-  notes?: string;
-  attributes: Record<string, any>;
-  createdAt: string;
-  updatedAt: string;
-}
-
-export interface GisLayer {
-  id: string;
-  name: string;
-  description: string;
-  type: 'vector' | 'raster';
-  source: string;
-  visible: boolean;
-  zIndex: number;
-  style?: any;
-}
-
-export interface GeoBounds {
-  minLat: number;
-  minLng: number;
-  maxLat: number;
-  maxLng: number;
-}
-
-export interface GeoFeature {
-  id: string;
+/**
+ * Plugin event
+ */
+export interface PluginEvent {
   type: string;
-  geometry: any;
-  properties: Record<string, any>;
-}
-
-export interface SpatialQuery {
-  type: 'within' | 'contains' | 'intersects' | 'distance';
-  geometry: any;
-  options?: Record<string, any>;
-}
-
-export interface User {
-  id: string;
-  username: string;
-  email: string;
-  role: string;
-  permissions: string[];
-  metadata: Record<string, any>;
-}
-
-export interface SystemInfo {
-  name: string;
-  version: string;
-  environment: string;
-  uptime: number;
-  plugins: PluginMetadata[];
-}
-
-export interface SystemMetrics {
-  cpu: number;
-  memory: number;
-  storage: number;
-  activeUsers: number;
-  requestsPerMinute: number;
-}
-
-export interface LogEntry {
-  id: string;
-  timestamp: string;
-  level: string;
   source: string;
-  message: string;
-  metadata: Record<string, any>;
+  timestamp: Date;
+  data: any;
 }
 
-// Plugin lifecycle methods
-
-export interface PluginLifecycle {
-  onInstall(context: PluginContext): Promise<void>;
-  onActivate(context: PluginContext): Promise<void>;
-  onDeactivate(context: PluginContext): Promise<void>;
-  onUninstall(context: PluginContext): Promise<void>;
-  onUpgrade(context: PluginContext, fromVersion: string): Promise<void>;
+/**
+ * Plugin sandbox configuration
+ */
+export interface PluginSandboxConfig {
+  memoryLimit: number; // in MB
+  timeoutMs: number;
+  allowedModules: string[];
+  allowedPermissions: PluginPermission[];
+  networkAccess: boolean;
+  fileSystemAccess: boolean;
 }
 
-// Plugin module definition
+/**
+ * Default sandbox configuration
+ */
+export const DEFAULT_SANDBOX_CONFIG: PluginSandboxConfig = {
+  memoryLimit: 512,
+  timeoutMs: 60000,
+  allowedModules: ['crypto', 'path'],
+  allowedPermissions: [PluginPermission.READ_FILES, PluginPermission.READ_DB],
+  networkAccess: false,
+  fileSystemAccess: false,
+};
 
-export interface PluginModule extends Partial<PluginLifecycle> {
-  metadata: PluginMetadata;
-  
-  // Custom entry points can be defined by the plugin
-  [key: string]: any;
+/**
+ * Plugin product pricing model
+ */
+export enum PricingModel {
+  FREE = 'free',
+  ONE_TIME = 'one-time',
+  SUBSCRIPTION = 'subscription',
+  USAGE_BASED = 'usage-based',
 }
 
-// Helper function for plugin validation
-export function validatePlugin(pluginModule: any): pluginModule is PluginModule {
-  // Check if the plugin has the required metadata
-  if (!pluginModule.metadata) {
-    return false;
+/**
+ * Billing period
+ */
+export enum BillingPeriod {
+  MONTHLY = 'monthly',
+  YEARLY = 'yearly',
+}
+
+/**
+ * License verification response
+ */
+export interface LicenseVerificationResult {
+  isValid: boolean;
+  expiresAt?: Date;
+  features: string[];
+  restrictions?: string[];
+  message?: string;
+}
+
+/**
+ * Plugin versioning utilities
+ */
+export class PluginVersion {
+  /**
+   * Check if a plugin version is compatible with the platform version
+   */
+  static isCompatible(pluginVersion: string, platformVersion: string): boolean {
+    // Simple implementation - in reality would do proper semver comparison
+    const [pluginMajor] = pluginVersion.split('.');
+    const [platformMajor] = platformVersion.split('.');
+    
+    return pluginMajor === platformMajor;
   }
-
-  const metadata = pluginModule.metadata;
   
-  // Validate required metadata fields
-  return Boolean(
-    metadata.id &&
-    metadata.name &&
-    metadata.description &&
-    metadata.version &&
-    metadata.author &&
-    metadata.license &&
-    metadata.type &&
-    metadata.category &&
-    metadata.entryPoint &&
-    metadata.permissions &&
-    metadata.minCoreVersion &&
-    metadata.tags
-  );
+  /**
+   * Compare two version strings
+   * @returns -1 if v1 < v2, 0 if v1 === v2, 1 if v1 > v2
+   */
+  static compare(v1: string, v2: string): -1 | 0 | 1 {
+    const parts1 = v1.split('.').map(Number);
+    const parts2 = v2.split('.').map(Number);
+    
+    for (let i = 0; i < 3; i++) {
+      if (parts1[i] < parts2[i]) return -1;
+      if (parts1[i] > parts2[i]) return 1;
+    }
+    
+    return 0;
+  }
+}
+
+/**
+ * Plugin loader interface
+ */
+export interface IPluginLoader {
+  loadPlugin(pluginPath: string): Promise<IPlugin>;
+  validateManifest(manifest: any): PluginManifest;
+  createSandbox(config: Partial<PluginSandboxConfig>): any;
+}
+
+/**
+ * Plugin manager interface
+ */
+export interface IPluginManager {
+  installPlugin(pluginPath: string): Promise<string>;
+  uninstallPlugin(pluginId: string): Promise<void>;
+  enablePlugin(pluginId: string): Promise<void>;
+  disablePlugin(pluginId: string): Promise<void>;
+  getPlugin(pluginId: string): Promise<IPlugin | undefined>;
+  listPlugins(): Promise<string[]>;
+  getPluginStatus(pluginId: string): Promise<PluginStatus>;
 }

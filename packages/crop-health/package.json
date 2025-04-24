@@ -1,19 +1,20 @@
 {
-  "name": "@terrafusion/mcp",
+  "name": "@terrafusion/crop-health",
   "version": "1.0.0",
-  "description": "TerraFusion Marketplace Contract Protocol",
+  "description": "TerraFusion Predictive Crop Health AI Insights",
   "main": "dist/index.js",
   "types": "dist/index.d.ts",
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "jest"
   },
-  "keywords": ["terrafusion", "marketplace", "contract", "protocol"],
+  "keywords": ["terrafusion", "agriculture", "crop-health", "ai", "predictions"],
   "author": "TerraFusion Team",
   "license": "UNLICENSED",
   "private": true,
   "dependencies": {
     "@terrafusion/schema": "^1.0.0",
+    "openai": "^4.28.0",
     "zod": "^3.22.4"
   },
   "devDependencies": {
