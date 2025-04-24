@@ -31,7 +31,11 @@ interface Participant {
 
 const CollaborationContext = createContext<CollaborationContextType | undefined>(undefined);
 
-export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+interface CollaborationProviderProps {
+  children: React.ReactNode | ((context: CollaborationContextType) => React.ReactNode);
+}
+
+export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({ children }) => {
   const [isConnected, setIsConnected] = useState(false);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isJoined, setIsJoined] = useState(false);
@@ -350,7 +354,7 @@ export const CollaborationProvider: React.FC<{ children: React.ReactNode }> = ({
   
   return (
     <CollaborationContext.Provider value={value}>
-      {children}
+      {typeof children === 'function' ? children(value) : children}
     </CollaborationContext.Provider>
   );
 };

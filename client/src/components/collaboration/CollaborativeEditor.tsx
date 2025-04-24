@@ -1,6 +1,11 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { useCollaboration } from './CollaborationProvider';
 import * as Y from 'yjs';
+import { Textarea } from '@/components/ui/textarea';
+import { Card, CardHeader, CardTitle, CardContent } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 
 interface CollaborativeEditorProps {
   initialContent?: string;
@@ -140,106 +145,66 @@ const CollaborativeEditor: React.FC<CollaborativeEditorProps> = ({
   };
   
   if (error) {
-    return <div className="error-message">{error}</div>;
+    return (
+      <Alert variant="destructive" className="my-4">
+        <AlertDescription>{error}</AlertDescription>
+      </Alert>
+    );
   }
   
   return (
-    <div className="collaborative-editor">
-      <div className="participants">
-        <strong>Participants ({participants.length}):</strong>
-        <ul>
-          {participants.map(participant => (
-            <li key={participant.clientId} style={{ color: participant.color }}>
-              {participant.username} {participant.presence === 'away' ? '(away)' : ''}
-            </li>
-          ))}
-        </ul>
-      </div>
+    <Card className="collaborative-editor relative overflow-hidden">
+      <CardHeader className="bg-secondary/20 pb-3">
+        <CardTitle className="text-sm font-medium flex items-center justify-between">
+          <span>Collaborative Document</span>
+          <span className="text-xs text-muted-foreground">
+            {participants.length} active participant{participants.length !== 1 ? 's' : ''}
+          </span>
+        </CardTitle>
+        {participants.length > 0 && (
+          <div className="flex flex-wrap gap-2 mt-2">
+            {participants.map(participant => (
+              <Badge 
+                key={participant.clientId}
+                variant="outline"
+                className="text-xs font-normal"
+                style={{ 
+                  backgroundColor: `${participant.color}20`, 
+                  borderColor: participant.color,
+                  color: participant.color
+                }}
+              >
+                {participant.username}
+                {participant.presence === 'away' ? ' (away)' : ''}
+              </Badge>
+            ))}
+          </div>
+        )}
+      </CardHeader>
       
-      <textarea
-        ref={textareaRef}
-        value={content}
-        onChange={handleTextChange}
-        onSelect={handleCursorChange}
-        onClick={handleCursorChange}
-        onKeyUp={handleCursorChange}
-        disabled={readOnly || !isJoined}
-        className="editor-textarea"
-        rows={20}
-        placeholder="Start typing..."
-      />
+      <CardContent className="p-0">
+        <Textarea
+          ref={textareaRef}
+          value={content}
+          onChange={handleTextChange}
+          onSelect={handleCursorChange}
+          onClick={handleCursorChange}
+          onKeyUp={handleCursorChange}
+          disabled={readOnly || !isJoined}
+          className="min-h-[350px] rounded-none border-0 border-t resize-none focus-visible:ring-0 focus-visible:ring-offset-0 font-mono"
+          placeholder="Start typing to collaborate in real-time..."
+        />
+      </CardContent>
       
       {!isJoined && (
-        <div className="overlay">
-          <div className="message">Connecting to collaboration session...</div>
+        <div className="absolute inset-0 bg-background/80 backdrop-blur-sm flex items-center justify-center">
+          <div className="flex flex-col items-center gap-2 p-4 bg-card rounded-md shadow-md">
+            <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <span className="text-sm font-medium">Connecting to collaboration session...</span>
+          </div>
         </div>
       )}
-      
-      <style jsx>{`
-        .collaborative-editor {
-          position: relative;
-          border: 1px solid #ccc;
-          border-radius: 4px;
-          overflow: hidden;
-        }
-        
-        .participants {
-          padding: 10px;
-          background-color: #f5f5f5;
-          border-bottom: 1px solid #ccc;
-        }
-        
-        .participants ul {
-          display: flex;
-          list-style: none;
-          padding: 0;
-          margin: 5px 0 0 0;
-          flex-wrap: wrap;
-        }
-        
-        .participants li {
-          margin-right: 10px;
-          font-weight: bold;
-        }
-        
-        .editor-textarea {
-          width: 100%;
-          padding: 10px;
-          font-family: monospace;
-          font-size: 14px;
-          border: none;
-          resize: vertical;
-          min-height: 300px;
-        }
-        
-        .overlay {
-          position: absolute;
-          top: 0;
-          left: 0;
-          right: 0;
-          bottom: 0;
-          background-color: rgba(255, 255, 255, 0.8);
-          display: flex;
-          align-items: center;
-          justify-content: center;
-        }
-        
-        .message {
-          padding: 20px;
-          background-color: white;
-          border-radius: 4px;
-          box-shadow: 0 2px 10px rgba(0, 0, 0, 0.1);
-        }
-        
-        .error-message {
-          color: #d32f2f;
-          padding: 10px;
-          margin: 10px 0;
-          background-color: #ffebee;
-          border-radius: 4px;
-        }
-      `}</style>
-    </div>
+    </Card>
   );
 };
 

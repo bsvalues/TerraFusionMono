@@ -218,24 +218,64 @@ const CollaborationDemo: React.FC = () => {
             </div>
           ) : (
             <CollaborationProvider>
-              <div className="space-y-4">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <h3 className="text-lg font-medium">Session: {sessionId}</h3>
-                    <p className="text-sm text-gray-500">
-                      Connected as: {username}
-                    </p>
+              {({ connectToSession, disconnectFromSession, isConnected, isJoined, error, participants }) => (
+                <div className="space-y-4">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <h3 className="text-lg font-medium">Session: {sessionId}</h3>
+                      <p className="text-sm text-gray-500">
+                        Connected as: {username}
+                      </p>
+                      <p className="text-xs text-gray-500">
+                        Status: {isConnected ? (isJoined ? 'Joined' : 'Connected') : 'Connecting...'}
+                      </p>
+                      {error && (
+                        <p className="text-xs text-red-500">
+                          Error: {error}
+                        </p>
+                      )}
+                    </div>
+                    <Button variant="outline" onClick={() => {
+                      disconnectFromSession();
+                      leaveSession();
+                    }}>
+                      Leave Session
+                    </Button>
                   </div>
-                  <Button variant="outline" onClick={leaveSession}>
-                    Leave Session
-                  </Button>
+                  
+                  {isConnected && !isJoined && (
+                    <Button 
+                      onClick={() => connectToSession(sessionId, token, userId, username)}
+                      className="w-full"
+                    >
+                      Join Collaboration
+                    </Button>
+                  )}
+                  
+                  {isJoined && (
+                    <CollaborativeEditor
+                      initialContent="Start typing here to collaborate in real-time!"
+                      onContentChange={handleContentChange}
+                    />
+                  )}
+                  
+                  {participants.length > 0 && (
+                    <div className="mt-4">
+                      <h4 className="text-sm font-medium mb-2">Participants ({participants.length})</h4>
+                      <div className="flex flex-wrap gap-2">
+                        {participants.map(participant => (
+                          <Badge 
+                            key={participant.clientId}
+                            style={{ backgroundColor: participant.color, color: '#fff' }}
+                          >
+                            {participant.username}
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </div>
-                
-                <CollaborativeEditor
-                  initialContent="Start typing here to collaborate in real-time!"
-                  onContentChange={handleContentChange}
-                />
-              </div>
+              )}
             </CollaborationProvider>
           )}
         </CardContent>
