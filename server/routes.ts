@@ -755,8 +755,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register mobile app routes
   app.use('/api/mobile', mobileRoutes);
   
-  // Register mobile sync routes
-  app.use('/api/mobile/sync', mobileSyncRoutes);
+  // Register mobile sync routes (on a separate path to avoid mobile auth middleware)
+  app.use('/api/sync', mobileSyncRoutes);
   
   // Register crop health routes
   app.use('/api/crop-health', cropHealthRoutes);
