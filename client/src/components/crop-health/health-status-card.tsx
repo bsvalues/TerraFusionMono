@@ -1,26 +1,29 @@
-import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip";
-import { CropHealthStatus } from "@shared/schema";
-import { InfoIcon, AlertTriangle, CheckCircle, Activity, CalendarDays } from "lucide-react";
+import { Progress } from "@/components/ui/progress";
+import { Separator } from "@/components/ui/separator";
+import { SproutIcon, AlertTriangleIcon, DropletIcon, CalendarIcon } from "lucide-react";
+
+interface Alert {
+  type: string;
+  message: string;
+}
 
 interface HealthStatusCardProps {
   parcelId: string;
   parcelName: string;
   cropType: string;
-  overallHealth: CropHealthStatus;
+  overallHealth: string;
   healthScore: number;
   lastUpdated: string;
   growthStage: string;
   daysToHarvest: number;
   estimatedHarvestDate: string;
-  recommendations?: string[];
-  alerts?: { type: string; message: string }[];
-  onClick?: () => void;
+  alerts: Alert[];
 }
 
 /**
- * A card showing the overall health status of a crop in a parcel
+ * Card displaying overall crop health status and key metrics
  */
 export function HealthStatusCard({
   parcelId,
@@ -32,129 +35,87 @@ export function HealthStatusCard({
   growthStage,
   daysToHarvest,
   estimatedHarvestDate,
-  recommendations,
-  alerts,
-  onClick
+  alerts
 }: HealthStatusCardProps) {
-  // Determine status color based on health status
-  const getStatusColor = (status: CropHealthStatus) => {
-    switch (status) {
-      case "excellent":
-        return "bg-green-500";
-      case "good":
-        return "bg-green-400";
-      case "fair":
-        return "bg-yellow-400";
-      case "poor":
-        return "bg-orange-500";
-      case "critical":
-        return "bg-red-500";
-      default:
-        return "bg-gray-400";
-    }
-  };
+  // Determine health status color
+  const healthColor = 
+    healthScore >= 80 ? "bg-green-100 text-green-800" :
+    healthScore >= 60 ? "bg-yellow-100 text-yellow-800" :
+    "bg-red-100 text-red-800";
 
-  // Determine text color based on health status
-  const getTextColor = (status: CropHealthStatus) => {
-    switch (status) {
-      case "excellent":
-      case "good":
-        return "text-green-600";
-      case "fair":
-        return "text-yellow-600";
-      case "poor":
-        return "text-orange-600";
-      case "critical":
-        return "text-red-600";
-      default:
-        return "text-gray-600";
-    }
-  };
-
-  // Determine status label with capitalized first letter
-  const getStatusLabel = (status: CropHealthStatus) => {
-    return status.charAt(0).toUpperCase() + status.slice(1);
-  };
-
+  // Capitalize crop type for display
+  const displayCropType = cropType.charAt(0).toUpperCase() + cropType.slice(1);
+  
   return (
-    <Card 
-      className="hover:shadow-md transition-shadow cursor-pointer" 
-      onClick={onClick}
-    >
-      <CardHeader className="pb-2">
-        <div className="flex justify-between items-start">
-          <div>
-            <CardTitle className="text-lg">{parcelName}</CardTitle>
-            <CardDescription>
-              {cropType.charAt(0).toUpperCase() + cropType.slice(1)}
-            </CardDescription>
-          </div>
+    <Card className="overflow-hidden">
+      <CardHeader className="space-y-1 pb-4">
+        <div className="flex justify-between items-center">
+          <CardTitle className="text-xl">Health Status</CardTitle>
           <Badge 
-            className={`${getStatusColor(overallHealth)} text-white`}
-            variant="outline"
+            variant="outline" 
+            className={healthColor}
           >
-            {getStatusLabel(overallHealth)}
+            {overallHealth.toUpperCase()}
           </Badge>
         </div>
+        <CardDescription>
+          {displayCropType} • {parcelName}
+        </CardDescription>
       </CardHeader>
-      <CardContent className="pb-2">
-        <div className="space-y-4">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <Activity className="h-5 w-5 text-muted-foreground mr-1" />
-              <span className="text-sm text-muted-foreground mr-1">Health Score:</span>
-            </div>
-            <div className="font-medium">
-              <span className={getTextColor(overallHealth)}>{healthScore}/100</span>
-            </div>
+      
+      <CardContent className="pb-6 space-y-4">
+        <div>
+          <div className="flex justify-between items-center mb-1">
+            <p className="text-sm font-medium">Health Score</p>
+            <p className="text-sm font-bold">{healthScore}%</p>
           </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <span className="text-sm text-muted-foreground mr-1">Growth Stage:</span>
-            </div>
-            <div className="font-medium">
-              {growthStage}
-            </div>
-          </div>
-          
-          <div className="flex items-center justify-between">
-            <div className="flex items-center">
-              <CalendarDays className="h-5 w-5 text-muted-foreground mr-1" />
-              <span className="text-sm text-muted-foreground mr-1">Harvest In:</span>
-            </div>
-            <div className="font-medium">
-              <TooltipProvider>
-                <Tooltip>
-                  <TooltipTrigger className="cursor-help underline decoration-dotted">
-                    {daysToHarvest} days
-                  </TooltipTrigger>
-                  <TooltipContent>
-                    <p>Estimated harvest date: {estimatedHarvestDate}</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            </div>
-          </div>
+          <Progress 
+            value={healthScore} 
+            className={`h-2 ${healthScore >= 80 ? 'bg-green-200' : healthScore >= 60 ? 'bg-yellow-200' : 'bg-red-200'}`}
+          />
+        </div>
 
-          {alerts && alerts.length > 0 && (
-            <div className="mt-2 border-t pt-2">
-              {alerts.map((alert, i) => (
-                <div key={i} className="flex items-start mt-1">
-                  <AlertTriangle className="h-4 w-4 text-orange-500 mr-1 flex-shrink-0 mt-0.5" />
-                  <span className="text-xs text-orange-700">{alert.message}</span>
-                </div>
-              ))}
+        <div>
+          <p className="text-sm text-muted-foreground mb-2">Key Indicators</p>
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex items-center gap-2">
+              <SproutIcon className="h-4 w-4 text-green-600" />
+              <span className="text-sm">{growthStage}</span>
             </div>
-          )}
+            <div className="flex items-center gap-2">
+              <CalendarIcon className="h-4 w-4 text-blue-600" />
+              <span className="text-sm">{daysToHarvest} days to harvest</span>
+            </div>
+          </div>
+          <p className="text-xs text-muted-foreground mt-2">Est. harvest: {estimatedHarvestDate}</p>
         </div>
-      </CardContent>
-      <CardFooter className="pt-2 text-xs text-muted-foreground">
-        <div className="flex items-center">
-          <InfoIcon className="h-3 w-3 mr-1" />
+
+        {alerts.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <p className="text-sm font-medium mb-2">Alerts</p>
+              <div className="space-y-2">
+                {alerts.map((alert, index) => (
+                  <div key={index} className="flex items-start gap-2 p-2 rounded-md bg-amber-50">
+                    <AlertTriangleIcon className="h-4 w-4 text-amber-600 mt-0.5" />
+                    <div>
+                      <p className="text-xs font-medium text-amber-800">
+                        {alert.type.toUpperCase()}
+                      </p>
+                      <p className="text-xs">{alert.message}</p>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </>
+        )}
+
+        <p className="text-xs text-muted-foreground pt-2">
           Last updated: {lastUpdated}
-        </div>
-      </CardFooter>
+        </p>
+      </CardContent>
     </Card>
   );
 }

@@ -15,7 +15,8 @@ import {
   MapPinIcon,
   LayersIcon,
   WrenchIcon,
-  MapIcon
+  MapIcon,
+  SproutIcon
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -50,7 +51,8 @@ export default function Sidebar() {
   // Define field management entries
   const fieldTools = [
     { name: "Parcels", icon: LayersIcon, path: "/parcels" },
-    { name: "Field Map", icon: MapIcon, path: "/map" }
+    { name: "Field Map", icon: MapIcon, path: "/map" },
+    { name: "Crop Health", icon: SproutIcon, path: "/crop-health" }
   ];
 
   return (

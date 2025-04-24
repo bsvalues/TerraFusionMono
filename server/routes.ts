@@ -16,6 +16,7 @@ import Stripe from "stripe";
 import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
 import mobileAuthRoutes from "./routes/mobile-auth";
+import cropHealthRoutes from "./routes/crop-health";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -749,6 +750,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register mobile app routes
   app.use('/api/mobile', mobileRoutes);
+  
+  // Register crop health routes
+  app.use('/api/crop-health', cropHealthRoutes);
 
   // Register geocoding API endpoints
   app.post('/api/geocode/search', async (req, res) => {

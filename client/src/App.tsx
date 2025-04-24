@@ -19,6 +19,7 @@ import MetricsPage from "@/pages/metrics";
 import JobQueuePage from "@/pages/jobs";
 import ParcelsPage from "@/pages/parcels";
 import GeocodePage from "@/pages/geocode";
+import CropHealthDashboard from "@/pages/crop-health-dashboard";
 
 function Router() {
   return (
@@ -40,6 +41,7 @@ function Router() {
         {/* Field management routes */}
         <Route path="/parcels" component={ParcelsPage} />
         <Route path="/geocode" component={GeocodePage} />
+        <Route path="/crop-health" component={CropHealthDashboard} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />
