@@ -1,0 +1,5 @@
+{
+  "backend": "http://localhost:4001/graphql",
+  "gisHub": "http://localhost:4002/graphql",
+  "levyCalc": "http://localhost:4003/graphql"
+}
