@@ -16,7 +16,8 @@ import {
   LayersIcon,
   WrenchIcon,
   MapIcon,
-  SproutIcon
+  SproutIcon,
+  ScanLine
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -52,7 +53,8 @@ export default function Sidebar() {
   const fieldTools = [
     { name: "Parcels", icon: LayersIcon, path: "/parcels" },
     { name: "Field Map", icon: MapIcon, path: "/map" },
-    { name: "Crop Health", icon: SproutIcon, path: "/crop-health" }
+    { name: "Crop Health", icon: SproutIcon, path: "/crop-health" },
+    { name: "Crop Identifier", icon: ScanLine, path: "/crop-identifier" }
   ];
 
   return (
