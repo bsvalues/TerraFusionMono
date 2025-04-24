@@ -177,7 +177,7 @@ export const insertMetricSchema = createInsertSchema(systemMetrics).pick({
 // Plugin Marketplace
 export const pluginProducts = pgTable("plugin_products", {
   id: serial("id").primaryKey(),
-  pluginId: integer("plugin_id").notNull(), // Reference to the plugin
+  pluginId: integer("plugin_id").notNull().references(() => plugins.id), // Reference to the plugin
   name: text("name").notNull(),
   description: text("description"),
   price: decimal("price", { precision: 10, scale: 2 }).notNull(),
@@ -205,9 +205,9 @@ export const insertPluginProductSchema = createInsertSchema(pluginProducts).pick
 // User plugin purchases
 export const userPlugins = pgTable("user_plugins", {
   id: serial("id").primaryKey(),
-  userId: integer("user_id").notNull(),
-  pluginId: integer("plugin_id").notNull(),
-  productId: integer("product_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  pluginId: integer("plugin_id").notNull().references(() => plugins.id),
+  productId: integer("product_id").notNull().references(() => pluginProducts.id),
   purchaseDate: timestamp("purchase_date").defaultNow().notNull(),
   expiryDate: timestamp("expiry_date"), // For subscriptions
   active: boolean("active").default(true).notNull(),
@@ -301,7 +301,7 @@ export const parcels = pgTable("parcels", {
   irrigationSchedule: json("irrigation_schedule"),
   waterSource: text("water_source"),
   // Management data
-  ownerId: integer("owner_id").notNull(), // Reference to user
+  ownerId: integer("owner_id").notNull().references(() => users.id), // Reference to user
   accessRights: json("access_rights"), // Who can see/edit this parcel
   status: text("status").default("active").notNull(), // active, inactive, archived
   // Timestamps
@@ -330,7 +330,7 @@ export const parcelNotes = pgTable("parcel_notes", {
   yDocData: text("y_doc_data"), // Base64 encoded Y.Doc update (CRDT)
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  userId: integer("user_id").notNull(), // User who last updated
+  userId: integer("user_id").notNull().references(() => users.id), // User who last updated
   syncCount: integer("sync_count").default(0), // Number of times synced
   // Additional note fields
   category: text("category").default("general"), // general, soil, irrigation, pest, harvest, etc.
@@ -363,7 +363,7 @@ export const parcelMeasurements = pgTable("parcel_measurements", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
   measurementType: text("measurement_type").notNull(), // soil, crop, water, pest, etc.
   value: decimal("value", { precision: 10, scale: 2 }),
   unit: text("unit").notNull(),
@@ -384,7 +384,7 @@ export const cropHealthAnalyses = pgTable("crop_health_analyses", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
   overallHealth: cropHealthStatusEnum("overall_health").notNull(),
   healthScore: integer("health_score").notNull(), // 0-100
@@ -409,7 +409,7 @@ export const insertCropHealthAnalysisSchema = createInsertSchema(cropHealthAnaly
 // Disease detections
 export const diseaseDetections = pgTable("disease_detections", {
   id: serial("id").primaryKey(),
-  analysisId: integer("analysis_id").notNull(), // Reference to crop_health_analyses
+  analysisId: integer("analysis_id").notNull().references(() => cropHealthAnalyses.id), // Reference to crop_health_analyses
   diseaseName: text("disease_name").notNull(),
   diseaseType: pestRiskTypeEnum("disease_type").notNull(),
   confidence: decimal("confidence", { precision: 4, scale: 3 }).notNull(), // 0-1
@@ -436,7 +436,7 @@ export const soilAnalyses = pgTable("soil_analyses", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
   soilType: text("soil_type"),
   ph: decimal("ph", { precision: 4, scale: 2 }),
   organicMatter: decimal("organic_matter", { precision: 5, scale: 2 }),
@@ -467,7 +467,7 @@ export const yieldPredictions = pgTable("yield_predictions", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
   predictedYieldValue: decimal("predicted_yield_value", { precision: 10, scale: 2 }).notNull(),
   predictedYieldUnit: text("predicted_yield_unit").notNull(),
@@ -497,7 +497,7 @@ export const cropHealthImages = pgTable("crop_health_images", {
   id: serial("id").primaryKey(),
   parcelId: varchar("parcel_id", { length: 50 }).notNull(),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
-  userId: integer("user_id").notNull(),
+  userId: integer("user_id").notNull().references(() => users.id),
   imageUrl: text("image_url").notNull(),
   thumbnailUrl: text("thumbnail_url"),
   type: text("type").notNull(), // satellite, drone, mobile, etc.
