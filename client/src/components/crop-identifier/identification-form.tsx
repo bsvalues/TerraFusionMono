@@ -1,237 +1,325 @@
-import React, { useState, useRef } from 'react';
-import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle, CardFooter } from '@/components/ui/card';
-import { Label } from '@/components/ui/label';
-import { Input } from '@/components/ui/input';
-import { Loader2, Camera, Upload, MapPin, AlertCircle } from 'lucide-react';
-import { useToast } from '@/hooks/use-toast';
+import { useState } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { useForm } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { z } from "zod";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
+import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Label } from "@/components/ui/label";
+import { Camera, Upload, Loader2 } from "lucide-react";
 
-// Define the result type
-export interface CropIdentificationResult {
-  cropName: string;
-  scientificName: string;
-  confidence: number;
-  estimatedGrowthStage: string;
-  details: string;
-  characteristics: string[];
-  possibleAlternatives: string[];
-}
+// Form schema for crop identification
+const identificationFormSchema = z.object({
+  parcelId: z.string().optional(),
+  image: z.instanceof(File).refine(file => file.size <= 5 * 1024 * 1024, {
+    message: "Image must be less than 5MB"
+  }).refine(
+    file => ["image/jpeg", "image/png", "image/webp", "image/heic"].includes(file.type),
+    {
+      message: "File must be an image (JPEG, PNG, WEBP, HEIC)"
+    }
+  ),
+});
+
+type IdentificationFormValues = z.infer<typeof identificationFormSchema>;
 
 interface IdentificationFormProps {
-  onIdentify: (result: CropIdentificationResult) => void;
-  loading: boolean;
+  onSuccess: (data: any) => void;
+  parcels?: Array<{ id: string; name: string }>;
 }
 
-export default function IdentificationForm({ onIdentify, loading }: IdentificationFormProps) {
+export default function IdentificationForm({ onSuccess, parcels = [] }: IdentificationFormProps) {
   const { toast } = useToast();
-  const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [geolocation, setGeolocation] = useState<{ lat: number; lng: number } | null>(null);
-  const [locationLoading, setLocationLoading] = useState<boolean>(false);
-  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [isCameraActive, setIsCameraActive] = useState(false);
+  const [cameraStream, setCameraStream] = useState<MediaStream | null>(null);
   
+  // Form definition
+  const form = useForm<IdentificationFormValues>({
+    resolver: zodResolver(identificationFormSchema),
+    defaultValues: {
+      parcelId: undefined,
+    },
+  });
+
   // Handle file selection
-  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
-    const selectedFile = event.target.files?.[0] || null;
-    if (selectedFile) {
-      setFile(selectedFile);
-      
-      // Create a preview
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
-      
-      toast({
-        title: "Image selected",
-        description: `${selectedFile.name} (${Math.round(selectedFile.size / 1024)} KB)`,
-      });
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>, onChange: (file: File) => void) => {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    
+    onChange(file);
+    
+    // Create preview URL
+    const objectUrl = URL.createObjectURL(file);
+    setPreviewUrl(objectUrl);
+    
+    // Cleanup camera if active
+    if (isCameraActive) {
+      stopCamera();
     }
+    
+    // Clean up URL when component unmounts
+    return () => URL.revokeObjectURL(objectUrl);
   };
-  
-  // Capture user's location
-  const getLocation = () => {
-    setLocationLoading(true);
-    
-    if (!navigator.geolocation) {
-      toast({
-        title: "Geolocation not available",
-        description: "Your browser doesn't support geolocation",
-        variant: "destructive",
-      });
-      setLocationLoading(false);
-      return;
-    }
-    
-    navigator.geolocation.getCurrentPosition(
-      (position) => {
-        const { latitude, longitude } = position.coords;
-        setGeolocation({ lat: latitude, lng: longitude });
-        setLocationLoading(false);
-        toast({
-          title: "Location captured",
-          description: `Lat: ${latitude.toFixed(6)}, Lng: ${longitude.toFixed(6)}`,
-        });
-      },
-      (error) => {
-        toast({
-          title: "Could not get location",
-          description: error.message,
-          variant: "destructive",
-        });
-        setLocationLoading(false);
-      },
-      { enableHighAccuracy: true }
-    );
-  };
-  
-  // Trigger file selection
-  const triggerFileInput = () => {
-    if (fileInputRef.current) {
-      fileInputRef.current.click();
-    }
-  };
-  
-  // Submit the form
-  const handleSubmit = async (event: React.FormEvent) => {
-    event.preventDefault();
-    
-    if (!file) {
-      toast({
-        title: "No image selected",
-        description: "Please select an image of the crop to identify",
-        variant: "destructive",
-      });
-      return;
-    }
-    
-    // Create form data
-    const formData = new FormData();
-    formData.append('image', file);
-    
-    // Add location if available
-    if (geolocation) {
-      formData.append('latitude', geolocation.lat.toString());
-      formData.append('longitude', geolocation.lng.toString());
-    }
-    
+
+  // Handle camera activation
+  const startCamera = async () => {
     try {
-      const response = await fetch('/api/crop-identification/identify', {
-        method: 'POST',
-        body: formData,
-      });
+      const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+      setCameraStream(stream);
+      setIsCameraActive(true);
       
-      if (!response.ok) {
-        throw new Error(`Server error: ${response.status} ${response.statusText}`);
+      // Get video element
+      const videoElement = document.getElementById('camera-preview') as HTMLVideoElement;
+      if (videoElement) {
+        videoElement.srcObject = stream;
+        videoElement.play();
       }
-      
-      const result = await response.json();
-      onIdentify(result);
     } catch (error) {
+      console.error('Error accessing camera:', error);
       toast({
-        title: "Identification failed",
-        description: error instanceof Error ? error.message : "Unknown error occurred",
+        title: "Camera Error",
+        description: "Could not access your camera. Please check permissions.",
         variant: "destructive",
       });
     }
   };
-  
+
+  // Stop camera stream
+  const stopCamera = () => {
+    if (cameraStream) {
+      cameraStream.getTracks().forEach(track => track.stop());
+      setCameraStream(null);
+    }
+    setIsCameraActive(false);
+  };
+
+  // Capture photo from camera
+  const capturePhoto = () => {
+    try {
+      const videoElement = document.getElementById('camera-preview') as HTMLVideoElement;
+      const canvas = document.createElement('canvas');
+      canvas.width = videoElement.videoWidth;
+      canvas.height = videoElement.videoHeight;
+      
+      // Draw video frame to canvas
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(videoElement, 0, 0, canvas.width, canvas.height);
+        
+        // Convert to blob
+        canvas.toBlob((blob) => {
+          if (blob) {
+            // Create file from blob
+            const file = new File([blob], "captured-image.jpg", { type: "image/jpeg" });
+            
+            // Set file in form
+            form.setValue("image", file, { shouldValidate: true });
+            
+            // Create preview URL
+            const objectUrl = URL.createObjectURL(blob);
+            setPreviewUrl(objectUrl);
+            
+            // Stop camera
+            stopCamera();
+          }
+        }, 'image/jpeg', 0.95);
+      }
+    } catch (error) {
+      console.error('Error capturing photo:', error);
+      toast({
+        title: "Capture Error",
+        description: "Failed to capture image. Please try again.",
+        variant: "destructive",
+      });
+    }
+  };
+
+  // API mutation for crop identification
+  const cropIdentificationMutation = useMutation({
+    mutationFn: async (data: FormData) => {
+      const response = await apiRequest("POST", "/api/crop-identification", data, {
+        processData: false
+      });
+      return await response.json();
+    },
+    onSuccess: (data) => {
+      toast({
+        title: "Identification Complete",
+        description: `${data.identification.cropName} identified successfully.`,
+      });
+      
+      // Invalidate queries to refresh data
+      queryClient.invalidateQueries({ queryKey: ["/api/crop-identifications"] });
+      
+      // Call parent success handler
+      onSuccess(data.identification);
+      
+      // Reset form
+      form.reset();
+      setPreviewUrl(null);
+    },
+    onError: (error: Error) => {
+      toast({
+        title: "Identification Failed",
+        description: error.message || "Failed to identify crop. Please try again.",
+        variant: "destructive",
+      });
+    },
+  });
+
+  // Form submission handler
+  const onSubmit = (values: IdentificationFormValues) => {
+    // Create form data for file upload
+    const formData = new FormData();
+    
+    // Add parcel ID if selected
+    if (values.parcelId) {
+      formData.append("parcelId", values.parcelId);
+    }
+    
+    // Add image file
+    formData.append("image", values.image);
+    
+    // Submit to API
+    cropIdentificationMutation.mutate(formData);
+  };
+
   return (
-    <Card className="w-full max-w-md mx-auto">
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Camera className="h-5 w-5" /> 
-          Crop Identification
-        </CardTitle>
-      </CardHeader>
-      <CardContent>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
-            <Label htmlFor="crop-image">Crop Image</Label>
-            <Input
-              id="crop-image"
-              type="file"
-              accept="image/*"
-              ref={fileInputRef}
-              onChange={handleFileChange}
-              className="hidden"
-            />
-            
-            {previewUrl ? (
-              <div className="relative rounded-md overflow-hidden border border-border">
-                <img 
-                  src={previewUrl} 
-                  alt="Selected crop" 
-                  className="w-full h-56 object-cover"
-                />
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="absolute top-2 right-2 bg-background/80 hover:bg-background/90"
-                  onClick={triggerFileInput}
-                >
-                  Change
-                </Button>
-              </div>
-            ) : (
-              <Button
-                type="button"
-                variant="outline"
-                className="w-full h-56 flex flex-col items-center justify-center gap-2 border-dashed"
-                onClick={triggerFileInput}
-              >
-                <Upload className="h-8 w-8 text-muted-foreground" />
-                <span className="text-muted-foreground">
-                  Click to select an image
-                </span>
-              </Button>
+    <div className="space-y-6">
+      <div className="space-y-2">
+        <h2 className="text-2xl font-bold">Identify Crop</h2>
+        <p className="text-muted-foreground">
+          Upload an image or take a photo to identify crop species
+        </p>
+      </div>
+
+      <Form {...form}>
+        <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
+          {/* Parcel selection */}
+          <FormField
+            control={form.control}
+            name="parcelId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel>Parcel (Optional)</FormLabel>
+                <Select onValueChange={field.onChange} defaultValue={field.value}>
+                  <FormControl>
+                    <SelectTrigger>
+                      <SelectValue placeholder="Select a parcel" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    <SelectItem value="">None</SelectItem>
+                    {parcels.map((parcel) => (
+                      <SelectItem key={parcel.id} value={parcel.id}>
+                        {parcel.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
             )}
-          </div>
-          
-          <div className="space-y-2">
-            <div className="flex justify-between items-center">
-              <Label>Location Data</Label>
-              <Button
-                type="button"
-                size="sm"
-                variant="outline"
-                onClick={getLocation}
-                disabled={locationLoading}
-              >
-                {locationLoading ? (
-                  <Loader2 className="h-4 w-4 animate-spin mr-2" />
-                ) : (
-                  <MapPin className="h-4 w-4 mr-2" />
-                )}
-                {geolocation ? "Update Location" : "Get Location"}
-              </Button>
-            </div>
-            
-            {geolocation ? (
-              <div className="text-sm text-muted-foreground">
-                Latitude: {geolocation.lat.toFixed(6)}, Longitude: {geolocation.lng.toFixed(6)}
-              </div>
-            ) : (
-              <div className="flex items-center text-sm text-muted-foreground">
-                <AlertCircle className="h-4 w-4 mr-2 text-amber-500" />
-                <span>No location data. Location helps improve identification accuracy.</span>
-              </div>
+          />
+
+          {/* Image upload */}
+          <FormField
+            control={form.control}
+            name="image"
+            render={({ field: { onChange, value, ...rest } }) => (
+              <FormItem>
+                <FormLabel>Image</FormLabel>
+                <div className="space-y-4">
+                  {/* Hidden file input */}
+                  <input
+                    type="file"
+                    id="image-upload"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={(e) => handleFileChange(e, onChange)}
+                  />
+                  
+                  {/* Camera preview */}
+                  {isCameraActive && (
+                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                      <video
+                        id="camera-preview"
+                        className="w-full h-full object-cover"
+                        autoPlay
+                        playsInline
+                        muted
+                      />
+                      <Button
+                        type="button"
+                        className="absolute bottom-4 left-1/2 transform -translate-x-1/2"
+                        onClick={capturePhoto}
+                      >
+                        Capture
+                      </Button>
+                    </div>
+                  )}
+                  
+                  {/* Image preview */}
+                  {previewUrl && !isCameraActive && (
+                    <div className="relative aspect-video bg-black rounded-lg overflow-hidden">
+                      <img
+                        src={previewUrl}
+                        className="w-full h-full object-cover"
+                        alt="Preview"
+                      />
+                    </div>
+                  )}
+                  
+                  {/* Action buttons */}
+                  <div className="flex space-x-4">
+                    {/* Camera button */}
+                    <Button
+                      type="button"
+                      variant={isCameraActive ? "destructive" : "secondary"}
+                      onClick={isCameraActive ? stopCamera : startCamera}
+                    >
+                      <Camera className="mr-2 h-4 w-4" />
+                      {isCameraActive ? "Cancel" : "Camera"}
+                    </Button>
+                    
+                    {/* Upload button */}
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={() => document.getElementById('image-upload')?.click()}
+                    >
+                      <Upload className="mr-2 h-4 w-4" />
+                      Upload
+                    </Button>
+                  </div>
+                </div>
+                <FormMessage />
+              </FormItem>
             )}
-          </div>
+          />
+
+          {/* Submit button */}
+          <Button
+            type="submit"
+            className="w-full"
+            disabled={cropIdentificationMutation.isPending || !form.formState.isValid}
+          >
+            {cropIdentificationMutation.isPending ? (
+              <>
+                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                Identifying...
+              </>
+            ) : (
+              "Identify Crop"
+            )}
+          </Button>
         </form>
-      </CardContent>
-      <CardFooter>
-        <Button 
-          onClick={handleSubmit}
-          disabled={!file || loading} 
-          className="w-full"
-        >
-          {loading && <Loader2 className="h-4 w-4 animate-spin mr-2" />}
-          {loading ? "Identifying Crop..." : "Identify Crop"}
-        </Button>
-      </CardFooter>
-    </Card>
+      </Form>
+    </div>
   );
 }
