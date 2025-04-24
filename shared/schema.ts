@@ -518,7 +518,7 @@ export const insertSoilAnalysisSchema = createInsertSchema(soilAnalyses)
 // Yield predictions
 export const yieldPredictions = pgTable("yield_predictions", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
@@ -557,7 +557,7 @@ export const insertYieldPredictionSchema = createInsertSchema(yieldPredictions)
 // Crop health images
 export const cropHealthImages = pgTable("crop_health_images", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   imageUrl: text("image_url").notNull(),
@@ -590,7 +590,7 @@ export const insertCropHealthImageSchema = createInsertSchema(cropHealthImages)
 // Weather data for crop health analysis
 export const weatherData = pgTable("weather_data", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   dataType: text("data_type").notNull(), // forecast, historical, current
   source: text("source").notNull(), // weather service name

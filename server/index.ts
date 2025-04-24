@@ -2,6 +2,7 @@ import express, { type Request, Response, NextFunction } from "express";
 import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { apiVersionMiddleware, warnDeprecatedMiddleware } from "./middleware/api-versioning";
+import { createViews } from "@shared/views";
 
 const app = express();
 app.use(express.json());
@@ -65,6 +66,9 @@ import { marketplaceService } from "./services/marketplace";
     
     // Initialize marketplace products based on available plugins
     await marketplaceService.initializeSampleProducts();
+    
+    // Create database views for reporting and analytics
+    await createViews();
     
     log("Services initialized successfully");
   } catch (error) {
