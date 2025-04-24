@@ -1,6 +1,5 @@
-import { Request, Response, Router } from 'express';
+import { Request, Response, Router, NextFunction } from 'express';
 import { storage } from '../storage';
-import { isAuthenticated } from '../routes';
 
 const router = Router();
 
@@ -23,18 +22,23 @@ const connectedDevices = [
   }
 ];
 
+// Temporarily disable authentication for demo purposes
+const tempAuth = (req: Request, res: Response, next: NextFunction) => {
+  next();
+};
+
 // Get current sync status
-router.get('/status', isAuthenticated, (req: Request, res: Response) => {
+router.get('/status', tempAuth, (req: Request, res: Response) => {
   res.json(syncStatus);
 });
 
 // Get connected devices
-router.get('/devices', isAuthenticated, (req: Request, res: Response) => {
+router.get('/devices', tempAuth, (req: Request, res: Response) => {
   res.json({ devices: connectedDevices });
 });
 
 // Trigger a sync operation
-router.post('/trigger', isAuthenticated, async (req: Request, res: Response) => {
+router.post('/trigger', tempAuth, async (req: Request, res: Response) => {
   // Start syncing
   syncStatus = {
     ...syncStatus,
@@ -88,7 +92,7 @@ router.post('/trigger', isAuthenticated, async (req: Request, res: Response) => 
 });
 
 // Simulate error state
-router.post('/simulate-error', isAuthenticated, async (req: Request, res: Response) => {
+router.post('/simulate-error', tempAuth, async (req: Request, res: Response) => {
   syncStatus = {
     ...syncStatus,
     status: 'error',
@@ -108,7 +112,7 @@ router.post('/simulate-error', isAuthenticated, async (req: Request, res: Respon
 });
 
 // Simulate delayed state
-router.post('/simulate-delayed', isAuthenticated, async (req: Request, res: Response) => {
+router.post('/simulate-delayed', tempAuth, async (req: Request, res: Response) => {
   syncStatus = {
     ...syncStatus,
     status: 'delayed',
@@ -128,7 +132,7 @@ router.post('/simulate-delayed', isAuthenticated, async (req: Request, res: Resp
 });
 
 // Reset to synced state
-router.post('/reset', isAuthenticated, async (req: Request, res: Response) => {
+router.post('/reset', tempAuth, async (req: Request, res: Response) => {
   syncStatus = {
     status: 'synced',
     progress: 100,

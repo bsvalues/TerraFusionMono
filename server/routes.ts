@@ -20,6 +20,7 @@ import mobileRoutes from "./routes/mobile";
 import mobileAuthRoutes from "./routes/mobile-auth";
 import cropHealthRoutes from "./routes/crop-health";
 import cropIdentificationRouter from "./routes/crop-identification";
+import mobileSyncRoutes from "./routes/mobile-sync";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -753,6 +754,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Register mobile app routes
   app.use('/api/mobile', mobileRoutes);
+  
+  // Register mobile sync routes
+  app.use('/api/mobile/sync', mobileSyncRoutes);
   
   // Register crop health routes
   app.use('/api/crop-health', cropHealthRoutes);
