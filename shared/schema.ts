@@ -1011,6 +1011,4 @@ export type InsertPluginCategory = z.infer<typeof insertPluginCategorySchema>;
 export type PluginCategoryRelation = typeof pluginCategoryRelations.$inferSelect;
 export type InsertPluginCategoryRelation = z.infer<typeof insertPluginCategoryRelationSchema>;
 
-// Original types
-export type CropIdentification = typeof cropIdentifications.$inferSelect;
-export type InsertCropIdentification = z.infer<typeof insertCropIdentificationSchema>;
+// Type exports are already defined above

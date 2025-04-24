@@ -12,7 +12,19 @@ import {
   parcels, type Parcel, type InsertParcel,
   parcelNotes, type ParcelNote, type InsertParcelNote,
   parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement,
-  cropIdentifications, type CropIdentification, type InsertCropIdentification
+  cropIdentifications, type CropIdentification, type InsertCropIdentification,
+  // WebSocket Collaboration
+  collaborationSessions, sessionParticipants, documentVersions, collaborationEvents,
+  type CollaborationSession, type SessionParticipant, type DocumentVersion, type CollaborationEvent,
+  type InsertCollaborationSession, type InsertSessionParticipant, type InsertDocumentVersion, type InsertCollaborationEvent,
+  // Field Data Collection
+  fieldObservations, sensorReadings,
+  type FieldObservation, type SensorReading,
+  type InsertFieldObservation, type InsertSensorReading,
+  // Plugin Marketplace
+  pluginReviews, pluginCategories, pluginCategoryRelations,
+  type PluginReview, type PluginCategory, type PluginCategoryRelation,
+  type InsertPluginReview, type InsertPluginCategory, type InsertPluginCategoryRelation
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, gt, inArray } from "drizzle-orm";
@@ -112,6 +124,68 @@ export interface IStorage {
   getCropIdentification(id: number): Promise<CropIdentification | undefined>;
   createCropIdentification(identification: InsertCropIdentification): Promise<CropIdentification>;
   updateCropIdentification(id: number, updates: Partial<CropIdentification>): Promise<CropIdentification | undefined>;
+  
+  // ==== WebSocket Collaboration operations ====
+  
+  // Collaboration Session operations
+  getCollaborationSessions(options?: { limit?: number, ownerId?: number, status?: string, documentType?: string, documentId?: string }): Promise<CollaborationSession[]>;
+  getCollaborationSession(id: number): Promise<CollaborationSession | undefined>;
+  getCollaborationSessionBySessionId(sessionId: string): Promise<CollaborationSession | undefined>;
+  createCollaborationSession(session: InsertCollaborationSession): Promise<CollaborationSession>;
+  updateCollaborationSession(id: number, updates: Partial<CollaborationSession>): Promise<CollaborationSession | undefined>;
+  
+  // Session Participant operations
+  getSessionParticipants(sessionId: string): Promise<SessionParticipant[]>;
+  getSessionParticipant(id: number): Promise<SessionParticipant | undefined>;
+  getActiveSessionParticipant(sessionId: string, userId: number): Promise<SessionParticipant | undefined>;
+  createSessionParticipant(participant: InsertSessionParticipant): Promise<SessionParticipant>;
+  updateSessionParticipant(id: number, updates: Partial<SessionParticipant>): Promise<SessionParticipant | undefined>;
+  
+  // Document Version operations
+  getDocumentVersions(options: { sessionId?: string, documentType?: string, documentId?: string, limit?: number }): Promise<DocumentVersion[]>;
+  getLatestDocumentVersion(documentType: string, documentId: string): Promise<DocumentVersion | undefined>;
+  createDocumentVersion(version: InsertDocumentVersion): Promise<DocumentVersion>;
+  
+  // Collaboration Event operations
+  getCollaborationEvents(options: { sessionId: string, limit?: number, since?: Date }): Promise<CollaborationEvent[]>;
+  createCollaborationEvent(event: InsertCollaborationEvent): Promise<CollaborationEvent>;
+  
+  // ==== Field Data Collection operations ====
+  
+  // Field Observation operations
+  getFieldObservations(options?: { limit?: number, userId?: number, parcelId?: string, observationType?: string, since?: Date }): Promise<FieldObservation[]>;
+  getFieldObservation(id: number): Promise<FieldObservation | undefined>;
+  getFieldObservationByObservationId(observationId: string): Promise<FieldObservation | undefined>;
+  createFieldObservation(observation: InsertFieldObservation): Promise<FieldObservation>;
+  updateFieldObservation(id: number, updates: Partial<FieldObservation>): Promise<FieldObservation | undefined>;
+  
+  // Sensor Reading operations
+  getSensorReadings(options?: { limit?: number, sensorId?: string, parcelId?: string, readingType?: string, since?: Date }): Promise<SensorReading[]>;
+  getSensorReading(id: number): Promise<SensorReading | undefined>;
+  getSensorReadingByReadingId(readingId: string): Promise<SensorReading | undefined>;
+  createSensorReading(reading: InsertSensorReading): Promise<SensorReading>;
+  updateSensorReading(id: number, updates: Partial<SensorReading>): Promise<SensorReading | undefined>;
+  
+  // ==== Plugin Marketplace operations ====
+  
+  // Plugin Review operations
+  getPluginReviews(options?: { limit?: number, pluginId?: number, status?: string }): Promise<PluginReview[]>;
+  getPluginReview(id: number): Promise<PluginReview | undefined>;
+  getUserPluginReview(userId: number, pluginId: number): Promise<PluginReview | undefined>;
+  createPluginReview(review: InsertPluginReview): Promise<PluginReview>;
+  updatePluginReview(id: number, updates: Partial<PluginReview>): Promise<PluginReview | undefined>;
+  
+  // Plugin Category operations
+  getPluginCategories(includeInactive?: boolean): Promise<PluginCategory[]>;
+  getPluginCategory(id: number): Promise<PluginCategory | undefined>;
+  getPluginCategoryBySlug(slug: string): Promise<PluginCategory | undefined>;
+  createPluginCategory(category: InsertPluginCategory): Promise<PluginCategory>;
+  updatePluginCategory(id: number, updates: Partial<PluginCategory>): Promise<PluginCategory | undefined>;
+  
+  // Plugin Category Relation operations
+  getPluginCategoryRelations(pluginId: number): Promise<PluginCategoryRelation[]>;
+  createPluginCategoryRelation(relation: InsertPluginCategoryRelation): Promise<PluginCategoryRelation>;
+  deletePluginCategoryRelation(pluginId: number, categoryId: number): Promise<boolean>;
 }
 
 // Database-backed storage implementation
