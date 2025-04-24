@@ -67,15 +67,28 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({ ch
     setParticipants([]);
   }, []);
   
-  // Connect to a collaboration session
+  // Reconnection mechanism
+  const [reconnectAttempts, setReconnectAttempts] = useState(0);
+  const [isReconnecting, setIsReconnecting] = useState(false);
+  const maxReconnectAttempts = 5;
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Connect to a collaboration session with reconnection logic
   const connectToSession = useCallback((
     sessionId: string, 
     token: string, 
     userId: number, 
     username: string
   ) => {
+    // Store connection info for reconnection attempts
+    const connectionInfo = { sessionId, token, userId, username };
+    
     // Clean up any existing connection
     cleanup();
+    
+    // Reset reconnection state
+    setReconnectAttempts(0);
+    setIsReconnecting(false);
     
     // Create a new Y.js document
     const ydoc = new Y.Doc();
@@ -91,10 +104,37 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({ ch
     setError(null);
     setSessionId(sessionId);
     
+    // Set up reconnection logic
+    const attemptReconnect = () => {
+      if (reconnectAttempts >= maxReconnectAttempts) {
+        setError('Could not reconnect after several attempts. Please try again later.');
+        setIsReconnecting(false);
+        return;
+      }
+      
+      setIsReconnecting(true);
+      setReconnectAttempts(prev => prev + 1);
+      
+      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
+      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
+      
+      console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
+      
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+      }
+      
+      reconnectTimeoutRef.current = setTimeout(() => {
+        connectToSession(connectionInfo.sessionId, connectionInfo.token, connectionInfo.userId, connectionInfo.username);
+      }, delay);
+    };
+    
     // Set up event handlers
     ws.onopen = () => {
       console.log('WebSocket connection established');
       setIsConnected(true);
+      setIsReconnecting(false);
+      setReconnectAttempts(0);
       
       // Authenticate
       ws.send(JSON.stringify({
@@ -104,15 +144,27 @@ export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({ ch
       }));
     };
     
-    ws.onclose = () => {
-      console.log('WebSocket connection closed');
-      cleanup();
+    ws.onclose = (event) => {
+      console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
+      
+      // Don't attempt to reconnect if this was a clean closure or we're manually disconnecting
+      if (event.code === 1000 || event.code === 1001) {
+        cleanup();
+        return;
+      }
+      
+      // Keep session information but mark as disconnected
+      setIsConnected(false);
+      setIsJoined(false);
+      
+      // Attempt to reconnect
+      attemptReconnect();
     };
     
     ws.onerror = (error) => {
       console.error('WebSocket error:', error);
-      setError('Connection error. Please try again.');
-      cleanup();
+      setError('Connection error. Attempting to reconnect...');
+      // The onclose handler will be called after this and will handle reconnection
     };
     
     ws.onmessage = (event) => {

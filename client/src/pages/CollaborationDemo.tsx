@@ -5,6 +5,8 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { Loader2 } from 'lucide-react';
 import { useToast } from '@/hooks/use-toast';
 
 const CollaborationDemo: React.FC = () => {
@@ -218,38 +220,94 @@ const CollaborationDemo: React.FC = () => {
             </div>
           ) : (
             <CollaborationProvider>
-              {({ connectToSession, disconnectFromSession, isConnected, isJoined, error, participants }) => (
+              {({ 
+                connectToSession, 
+                disconnectFromSession, 
+                isConnected, 
+                isJoined, 
+                error, 
+                participants 
+              }) => (
                 <div className="space-y-4">
                   <div className="flex items-center justify-between">
                     <div>
-                      <h3 className="text-lg font-medium">Session: {sessionId}</h3>
+                      <div className="flex items-center gap-2">
+                        <h3 className="text-lg font-medium">Session: {sessionId}</h3>
+                        <Badge variant={
+                          isJoined ? "success" : 
+                          isConnected ? "outline" : 
+                          "secondary"
+                        }>
+                          {isJoined ? 'Active' : isConnected ? 'Connected' : 'Connecting...'}
+                        </Badge>
+                      </div>
+                      
                       <p className="text-sm text-gray-500">
                         Connected as: {username}
                       </p>
-                      <p className="text-xs text-gray-500">
-                        Status: {isConnected ? (isJoined ? 'Joined' : 'Connected') : 'Connecting...'}
-                      </p>
-                      {error && (
-                        <p className="text-xs text-red-500">
-                          Error: {error}
+                      
+                      <div className="flex items-center gap-2 mt-1">
+                        <p className="text-xs text-muted-foreground">
+                          <span className="font-medium">Status:</span> {
+                            isJoined ? 'Collaborating' : 
+                            isConnected ? 'Connected (not joined)' : 
+                            'Establishing connection...'
+                          }
                         </p>
+                        
+                        {!isConnected && (
+                          <Badge variant="outline" className="animate-pulse">
+                            Reconnecting...
+                          </Badge>
+                        )}
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-col gap-2">
+                      <Button 
+                        variant="destructive" 
+                        size="sm"
+                        onClick={() => {
+                          disconnectFromSession();
+                          leaveSession();
+                        }}
+                      >
+                        Leave Session
+                      </Button>
+                      
+                      {isConnected && !isJoined && (
+                        <Button 
+                          variant="outline" 
+                          size="sm"
+                          onClick={() => connectToSession(sessionId, token, userId, username)}
+                        >
+                          Join
+                        </Button>
                       )}
                     </div>
-                    <Button variant="outline" onClick={() => {
-                      disconnectFromSession();
-                      leaveSession();
-                    }}>
-                      Leave Session
-                    </Button>
                   </div>
                   
+                  {error && (
+                    <Alert variant="destructive" className="mt-2">
+                      <AlertDescription className="text-xs">
+                        {error}
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                  
                   {isConnected && !isJoined && (
-                    <Button 
-                      onClick={() => connectToSession(sessionId, token, userId, username)}
-                      className="w-full"
-                    >
-                      Join Collaboration
-                    </Button>
+                    <Card className="bg-muted/50 p-6 text-center">
+                      <h3 className="font-medium mb-2">Ready to Collaborate</h3>
+                      <p className="text-sm text-muted-foreground mb-4">
+                        You're connected to the session but haven't joined the collaboration yet.
+                      </p>
+                      <Button 
+                        onClick={() => connectToSession(sessionId, token, userId, username)}
+                        className="w-full"
+                      >
+                        Join Collaboration
+                      </Button>
+                    </Card>
                   )}
                   
                   {isJoined && (
@@ -260,19 +318,40 @@ const CollaborationDemo: React.FC = () => {
                   )}
                   
                   {participants.length > 0 && (
-                    <div className="mt-4">
-                      <h4 className="text-sm font-medium mb-2">Participants ({participants.length})</h4>
+                    <Card className="mt-4 p-4">
+                      <h4 className="text-sm font-medium mb-2">Active Participants ({participants.length})</h4>
                       <div className="flex flex-wrap gap-2">
                         {participants.map(participant => (
                           <Badge 
                             key={participant.clientId}
-                            style={{ backgroundColor: participant.color, color: '#fff' }}
+                            variant="outline"
+                            className="text-xs"
+                            style={{ 
+                              backgroundColor: `${participant.color}20`, 
+                              borderColor: participant.color,
+                              color: participant.color
+                            }}
                           >
                             {participant.username}
+                            {participant.presence === 'away' ? ' (away)' : ''}
                           </Badge>
                         ))}
                       </div>
-                    </div>
+                    </Card>
+                  )}
+                  
+                  {!isConnected && (
+                    <Card className="bg-secondary/20 p-4 border-dashed">
+                      <div className="flex items-center gap-3">
+                        <Loader2 className="h-5 w-5 animate-spin text-primary" />
+                        <div>
+                          <h4 className="text-sm font-medium">Connection Status</h4>
+                          <p className="text-xs text-muted-foreground">
+                            Attempting to establish a WebSocket connection. This may take a moment...
+                          </p>
+                        </div>
+                      </div>
+                    </Card>
                   )}
                 </div>
               )}
