@@ -1,49 +1,64 @@
-import OpenAI from 'openai';
-import { log } from '../vite';
-import { storage } from '../storage';
+import OpenAI from "openai";
+import { storage } from "../storage";
+import { logsService } from "./logs";
+import { InsertCropIdentification } from "@shared/schema";
 
 // Initialize OpenAI client
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Crop identification service using OpenAI's vision capabilities
-export class CropIdentificationService {
-  
+// The newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+const OPENAI_MODEL = "gpt-4o";
+
+interface CropIdentificationResult {
+  cropName: string;
+  scientificName: string;
+  confidence: number; // 0-1 value
+  estimatedGrowthStage: string;
+  details: string;
+  characteristics: string[];
+  possibleAlternatives: string[];
+  [key: string]: any; // Allow for additional properties
+}
+
+class CropIdentificationService {
   /**
-   * Identify a crop from an image
-   * @param imageBase64 - Base64 encoded image data
-   * @param location - Optional location data to provide context
-   * @returns The identified crop information
+   * Identifies a crop from an image
+   * @param base64Image Base64 encoded image data
+   * @returns Crop identification result object
    */
-  async identifyCrop(imageBase64: string, location?: { lat: number, lng: number }): Promise<CropIdentificationResult> {
+  async identifyCrop(base64Image: string): Promise<CropIdentificationResult> {
     try {
-      log('Analyzing image for crop identification');
-      
-      // Prepare the location context if provided
-      let locationContext = '';
-      if (location) {
-        locationContext = `The image was taken at coordinates: ${location.lat}, ${location.lng}.`;
+      // Log the request
+      await logsService.createLog({
+        level: "INFO",
+        service: "crop-identification",
+        message: "Processing crop identification request"
+      });
+
+      // Make sure we have an API key
+      if (!process.env.OPENAI_API_KEY) {
+        throw new Error("OpenAI API key is not configured");
       }
-      
-      // Call OpenAI's vision model to analyze the image
+
+      // Make the API request to OpenAI
       const response = await openai.chat.completions.create({
-        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        model: OPENAI_MODEL,
         messages: [
           {
             role: "system",
-            content: `You are a crop identification expert. Analyze the image and identify the crop or plant species visible. 
-            Consider the visible features like leaf shape, plant structure, growth pattern, and any visible fruits or flowers.
-            If multiple crops are visible, identify the most prominent one.
-            ${locationContext}
-            
-            Respond with a JSON object with the following structure:
+            content: `You are an agricultural expert specialized in crop identification. 
+            Analyze the image and identify the crop shown. Provide detailed information about the crop 
+            including its common name, scientific name, estimated growth stage, and key characteristics. 
+            If you're uncertain, provide your best guess along with possible alternatives.
+            Format your response as a JSON object with the following structure:
             {
-              "cropName": "The identified crop name",
-              "scientificName": "Scientific name if identifiable",
-              "confidence": 0.95, // confidence level between 0-1
-              "estimatedGrowthStage": "vegetative, flowering, fruiting, etc.",
-              "details": "Brief description of the crop and its characteristics",
-              "characteristics": ["key characteristic 1", "key characteristic 2"],
-              "possibleAlternatives": ["alternative crop 1", "alternative crop 2"]
+              "cropName": "Common name of the crop",
+              "scientificName": "Scientific name (genus and species)",
+              "confidence": 0.95, // Confidence score between 0 and 1
+              "estimatedGrowthStage": "Current growth stage (e.g., seedling, vegetative, flowering, etc.)",
+              "details": "A paragraph with detailed information about the crop",
+              "characteristics": ["Key characteristic 1", "Key characteristic 2", ...],
+              "possibleAlternatives": ["Alternative crop 1", "Alternative crop 2", ...] // Only if confidence < 0.9
             }`
           },
           {
@@ -51,12 +66,12 @@ export class CropIdentificationService {
             content: [
               {
                 type: "text",
-                text: "Please identify this crop or plant."
+                text: "Please identify this crop and provide detailed information about it."
               },
               {
                 type: "image_url",
                 image_url: {
-                  url: `data:image/jpeg;base64,${imageBase64}`
+                  url: `data:image/jpeg;base64,${base64Image}`
                 }
               }
             ]
@@ -64,66 +79,133 @@ export class CropIdentificationService {
         ],
         response_format: { type: "json_object" }
       });
+
+      // Parse and return the result
+      const result = JSON.parse(response.choices[0].message.content || "{}");
       
-      // Parse the response
-      const content = response.choices[0].message.content || "{}";
-      const result = JSON.parse(content) as CropIdentificationResult;
-      
-      // Log the identification to the database
-      await this.logIdentification(result, imageBase64, location);
-      
+      // Log successful response
+      await logsService.createLog({
+        level: "INFO",
+        service: "crop-identification",
+        message: `Successfully identified crop: ${result.cropName} (${result.scientificName})`
+      });
+
       return result;
+
     } catch (error) {
-      log(`Error identifying crop: ${error}`, 'error');
-      throw new Error(`Failed to identify crop: ${error}`);
+      // Log the error
+      await logsService.createLog({
+        level: "ERROR",
+        service: "crop-identification",
+        message: `Error identifying crop: ${error instanceof Error ? error.message : String(error)}`
+      });
+      throw error;
     }
   }
-  
+
   /**
-   * Log the crop identification result to the database
+   * Save a crop identification to the database
+   * @param identification Crop identification data
+   * @returns Saved crop identification
    */
-  private async logIdentification(
-    result: CropIdentificationResult, 
-    imageBase64: string, 
-    location?: { lat: number, lng: number }
-  ): Promise<void> {
+  async saveCropIdentification(identification: Omit<InsertCropIdentification, "timestamp">): Promise<any> {
     try {
-      // Create thumbnail for storage
-      const thumbnailBase64 = await this.createThumbnail(imageBase64);
+      // Add current timestamp
+      const identificationWithTimestamp: InsertCropIdentification = {
+        ...identification,
+        timestamp: new Date(),
+      };
+
+      // Save to database
+      const savedIdentification = await storage.createCropIdentification(identificationWithTimestamp);
       
-      // Store the image and result in the database
-      // For now, just log the action until we implement full storage
-      log(`Crop identified as ${result.cropName} with ${(result.confidence * 100).toFixed(1)}% confidence`);
-      
-      // In a real implementation, we would save to the database
-      // await storage.saveCropIdentification({...});
+      // Log success
+      await logsService.createLog({
+        level: "INFO",
+        service: "crop-identification",
+        message: `Saved crop identification with ID: ${savedIdentification.id}`
+      });
+
+      return savedIdentification;
     } catch (error) {
-      log(`Error logging crop identification: ${error}`, 'error');
+      // Log error
+      await logsService.createLog({
+        level: "ERROR",
+        service: "crop-identification",
+        message: `Error saving crop identification: ${error instanceof Error ? error.message : String(error)}`
+      });
+      throw error;
     }
   }
-  
+
   /**
-   * Create a thumbnail from the original image
-   * This is a placeholder implementation - in production you would use
-   * an actual image processing library
+   * Get a list of crop identifications
+   * @param options Options for filtering identifications
+   * @returns Array of crop identifications
    */
-  private async createThumbnail(imageBase64: string): Promise<string> {
-    // For simplicity, we're just returning the original image
-    // In a real implementation, you would resize the image
-    return imageBase64;
+  async getCropIdentifications(options: { userId: number, limit?: number, parcelId?: string }): Promise<any[]> {
+    try {
+      const identifications = await storage.getCropIdentifications(options);
+      return identifications;
+    } catch (error) {
+      // Log error
+      await logsService.createLog({
+        level: "ERROR",
+        service: "crop-identification",
+        message: `Error retrieving crop identifications: ${error instanceof Error ? error.message : String(error)}`
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Get a single crop identification by ID
+   * @param id Identification ID
+   * @returns Crop identification or undefined if not found
+   */
+  async getCropIdentification(id: number): Promise<any> {
+    try {
+      return await storage.getCropIdentification(id);
+    } catch (error) {
+      // Log error
+      await logsService.createLog({
+        level: "ERROR",
+        service: "crop-identification",
+        message: `Error retrieving crop identification with ID ${id}: ${error instanceof Error ? error.message : String(error)}`
+      });
+      throw error;
+    }
+  }
+
+  /**
+   * Update a crop identification
+   * @param id Identification ID
+   * @param updates Updates to apply
+   * @returns Updated crop identification
+   */
+  async updateCropIdentification(id: number, updates: Partial<any>): Promise<any> {
+    try {
+      const updatedIdentification = await storage.updateCropIdentification(id, updates);
+      
+      // Log success
+      await logsService.createLog({
+        level: "INFO",
+        service: "crop-identification",
+        message: `Updated crop identification with ID: ${id}`
+      });
+
+      return updatedIdentification;
+    } catch (error) {
+      // Log error
+      await logsService.createLog({
+        level: "ERROR",
+        service: "crop-identification",
+        message: `Error updating crop identification with ID ${id}: ${error instanceof Error ? error.message : String(error)}`
+      });
+      throw error;
+    }
   }
 }
 
-// Type for crop identification results
-export interface CropIdentificationResult {
-  cropName: string;
-  scientificName: string;
-  confidence: number; // 0-1
-  estimatedGrowthStage: string;
-  details: string;
-  characteristics: string[];
-  possibleAlternatives: string[];
-}
-
-// Export singleton instance
+// Export the service
 export const cropIdentificationService = new CropIdentificationService();

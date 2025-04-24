@@ -11,7 +11,8 @@ import {
   userPlugins, type UserPlugin, type InsertUserPlugin,
   parcels, type Parcel, type InsertParcel,
   parcelNotes, type ParcelNote, type InsertParcelNote,
-  parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement
+  parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement,
+  cropIdentifications, type CropIdentification, type InsertCropIdentification
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, gt, inArray } from "drizzle-orm";
