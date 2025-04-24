@@ -2,7 +2,7 @@ import { Link, useLocation } from "wouter";
 import { BellIcon } from "lucide-react";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
-import { SyncStatusPanel } from "@/components/ui-design-system";
+import SyncStatusPanel from "@/components/ui-design-system/components/SyncStatusPanel";
 
 export default function Navbar() {
   const [location] = useLocation();
