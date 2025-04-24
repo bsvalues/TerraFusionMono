@@ -24,7 +24,7 @@ export async function monitorSlowQueries() {
     setInterval(async () => {
       try {
         // Query for slow queries (taking more than 100ms)
-        const slowQueries = await db.execute(sql`
+        const result = await db.execute(sql`
           SELECT 
             query,
             calls,
@@ -37,10 +37,15 @@ export async function monitorSlowQueries() {
           LIMIT 10;
         `);
         
+        // Using result.rows to get the actual query results
+        const slowQueries = result.rows || [];
+        
         if (slowQueries.length > 0) {
           log('Detected slow queries:', 'warn');
           slowQueries.forEach((query: any, idx: number) => {
-            log(`Slow Query #${idx + 1}: ${query.query.substring(0, 100)}... - Avg time: ${query.avg_exec_time_ms.toFixed(2)}ms`, 'warn');
+            const queryText = query.query ? query.query.toString().substring(0, 100) : 'Unknown query';
+            const avgTime = query.avg_exec_time_ms ? Number(query.avg_exec_time_ms).toFixed(2) : 'unknown';
+            log(`Slow Query #${idx + 1}: ${queryText}... - Avg time: ${avgTime}ms`, 'warn');
           });
         }
       } catch (error) {

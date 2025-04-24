@@ -19,6 +19,7 @@ import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
 import mobileAuthRoutes from "./routes/mobile-auth";
 import cropHealthRoutes from "./routes/crop-health";
+import cropIdentificationRoutes from "./routes/crop-identification";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -765,22 +766,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     await getMetricsHandler(req, res);
   });
   
-  // API endpoints for database views
+  // API endpoints for database views - using materialized views where available for better performance
   app.get("/api/reports/parcel-summary", async (req, res) => {
     try {
-      const result = await db.execute(sql`SELECT * FROM parcel_summary_view`);
+      // Use materialized view for better performance
+      const result = await db.execute(sql`SELECT * FROM parcel_summary_mv`);
       res.json(result.rows);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch parcel summary" });
+      // Fall back to regular view if materialized view fails
+      try {
+        const result = await db.execute(sql`SELECT * FROM parcel_summary_view`);
+        res.json(result.rows);
+      } catch (fallbackError) {
+        res.status(500).json({ error: "Failed to fetch parcel summary" });
+      }
     }
   });
   
   app.get("/api/reports/crop-health", async (req, res) => {
     try {
+      // Use the recent crop health materialized view for dashboard data
+      const result = await db.execute(sql`SELECT * FROM recent_crop_health_mv`);
+      res.json(result.rows);
+    } catch (error) {
+      // Fall back to regular view
+      try {
+        const result = await db.execute(sql`SELECT * FROM crop_health_dashboard_view`);
+        res.json(result.rows);
+      } catch (fallbackError) {
+        res.status(500).json({ error: "Failed to fetch crop health dashboard data" });
+      }
+    }
+  });
+  
+  // Endpoint for all historical crop health data (not just recent)
+  app.get("/api/reports/crop-health/all", async (req, res) => {
+    try {
       const result = await db.execute(sql`SELECT * FROM crop_health_dashboard_view`);
       res.json(result.rows);
     } catch (error) {
-      res.status(500).json({ error: "Failed to fetch crop health dashboard data" });
+      res.status(500).json({ error: "Failed to fetch historical crop health data" });
     }
   });
   
@@ -799,6 +824,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result.rows);
     } catch (error) {
       res.status(500).json({ error: "Failed to fetch yield prediction summary" });
+    }
+  });
+  
+  app.get("/api/reports/weather-forecast", async (req, res) => {
+    try {
+      // Use materialized view for weather forecasts
+      const result = await db.execute(sql`SELECT * FROM weather_forecast_mv`);
+      res.json(result.rows);
+    } catch (error) {
+      // Fall back to filtering the regular view
+      try {
+        const result = await db.execute(sql`
+          SELECT * FROM weather_data_overview_view 
+          WHERE data_type = 'forecast'
+          ORDER BY observation_date DESC
+        `);
+        res.json(result.rows);
+      } catch (fallbackError) {
+        res.status(500).json({ error: "Failed to fetch weather forecast data" });
+      }
     }
   });
   

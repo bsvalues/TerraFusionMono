@@ -1,5 +1,5 @@
 import { storage } from "../storage";
-import { SystemLog } from "@shared/schema";
+import { SystemLog, InsertLog } from "@shared/schema";
 
 /**
  * Service for system logs
@@ -17,6 +17,13 @@ class LogsService {
    */
   async logEvent(level: string, service: string, message: string): Promise<SystemLog> {
     return await storage.createLog({ level, service, message });
+  }
+  
+  /**
+   * Create a log entry directly from an object
+   */
+  async createLog(log: InsertLog): Promise<SystemLog> {
+    return await storage.createLog(log);
   }
   
   /**

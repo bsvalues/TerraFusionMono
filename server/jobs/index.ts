@@ -1,4 +1,5 @@
 import { scheduleRefreshMaterializedViews } from './refreshMaterializedViews';
+import { monitorSlowQueries } from '../utils/queryMonitor';
 
 /**
  * Initialize all scheduled jobs
@@ -10,6 +11,9 @@ export async function initializeJobs() {
     
     // Start materialized view refresh job
     await scheduleRefreshMaterializedViews();
+    
+    // Start query monitoring
+    await monitorSlowQueries();
     
     // Add other scheduled jobs here
     
