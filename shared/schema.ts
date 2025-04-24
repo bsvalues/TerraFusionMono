@@ -1,4 +1,4 @@
-import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal, pgEnum, index } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, decimal, pgEnum, index, real, uniqueIndex } from "drizzle-orm/pg-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -684,5 +684,333 @@ export const insertCropIdentificationSchema = createInsertSchema(cropIdentificat
     rawResponse: z.any().optional()
   });
 
+export type CropIdentification = typeof cropIdentifications.$inferSelect;
+export type InsertCropIdentification = z.infer<typeof insertCropIdentificationSchema>;
+
+// ====== WEBSOCKET COLLABORATION SYSTEM ======
+
+// New enum for collaboration event types
+export const collaborationEventTypeEnum = pgEnum('collaboration_event_type', [
+  'update', 'presence', 'cursor', 'join', 'leave', 'comment', 'sync', 'error'
+]);
+
+// Collaboration session status
+export const collaborationStatusEnum = pgEnum('collaboration_status', [
+  'active', 'paused', 'completed', 'archived'
+]);
+
+// Collaboration sessions for real-time editing
+export const collaborationSessions = pgTable("collaboration_sessions", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).notNull().unique(), // UUID for the session
+  name: text("name").notNull(),
+  documentType: text("document_type").notNull(), // parcel_note, field_report, soil_analysis, etc.
+  documentId: text("document_id").notNull(), // ID of the document being edited
+  ownerId: integer("owner_id").notNull().references(() => users.id),
+  status: collaborationStatusEnum("status").default('active').notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  lastActivity: timestamp("last_activity").defaultNow().notNull(),
+  metadata: json("metadata"), // Additional session metadata
+  config: json("config"), // Session configuration
+}, (table) => {
+  return {
+    documentIdx: index("collab_sessions_document_idx").on(table.documentType, table.documentId),
+    ownerIdx: index("collab_sessions_owner_idx").on(table.ownerId),
+    statusIdx: index("collab_sessions_status_idx").on(table.status),
+    lastActivityIdx: index("collab_sessions_activity_idx").on(table.lastActivity),
+  };
+});
+
+export const insertCollaborationSessionSchema = createInsertSchema(collaborationSessions)
+  .omit({ id: true, createdAt: true, updatedAt: true, lastActivity: true })
+  .extend({
+    metadata: z.any().optional(),
+    config: z.any().optional(),
+  });
+
+// Session participants
+export const sessionParticipants = pgTable("session_participants", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).notNull().references(() => collaborationSessions.sessionId, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  joinedAt: timestamp("joined_at").defaultNow().notNull(),
+  leftAt: timestamp("left_at"),
+  isActive: boolean("is_active").default(true).notNull(),
+  lastActivity: timestamp("last_activity").defaultNow().notNull(),
+  cursorPosition: json("cursor_position"), // Current cursor position
+  selection: json("selection"), // Current text selection
+  color: text("color"), // User's display color in the session
+  presence: json("presence"), // Additional presence data
+}, (table) => {
+  return {
+    sessionUserIdx: uniqueIndex("session_participant_unique_idx").on(table.sessionId, table.userId),
+    activeIdx: index("session_participant_active_idx").on(table.isActive),
+    activityIdx: index("session_participant_activity_idx").on(table.lastActivity),
+  };
+});
+
+export const insertSessionParticipantSchema = createInsertSchema(sessionParticipants)
+  .omit({ id: true, joinedAt: true, lastActivity: true })
+  .extend({
+    cursorPosition: z.any().optional(),
+    selection: z.any().optional(),
+    presence: z.any().optional(),
+  });
+
+// Document versions for collaborative editing
+export const documentVersions = pgTable("document_versions", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).notNull().references(() => collaborationSessions.sessionId, { onDelete: 'cascade' }),
+  documentType: text("document_type").notNull(),
+  documentId: text("document_id").notNull(),
+  version: integer("version").notNull(),
+  snapshot: text("snapshot").notNull(), // Base64 encoded Y.js document
+  yState: text("y_state").notNull(), // Base64 encoded Y.js document state
+  userId: integer("user_id").notNull().references(() => users.id), // User who created this version
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  metadata: json("metadata"), // Version metadata
+}, (table) => {
+  return {
+    sessionIdx: index("doc_versions_session_idx").on(table.sessionId),
+    documentIdx: index("doc_versions_document_idx").on(table.documentType, table.documentId),
+    versionIdx: index("doc_versions_version_idx").on(table.version),
+    timestampIdx: index("doc_versions_timestamp_idx").on(table.timestamp),
+  };
+});
+
+export const insertDocumentVersionSchema = createInsertSchema(documentVersions)
+  .omit({ id: true, timestamp: true })
+  .extend({
+    metadata: z.any().optional(),
+  });
+
+// Collaboration events for auditing and replay
+export const collaborationEvents = pgTable("collaboration_events", {
+  id: serial("id").primaryKey(),
+  sessionId: varchar("session_id", { length: 36 }).notNull().references(() => collaborationSessions.sessionId, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  eventType: collaborationEventTypeEnum("event_type").notNull(),
+  data: json("data"), // Event-specific data
+  clientId: text("client_id"), // ID of the client that generated the event
+  metadata: json("metadata"), // Additional event metadata
+}, (table) => {
+  return {
+    sessionIdx: index("collab_events_session_idx").on(table.sessionId),
+    userIdx: index("collab_events_user_idx").on(table.userId),
+    timestampIdx: index("collab_events_timestamp_idx").on(table.timestamp),
+    typeIdx: index("collab_events_type_idx").on(table.eventType),
+  };
+});
+
+export const insertCollaborationEventSchema = createInsertSchema(collaborationEvents)
+  .omit({ id: true, timestamp: true })
+  .extend({
+    data: z.any().optional(),
+    metadata: z.any().optional(),
+  });
+
+// ====== FIELD DATA COLLECTION SYSTEM ======
+
+// Enum for observation types
+export const observationTypeEnum = pgEnum('observation_type', [
+  'soil', 'plant', 'pest', 'disease', 'weather', 'irrigation', 'harvest', 'general'
+]);
+
+// Enum for data collection methods
+export const collectionMethodEnum = pgEnum('collection_method', [
+  'manual', 'sensor', 'photo', 'satellite', 'drone', 'lab', 'survey'
+]);
+
+// Enum for data validation status
+export const validationStatusEnum = pgEnum('validation_status', [
+  'pending', 'valid', 'suspect', 'invalid', 'verified'
+]);
+
+// Field observations
+export const fieldObservations = pgTable("field_observations", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
+  observationId: varchar("observation_id", { length: 36 }).notNull().unique(), // UUID for sync
+  observationType: observationTypeEnum("observation_type").notNull(),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  location: json("location"), // GeoJSON point
+  weather: json("weather"), // Weather conditions during observation
+  title: text("title").notNull(),
+  description: text("description"),
+  tags: text("tags").array(),
+  data: json("data"), // Flexible JSON data specific to the observation type
+  mediaUrls: text("media_urls").array(), // Array of URLs to photos/videos
+  collectionMethod: collectionMethodEnum("collection_method").default('manual').notNull(),
+  validationStatus: validationStatusEnum("validation_status").default('pending').notNull(),
+  validatedBy: integer("validated_by").references(() => users.id),
+  validatedAt: timestamp("validated_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  syncStatus: text("sync_status").default("pending"), // pending, synced, failed
+  lastSynced: timestamp("last_synced"),
+  version: integer("version").default(1).notNull(),
+  deviceId: text("device_id"), // ID of the device used for data collection
+}, (table) => {
+  return {
+    userIdx: index("field_observations_user_idx").on(table.userId),
+    parcelIdx: index("field_observations_parcel_idx").on(table.parcelId),
+    typeIdx: index("field_observations_type_idx").on(table.observationType),
+    timestampIdx: index("field_observations_timestamp_idx").on(table.timestamp),
+    validationIdx: index("field_observations_validation_idx").on(table.validationStatus),
+    syncStatusIdx: index("field_observations_sync_idx").on(table.syncStatus),
+    deviceIdx: index("field_observations_device_idx").on(table.deviceId),
+  };
+});
+
+export const insertFieldObservationSchema = createInsertSchema(fieldObservations)
+  .omit({ id: true, createdAt: true, updatedAt: true, lastSynced: true })
+  .extend({
+    location: z.any().optional(),
+    weather: z.any().optional(),
+    data: z.any().optional(),
+    mediaUrls: z.array(z.string()).optional(),
+    tags: z.array(z.string()).optional(),
+  });
+
+// Sensor readings for field monitoring
+export const sensorReadings = pgTable("sensor_readings", {
+  id: serial("id").primaryKey(),
+  sensorId: text("sensor_id").notNull(), // ID of the sensor device
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
+  readingId: varchar("reading_id", { length: 36 }).notNull().unique(), // UUID for sync
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  readingType: text("reading_type").notNull(), // temperature, humidity, soil_moisture, etc.
+  value: real("value").notNull(),
+  unit: text("unit").notNull(),
+  location: json("location"), // GeoJSON point of sensor location
+  battery: integer("battery"), // Battery level as percentage
+  signalStrength: integer("signal_strength"), // Signal strength in dBm
+  metadata: json("metadata"), // Additional sensor metadata
+  validationStatus: validationStatusEnum("validation_status").default('pending').notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  syncStatus: text("sync_status").default("pending"), // pending, synced, failed
+  lastSynced: timestamp("last_synced"),
+}, (table) => {
+  return {
+    sensorIdx: index("sensor_readings_sensor_idx").on(table.sensorId),
+    parcelIdx: index("sensor_readings_parcel_idx").on(table.parcelId),
+    typeIdx: index("sensor_readings_type_idx").on(table.readingType),
+    timestampIdx: index("sensor_readings_timestamp_idx").on(table.timestamp),
+    validationIdx: index("sensor_readings_validation_idx").on(table.validationStatus),
+    syncStatusIdx: index("sensor_readings_sync_idx").on(table.syncStatus),
+  };
+});
+
+export const insertSensorReadingSchema = createInsertSchema(sensorReadings)
+  .omit({ id: true, createdAt: true, lastSynced: true })
+  .extend({
+    location: z.any().optional(),
+    metadata: z.any().optional(),
+  });
+
+// ====== PLUGIN MARKETPLACE SYSTEM ======
+
+// Enum for plugin review status
+export const reviewStatusEnum = pgEnum('review_status', [
+  'pending', 'approved', 'rejected', 'flagged'
+]);
+
+// Plugin reviews from users
+export const pluginReviews = pgTable("plugin_reviews", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  pluginId: integer("plugin_id").notNull().references(() => plugins.id),
+  rating: integer("rating").notNull(), // 1-5 stars
+  title: text("title"),
+  content: text("content"),
+  status: reviewStatusEnum("status").default('pending').notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  verifiedPurchase: boolean("verified_purchase").default(false).notNull(),
+  helpfulCount: integer("helpful_count").default(0).notNull(),
+  responseId: integer("response_id").references(() => pluginReviews.id), // For developer responses
+  versionUsed: text("version_used"), // Plugin version used during review
+}, (table) => {
+  return {
+    userPluginIdx: uniqueIndex("plugin_reviews_user_plugin_idx").on(table.userId, table.pluginId),
+    pluginIdx: index("plugin_reviews_plugin_idx").on(table.pluginId),
+    ratingIdx: index("plugin_reviews_rating_idx").on(table.rating),
+    statusIdx: index("plugin_reviews_status_idx").on(table.status),
+    createdAtIdx: index("plugin_reviews_created_at_idx").on(table.createdAt),
+  };
+});
+
+export const insertPluginReviewSchema = createInsertSchema(pluginReviews)
+  .omit({ id: true, createdAt: true, updatedAt: true, helpfulCount: true });
+
+// Plugin categories for marketplace organization
+export const pluginCategories = pgTable("plugin_categories", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  slug: text("slug").notNull().unique(),
+  description: text("description"),
+  icon: text("icon"),
+  displayOrder: integer("display_order").default(0).notNull(),
+  isActive: boolean("is_active").default(true).notNull(),
+  parentId: integer("parent_id").references(() => pluginCategories.id), // For hierarchical categories
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPluginCategorySchema = createInsertSchema(pluginCategories)
+  .omit({ id: true, createdAt: true, updatedAt: true });
+
+// Many-to-many relationship between plugins and categories
+export const pluginCategoryRelations = pgTable("plugin_category_relations", {
+  id: serial("id").primaryKey(),
+  pluginId: integer("plugin_id").notNull().references(() => plugins.id, { onDelete: 'cascade' }),
+  categoryId: integer("category_id").notNull().references(() => pluginCategories.id, { onDelete: 'cascade' }),
+}, (table) => {
+  return {
+    pluginCategoryIdx: uniqueIndex("plugin_category_unique_idx").on(table.pluginId, table.categoryId),
+  };
+});
+
+export const insertPluginCategoryRelationSchema = createInsertSchema(pluginCategoryRelations)
+  .omit({ id: true });
+
+// =======================================================================
+// Types for the new models
+// =======================================================================
+
+// WebSocket Collaboration types
+export type CollaborationSession = typeof collaborationSessions.$inferSelect;
+export type InsertCollaborationSession = z.infer<typeof insertCollaborationSessionSchema>;
+
+export type SessionParticipant = typeof sessionParticipants.$inferSelect;
+export type InsertSessionParticipant = z.infer<typeof insertSessionParticipantSchema>;
+
+export type DocumentVersion = typeof documentVersions.$inferSelect;
+export type InsertDocumentVersion = z.infer<typeof insertDocumentVersionSchema>;
+
+export type CollaborationEvent = typeof collaborationEvents.$inferSelect;
+export type InsertCollaborationEvent = z.infer<typeof insertCollaborationEventSchema>;
+
+// Field Data Collection types
+export type FieldObservation = typeof fieldObservations.$inferSelect;
+export type InsertFieldObservation = z.infer<typeof insertFieldObservationSchema>;
+
+export type SensorReading = typeof sensorReadings.$inferSelect;
+export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
+
+// Plugin Marketplace types
+export type PluginReview = typeof pluginReviews.$inferSelect;
+export type InsertPluginReview = z.infer<typeof insertPluginReviewSchema>;
+
+export type PluginCategory = typeof pluginCategories.$inferSelect;
+export type InsertPluginCategory = z.infer<typeof insertPluginCategorySchema>;
+
+export type PluginCategoryRelation = typeof pluginCategoryRelations.$inferSelect;
+export type InsertPluginCategoryRelation = z.infer<typeof insertPluginCategoryRelationSchema>;
+
+// Original types
 export type CropIdentification = typeof cropIdentifications.$inferSelect;
 export type InsertCropIdentification = z.infer<typeof insertCropIdentificationSchema>;
