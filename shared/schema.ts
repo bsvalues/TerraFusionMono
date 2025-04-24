@@ -333,7 +333,7 @@ export const insertParcelSchema = createInsertSchema(parcels)
 // Parcel notes for mobile sync
 export const parcelNotes = pgTable("parcel_notes", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().unique().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().unique().references(() => parcels.externalId, { onDelete: 'cascade' }),
   content: text("content").default(""), // Plain text content
   yDocData: text("y_doc_data"), // Base64 encoded Y.Doc update (CRDT)
   createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -377,7 +377,7 @@ export const insertParcelNoteSchema = createInsertSchema(parcelNotes)
 // Parcel measurements for tracking field data
 export const parcelMeasurements = pgTable("parcel_measurements", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   measurementType: text("measurement_type").notNull(), // soil, crop, water, pest, etc.
@@ -407,7 +407,7 @@ export const insertParcelMeasurementSchema = createInsertSchema(parcelMeasuremen
 // Crop Health Analysis tables
 export const cropHealthAnalyses = pgTable("crop_health_analyses", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   cropType: text("crop_type").notNull(),
@@ -444,7 +444,7 @@ export const insertCropHealthAnalysisSchema = createInsertSchema(cropHealthAnaly
 // Disease detections
 export const diseaseDetections = pgTable("disease_detections", {
   id: serial("id").primaryKey(),
-  analysisId: integer("analysis_id").notNull().references(() => cropHealthAnalyses.id), // Reference to crop_health_analyses
+  analysisId: integer("analysis_id").notNull().references(() => cropHealthAnalyses.id, { onDelete: 'cascade' }), // Reference to crop_health_analyses
   diseaseName: text("disease_name").notNull(),
   diseaseType: pestRiskTypeEnum("disease_type").notNull(),
   confidence: decimal("confidence", { precision: 4, scale: 3 }).notNull(), // 0-1
@@ -478,7 +478,7 @@ export const insertDiseaseDetectionSchema = createInsertSchema(diseaseDetections
 // Soil analysis results
 export const soilAnalyses = pgTable("soil_analyses", {
   id: serial("id").primaryKey(),
-  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId),
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
   timestamp: timestamp("timestamp").defaultNow().notNull(),
   userId: integer("user_id").notNull().references(() => users.id),
   soilType: text("soil_type"),
