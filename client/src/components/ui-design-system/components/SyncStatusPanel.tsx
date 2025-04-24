@@ -44,6 +44,26 @@ interface SyncStatusPanelProps {
 // The status values that can be returned from the server
 type SyncStatus = 'syncing' | 'synced' | 'offline' | 'error' | 'delayed';
 
+// Define types for API responses
+interface SyncStatusResponse {
+  status: SyncStatus;
+  progress: number;
+  lastSynced: string | null;
+  pendingChanges: number;
+}
+
+interface Device {
+  id: string;
+  name: string;
+  type: string;
+  lastConnected: string;
+  status: string;
+}
+
+interface DevicesResponse {
+  devices: Device[];
+}
+
 export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps) {
   // Local state for sync status and dialog
   const [status, setStatus] = useState<SyncStatus>('offline');
@@ -54,13 +74,13 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
   const [deviceCount, setDeviceCount] = useState(0);
   
   // Query to fetch the current sync status from the server
-  const { data, isLoading, error, refetch } = useQuery({
+  const { data, isLoading, error, refetch } = useQuery<SyncStatusResponse>({
     queryKey: ['/api/sync/status'],
     refetchInterval: 30000, // Refetch every 30 seconds
   });
   
   // Query to fetch connected devices
-  const { data: deviceData } = useQuery({
+  const { data: deviceData } = useQuery<DevicesResponse>({
     queryKey: ['/api/sync/devices'],
     refetchInterval: 60000, // Refetch every minute
   });
@@ -80,10 +100,10 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
   // Update state when data changes
   useEffect(() => {
     if (data) {
-      setStatus(data.status || 'offline');
-      setProgress(data.progress || 0);
+      setStatus(data.status);
+      setProgress(data.progress);
       setLastSynced(data.lastSynced ? new Date(data.lastSynced) : null);
-      setPendingChanges(data.pendingChanges || 0);
+      setPendingChanges(data.pendingChanges);
     }
   }, [data]);
   
