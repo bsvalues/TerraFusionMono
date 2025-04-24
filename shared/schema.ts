@@ -647,3 +647,42 @@ export type InsertCropHealthImage = z.infer<typeof insertCropHealthImageSchema>;
 
 export type WeatherData = typeof weatherData.$inferSelect;
 export type InsertWeatherData = z.infer<typeof insertWeatherDataSchema>;
+
+// Crop Identification results (from AR tool)
+export const cropIdentifications = pgTable("crop_identifications", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id),
+  parcelId: varchar("parcel_id", { length: 50 }).references(() => parcels.externalId),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  cropName: text("crop_name").notNull(),
+  scientificName: text("scientific_name"),
+  confidence: decimal("confidence", { precision: 4, scale: 3 }).notNull(), // 0-1
+  estimatedGrowthStage: text("estimated_growth_stage"),
+  details: text("details"),
+  characteristics: text("characteristics").array(),
+  possibleAlternatives: text("possible_alternatives").array(),
+  imageUrl: text("image_url"), // URL or path to the image
+  thumbnailUrl: text("thumbnail_url"), // URL or path to thumbnail
+  locationLat: decimal("location_lat", { precision: 10, scale: 6 }),
+  locationLng: decimal("location_lng", { precision: 10, scale: 6 }),
+  rawResponse: json("raw_response"),
+  verified: boolean("verified").default(false),
+  feedback: text("feedback"), // positive, negative, or specific feedback text
+}, (table) => {
+  return {
+    userIdIdx: index("crop_identifications_user_id_idx").on(table.userId),
+    parcelIdIdx: index("crop_identifications_parcel_id_idx").on(table.parcelId),
+    timestampIdx: index("crop_identifications_timestamp_idx").on(table.timestamp),
+    cropNameIdx: index("crop_identifications_crop_name_idx").on(table.cropName),
+    confidenceIdx: index("crop_identifications_confidence_idx").on(table.confidence),
+  };
+});
+
+export const insertCropIdentificationSchema = createInsertSchema(cropIdentifications)
+  .omit({ id: true, timestamp: true })
+  .extend({
+    rawResponse: z.any().optional()
+  });
+
+export type CropIdentification = typeof cropIdentifications.$inferSelect;
+export type InsertCropIdentification = z.infer<typeof insertCropIdentificationSchema>;

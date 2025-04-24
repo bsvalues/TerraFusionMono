@@ -105,6 +105,12 @@ export interface IStorage {
   getParcelNoteByParcelId(parcelId: string): Promise<ParcelNote | undefined>;
   createParcelNote(parcelNote: InsertParcelNote): Promise<ParcelNote>;
   updateParcelNote(id: number, updates: Partial<ParcelNote>): Promise<ParcelNote | undefined>;
+  
+  // Crop Identification operations
+  getCropIdentifications(options?: { limit?: number, userId?: number, parcelId?: string }): Promise<CropIdentification[]>;
+  getCropIdentification(id: number): Promise<CropIdentification | undefined>;
+  createCropIdentification(identification: InsertCropIdentification): Promise<CropIdentification>;
+  updateCropIdentification(id: number, updates: Partial<CropIdentification>): Promise<CropIdentification | undefined>;
 }
 
 // Database-backed storage implementation
@@ -609,6 +615,53 @@ export class DatabaseStorage implements IStorage {
       .where(eq(parcelNotes.id, id))
       .returning();
     return updatedNote;
+  }
+  
+  // Crop Identification operations
+  async getCropIdentifications(options?: { limit?: number, userId?: number, parcelId?: string }): Promise<CropIdentification[]> {
+    let query = db
+      .select()
+      .from(cropIdentifications)
+      .orderBy(desc(cropIdentifications.timestamp));
+    
+    if (options?.userId) {
+      query = query.where(eq(cropIdentifications.userId, options.userId));
+    }
+    
+    if (options?.parcelId) {
+      query = query.where(eq(cropIdentifications.parcelId, options.parcelId));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query;
+  }
+  
+  async getCropIdentification(id: number): Promise<CropIdentification | undefined> {
+    const [identification] = await db
+      .select()
+      .from(cropIdentifications)
+      .where(eq(cropIdentifications.id, id));
+    return identification;
+  }
+  
+  async createCropIdentification(identification: InsertCropIdentification): Promise<CropIdentification> {
+    const [newIdentification] = await db
+      .insert(cropIdentifications)
+      .values(identification)
+      .returning();
+    return newIdentification;
+  }
+  
+  async updateCropIdentification(id: number, updates: Partial<CropIdentification>): Promise<CropIdentification | undefined> {
+    const [updatedIdentification] = await db
+      .update(cropIdentifications)
+      .set(updates)
+      .where(eq(cropIdentifications.id, id))
+      .returning();
+    return updatedIdentification;
   }
 }
 
