@@ -1,0 +1,67 @@
+Below is a structured breakdown of your **Next Steps**—with detailed guidance and industry‐best citations—to close out the SyncService integration and prepare for the next iteration.
+
+## Summary  
+You’ll first **review & merge** the integration PR in your TerraFusionMono repo following GitHub’s best practices citeturn0search0turn0search18. Then you’ll **scale & monitor** the SyncService by validating its FastAPI health endpoints, emitting and observing NATS heartbeats, and enabling Kubernetes autoscaling citeturn2search6turn0search20. Finally, you’ll **iterate** by federating the audit‐trail via Apollo Federation subgraphs and embedding the SyncStatusPanel micro‐frontend using Webpack Module Federation citeturn1search0turn0search6.
+
+---
+
+## 1. Review & Merge the PR  
+
+### 1.1 Provide Context & Guidance  
+- **Write clear PR titles and descriptions** that state the purpose, scope of changes, and link to relevant issues—this helps reviewers grasp intent quickly citeturn0search0.  
+- **Specify the type of feedback needed** (e.g., “quick sanity check” vs. “in‐depth security review”) in your pull request body citeturn0search10.  
+
+### 1.2 Use a Code Review Checklist  
+- **Verify CI passes** (`nx affected:test`, lint checks, and unit/integration tests) before merging. Nx’s smart caching will speed up repeated runs citeturn0search7.  
+- **Ensure all new endpoints** (e.g., `/sync/incremental`, `/health/ready`) are covered by pytest/HTTPX tests citeturn2search0.  
+- **Confirm manifest & Helm values** (replicaCount, resource quotas) are correct and documented.  
+
+---
+
+## 2. Scale & Monitor  
+
+### 2.1 FastAPI Health‐Check Endpoints  
+- **Add liveness and readiness probes** under `/health/live` and `/health/ready` in your FastAPI app to validate process and dependency connectivity citeturn2search6.  
+- **Test these endpoints** automatically in CI using HTTPX’s `TestClient` so broken deployments are caught early citeturn0search1.  
+
+### 2.2 NATS Heartbeat Monitoring  
+- **Publish a `sync.heartbeat` event** every minute via JetStream on startup and after each sync run citeturn0search20.  
+- **Configure NATS monitoring port** and use consumer statistics (`maxAckPending`, delivery counts) to alert on missing heartbeats citeturn0search12.  
+
+### 2.3 Kubernetes Autoscaling  
+- **Enable Horizontal Pod Autoscaler** to scale your SyncService deployment based on CPU/memory or custom Prometheus metrics (e.g., lag in LSN processing) citeturn0search16.  
+- **Define resource `requests` and `limits`** in your Helm `values.yaml` to allow the autoscaler to make informed decisions and prevent resource contention citeturn0search8.  
+
+---
+
+## 3. Iterate: Audit Lineage & UI Embedding  
+
+### 3.1 GraphQL Federation for Audit Lineage  
+- **Extend your audit subgraph** with `type AuditEntry @key(fields: "record_key")` so it can be composed into the supergraph citeturn1search0.  
+- **Implement `Query.auditHistory(recordKey: String!)`** in the SyncService subgraph to fetch entries from `sync_audit` citeturn1search1.  
+- **Use Apollo Router telemetry** to monitor subgraph performance and alert on resolver errors citeturn1search3.  
+
+### 3.2 Embedding SyncStatusPanel Micro-Frontend  
+- **Bundle `SyncStatusPanel`** as a remote via Webpack Module Federation (`exposes: { "./SyncStatusPanel": "./src/SyncStatusPanel" }`) citeturn0search6.  
+- **Consume it in your admin shell** with `React.lazy(() => import("syncUI/SyncStatusPanel"))` and wrap in `<Suspense>` for graceful loading citeturn0search5.  
+- **Poll the federated `syncStatus` query** every minute in the component to display live data and health indicators.  
+
+---
+
+### Comprehensive Citations  
+1. Pull Request Context & Guidance – GitHub Docs citeturn0search0  
+2. PR Review Types – GitHub Docs citeturn0search10  
+3. Nx Smart Monorepos & CI – Nx.dev citeturn0search7  
+4. FastAPI Testing with HTTPX – FastAPI Docs citeturn0search1  
+5. FastAPI Deployment Concepts – FastAPI Docs citeturn2search6  
+6. NATS Monitoring – NATS Docs citeturn0search20  
+7. NATS Consumer Statistics – NATS Docs citeturn0search12  
+8. Kubernetes Autoscaling – Kubernetes Docs citeturn0search16  
+9. Kubernetes Scaling & Resource Quotas – Kubernetes Docs citeturn0search8  
+10. Module Federation Overview – webpack.js.org citeturn0search6  
+11. Beginner’s Guide to Module Federation – Medium citeturn0search5  
+12. Apollo Federation Directives – Apollo GraphQL Docs citeturn1search0  
+13. Apollo Federation Entities Intro – Apollo GraphQL Docs citeturn1search1  
+14. Apollo Router Telemetry – Apollo GraphQL Docs citeturn1search3  
+
+This plan closes out the current integration and sets you up for rapid iteration on audit‐lineage and user‐facing status displays—all within the TerraFusion Mono monorepo and plugin framework.

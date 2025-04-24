@@ -1,0 +1,151 @@
+Here’s a clear plan for folding **TerraFusionMono**—your full-platform monorepo—into the Plugin/Microservice Hybrid model, including the Nx scaffolding, plugin registration, Replit Agent bootstrap, and next steps.
+
+---
+
+## Summary
+
+TerraFusionMono is a monorepo that houses all core services (gateway, mobile, dashboards, observability) alongside shared libraries and infrastructure‐as‐code within a unified Nx workspace citeturn1view0turn3view0. To integrate the SyncService (and any future plugins), we’ll:
+
+1. **Scaffold an Nx project** under `apps/backend/syncservice` using the official Nx Python/Node plugins for consistent build/test/serve pipelines citeturn4search1turn4search2.
+2. **Register** the SyncService as a `TerraFusionPlugin` so the Core Gateway auto-discovers its routes and jobs citeturn4search4turn4search0.
+3. **Bootstrap** the Replit AI Agent with workspace config (`.replit`, `replit.nix`) and high-level prompts to generate the service code, manifest, and CI workflows citeturn4search5turn4search6.
+4. **Deploy** via the existing Helm/Terraform pipeline, using Helm values for replica counts and resource quotas, all coordinated through Nx’s task graph citeturn4search8turn4search7.
+
+---
+
+## 1. TerraFusionMono Monorepo Overview
+
+### 1.1 Repo Structure  
+```
+├── apps/
+│   ├── core-gateway/        ← API gateway & plugin loader
+│   ├── terrafield-mobile/   ← Mobile frontend & Edge agent runtime
+│   └── …  
+├── packages/                ← Shared libs (UI, SDKs, utils)
+├── grafana/                 ← Dashboard definitions
+├── prometheus/              ← Metrics config
+├── server/                  ← Backend services  
+├── shared/                  ← Common TypeScript/JS modules  
+├── nx.json                  ← Nx workspace configuration  
+├── workspace.json           ← Project definitions & targets  
+├── .replit                  ← Replit run config  
+└── replit.nix               ← Dev environment spec  
+```  
+This Nx workspace provides task orchestration, distributed caching, and code generators to keep builds fast and consistent citeturn4search3turn4search9.
+
+### 1.2 Why Nx?  
+Nx is a smart monorepo tool that optimizes CI performance, enforces architectural boundaries, and offers generators/executors out of the box for polyglot projects citeturn4search2turn4search8.
+
+---
+
+## 2. Integrating the SyncService Plugin
+
+### 2.1 Scaffold the SyncService Project  
+Run the Nx generator to create a new Python/Node app under `apps/backend`:
+```bash
+npx nx generate @nx/plugin:application \
+  backend-sync --directory=apps/backend --framework=none
+```
+This adds a `project.json` with `build`, `serve`, and `test` targets you can customize citeturn4search1.
+
+### 2.2 Implement TerraFusionPlugin Registration  
+In `apps/backend/syncservice/src/plugin.ts`:
+```ts
+export const plugin: TerraFusionPlugin = {
+  id: "sync-service",
+  version: "0.1.0",
+  mcpTools: [/* define sync endpoints as tools */],
+  routes: (fastify) => {
+    fastify.register(import("./routes").then(m => m.syncRoutes), { prefix: "/sync" });
+  },
+  jobs: [
+    { name: "sync:incremental", executor: "nx run backend-sync:run_sync_job" },
+  ],
+};
+```
+The Core Gateway auto-loads this manifest and merges its OpenAPI into the unified docs citeturn4search0.
+
+### 2.3 Add `manifest.yaml` & Resource Quotas  
+Define process requirements in `apps/backend/syncservice/manifest.yaml`:
+```yaml
+id: sync-service
+version: 0.1.0
+permissions:
+  network:
+    - host: "pacs-db.local"
+      port: 1433
+resources:
+  cpu: 500m
+  memory: 512Mi
+```
+Helm will use these to set Pod `resources.requests` and `limits` citeturn4search7.
+
+### 2.4 Update Helm & Terraform  
+In `charts/syncservice/values.yaml`:
+```yaml
+replicaCount: 3
+resources:
+  requests:
+    cpu: "500m"
+    memory: "512Mi"
+  limits:
+    cpu: "1"
+    memory: "1Gi"
+```
+And in Terraform:
+```hcl
+resource "helm_release" "syncservice" {
+  chart     = "charts/syncservice"
+  namespace = "terrafusion"
+  set {
+    name  = "image.tag"
+    value = var.syncservice_image_tag
+  }
+}
+```
+This leverages the existing monorepo pipeline for canary and full rollouts .
+
+---
+
+## 3. Replit AI Agent Bootstrap
+
+### 3.1 `.replit` & `replit.nix`  
+Ensure the root Repl supports Nx, Poetry, and Node:
+```ini
+# .replit
+run = "nx serve apps/backend/syncservice"
+language = "bash"
+entrypoint = "bash start.sh"
+```
+```nix
+# replit.nix
+{ pkgs }: {
+  deps = [ pkgs.nodejs pkgs.poetry pkgs.python39 ];
+  devShell.shellHook = ''
+    npm ci
+    poetry install
+  '';
+}
+```
+This lets the Agent invoke `nx` commands directly citeturn4search5.
+
+### 3.2 High-Level Agent Prompt  
+```text
+You are a Replit AI Agent. Scaffold a SyncService plugin under apps/backend/syncservice:
+1. FastAPI endpoints: /sync/full, /sync/incremental, /health.
+2. Conflict resolver, audit trails, NATS publisher.
+3. Generate project.json with Nx targets.
+4. Create manifest.yaml and update Helm/Terraform configs.
+Commit files and open a PR.
+```
+Feed this to the Agent to bootstrap code generation and PR creation citeturn4search6.
+
+---
+
+## 4. Next Steps
+
+- **Review & Merge PR** in the TerraFusionMono repo once CI passes.  
+- **Scale & Monitor** via the Core Gateway’s health checks and NATS heartbeats.  
+- **Iterate**: add GraphQL federation for audit lineage and embed SyncStatusPanel micro-frontend.  
+
+With this integration, SyncService becomes a first-class TerraFusion plugin—isolated but uniformly managed, effortlessly auto-discovered, and scaled within your existing Nx-powered monorepo.

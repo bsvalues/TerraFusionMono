@@ -7,6 +7,7 @@ import geocodeRoutes from './geocode';
 import marketplaceRoutes from './marketplace';
 import authRoutes from './auth';
 import metricsRoutes from './metrics';
+import cropHealthRoutes from './crop-health';
 
 /**
  * Register all API routes
@@ -20,6 +21,7 @@ export async function configureRoutes(server: FastifyInstance): Promise<void> {
   server.register(geocodeRoutes, { prefix: '/api/geocode' });
   server.register(marketplaceRoutes, { prefix: '/api/marketplace' });
   server.register(metricsRoutes, { prefix: '/api/metrics' });
+  server.register(cropHealthRoutes, { prefix: '/api/crop-health' });
   
   // Version route
   server.get('/api/version', async () => {
