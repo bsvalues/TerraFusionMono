@@ -2,7 +2,7 @@
 
 This document describes the various utility scripts available in the TerraFusionMono repository to help with common tasks.
 
-## Repository Import Scripts
+## Repository Management Scripts
 
 ### import-repos.sh
 
@@ -36,6 +36,25 @@ Imports a single repository by name.
 ./import-single-repo.sh RepositoryName
 ```
 
+### sync-repository.sh
+
+Manages synchronization between the monorepo and individual repositories.
+
+```bash
+./sync-repository.sh <operation> [options]
+```
+
+**Operations:**
+- `export <project-name> <output-dir>` - Export a project from the monorepo to a standalone repository
+- `import <repo-path> [project-name]` - Import an external repository into the monorepo
+- `update <project-name>` - Update a project in the monorepo with latest changes
+
+**Features:**
+- Export projects for independent development
+- Import external repositories with proper naming and structure
+- Update existing projects with changes from external sources
+- Creates backups before making significant changes
+
 ## Repository Status Scripts
 
 ### check-repos-status.sh
@@ -65,6 +84,42 @@ Identifies Vite applications that might need WebSocket fixes for Replit.
 - Detects Vite applications in the monorepo
 - Checks if the WebSocket HMR fix is applied
 - Provides instructions for adding the fix to applications that need it
+
+### visualize-monorepo.sh
+
+Generates a comprehensive visualization of the monorepo structure and relationships.
+
+```bash
+./visualize-monorepo.sh
+```
+
+**Features:**
+- Shows top-level directory structure
+- Lists all registered projects organized by type (Terra, BCBS, Other)
+- Displays Gateway configuration and registered services
+- Maps internal dependencies between projects
+- Reports on WebSocket fix implementation status
+- Lists available documentation and utility scripts
+
+### check-dependencies.sh
+
+Analyzes dependencies across all packages in the monorepo.
+
+```bash
+./check-dependencies.sh [options]
+```
+
+**Options:**
+- `--verbose` - Show detailed information about each package
+- `--check-vulnerabilities` - Check for known vulnerabilities
+- `--check-updates` - Check for available updates (requires npm-check)
+- `--include-dev` - Include devDependencies in the analysis
+
+**Features:**
+- Identifies all dependencies used across the monorepo
+- Detects inconsistent dependency versions
+- Checks for known security vulnerabilities
+- Identifies outdated packages that need updates
 
 ## Gateway Management Scripts
 
