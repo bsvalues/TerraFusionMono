@@ -1,0 +1,91 @@
+Here’s a product-manager-style “what’s next” roadmap—built on best practices across CI/CD, health, federation, sandboxing, testing, and team enablement. We’ll break it into **Immediate**, **Short-Term**, **Mid-Term**, and **Long-Term** phases, with concrete milestones and references to guide your Replit AI Agent and human reviewers.  
+
+**Summary:**  
+You’ve bootstrapped the TerraFusionMono monorepo, wired the core-gateway, syncservice plugin, and initial UI shells. Next, you must harden your delivery pipeline (CI/CD), operational resilience (health checks & monitoring), security (WASM sandbox & capability enforcement), data-lineage (audit subgraph), and quality (automated E2E tests). These steps turn your scaffold into a production-ready CAMA marketplace platform.  
+
+---
+
+## Immediate (Today – 24 h)  
+
+### 1. Merge & Validate Bootstrap PRs  
+- **Review CI results** on your bootstrap PR: ensure `nx affected:test,lint,build` and `poetry run pytest` passed.   
+- **Merge** once green; tag the commit as **v0.1-alpha**.  
+
+### 2. Smoke-Test Health Endpoints  
+- **Call** `GET /health/live` and `GET /health/ready` on core-gateway (port 4000) and syncservice (port 3000).  
+- **Assert** 200 OK and JSON payload `{status: "ok"}`.   
+- **Document** any failures and open issues.  
+
+### 3. Enable NATS Monitoring  
+- **Activate** the NATS HTTP monitoring port (8222) in your Helm values.  
+- **Verify** metrics at `http://<nats-svc>:8222/streamz` and `consumerz`.   
+- **Alert** on missing heartbeats via Prometheus scrape.  
+
+---
+
+## Short-Term (1 – 3 days)  
+
+### 4. CI/CD Pipeline Completion  
+- **Create** `.github/workflows/ci.yml` with:  
+  1. checkout + setup-node@18 + setup-python@3.9  
+  2. cache Nx, npm, Poetry   
+  3. run `nx affected:test,lint,build` + `poetry run pytest`  
+  4. run `terraform plan` + `helm upgrade --install` staging   
+- **Parallelize** jobs to fail fast.  
+
+### 5. Federated Audit-Trail Subgraph  
+- **Scaffold** `apps/audit-subgraph` with `@apollo/subgraph`: define `type AuditEntry @key(fields:"audit_id"){…}` and `auditHistory(recordKey: String!): [AuditEntry!]!`.   
+- **Hook** into Postgres `sync_audit` table via Drizzle ORM.  
+- **Compose** into supergraph via `IntrospectAndCompose`.  
+
+### 6. Baseline Observability  
+- **Emit** Prometheus metrics (request latency, error rates) from core-gateway and backend using `prom-client`.   
+- **Import** dashboards from `grafana/` and validate panels.  
+
+---
+
+## Mid-Term (1 – 2 weeks)  
+
+### 7. WASM Sandbox & Capability Enforcement  
+- **Implement** Wasmtime WASI preview2 in `server/plugin/sandbox.ts` with manifest-driven permissions (fs, net).   
+- **Enforce** CPU/memory quotas via Wasmtime `epoch_interruption()` or fuel.   
+- **Audit-log** unauthorized calls to `sync_audit`.  
+
+### 8. Horizontal Pod Autoscaling  
+- **Configure** HPA in Helm: scale on CPU > 70 % and custom metric “LSN lag.”   
+- **Test** scale-up/scale-down under load.  
+
+### 9. E2E & Component Tests  
+- **Add** Cypress for UI (`cypress/e2e/sync_flow_spec.ts`): test “Run Sync” → `SyncStatusPanel` updates.  ([Best Practices | Cypress Documentation](https://docs.cypress.io/app/core-concepts/best-practices?utm_source=chatgpt.com))  
+- **Configure** Nx e2e target and CI step.  
+- **Write** Jest unit tests for core TS modules; pytest + Hypothesis for Python.  
+
+---
+
+## Long-Term (3 weeks – 2 months)  
+
+### 10. Plugin Developer Portal  
+- **Launch** a dev sandbox at `dev.terrafusion.local` with mock data and CLI.  
+- **Document** plugin contract in `packages/plugin-sdk-ts` and `plugin-sdk-py`.  
+
+### 11. GraphQL Federation Hardening  
+- **Add** Rover schema checks in CI (`rover subgraph check/publish`).   
+- **Implement** federated tracing and field-level metrics.   
+
+### 12. Full Production Rollout  
+- **Plan** blue/green or canary deployment per Apollo and Kubernetes best practices.   
+- **Audit** security posture (JWT, TLS, pod security policies).  
+
+---
+
+## Milestones & Metrics  
+
+| Milestone                     | Target Date | Metric                                     |
+|-------------------------------|-------------|--------------------------------------------|
+| **Alpha Release**             | Today       | CI green, health endpoints ✅              |
+| **Pipeline Complete**         | +3 days     | 100 % CI coverage, staging deploy ✅       |
+| **Sandbox Live**              | +2 weeks    | Wasm sandbox enforced, audit logs emitted  |
+| **E2E Coverage ≥ 80 %**       | +3 weeks    | Cypress tests passing in CI                |
+| **v1.0 Beta**                 | +2 months   | Stable canary, federated audit in prod     |
+
+Use these phased steps to direct the Replit AI Agent—feeding it each prompt in sequence—and your human reviewers. This structured plan ensures you’ll transform TerraFusionMono from a scaffold into a fully production-hardened, billion-dollar CAMA marketplace platform.
