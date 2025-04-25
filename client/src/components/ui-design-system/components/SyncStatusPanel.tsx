@@ -8,7 +8,16 @@ import {
   Loader2,
   RefreshCw,
   Database,
-  Clock
+  Clock,
+  Smartphone,
+  Battery,
+  Upload,
+  Download,
+  Signal,
+  BarChart2,
+  MapPin,
+  Info,
+  Calendar
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import {
@@ -50,14 +59,79 @@ interface SyncStatusResponse {
   progress: number;
   lastSynced: string | null;
   pendingChanges: number;
+  activeOperations?: number;
+  syncQueue?: number;
+  totalBytes?: number;
+  totalSyncedBytes?: number;
 }
 
+// Device status types from the server
+type DeviceStatus = 'online' | 'offline' | 'synchronizing' | 'error';
+type SyncOperation = 'pull' | 'push' | 'bidirectional';
+
+// Sync history entry type
+interface SyncHistoryEntry {
+  id: string;
+  timestamp: string;
+  status: 'completed' | 'partial' | 'failed';
+  duration: number;
+  bytesTransferred: number;
+  recordsProcessed: number;
+  operation: SyncOperation;
+}
+
+// Location data type
+interface LocationData {
+  latitude: number;
+  longitude: number;
+  accuracy: number;
+  timestamp: string;
+}
+
+// Enhanced device interface
 interface Device {
   id: string;
+  uuid: string;
   name: string;
-  type: string;
-  lastConnected: string;
-  status: string;
+  status: DeviceStatus;
+  lastSeen: string;
+  firstSeen: string;
+  syncStatus: SyncStatus;
+  batteryLevel: number;
+  storageUsed: number;
+  pendingUploads: number;
+  pendingDownloads: number;
+  lastLocation?: LocationData;
+  connectionType: string;
+  osVersion: string;
+  appVersion: string;
+  syncHistory: SyncHistoryEntry[];
+}
+
+// Metrics response type
+interface SyncMetricsResponse {
+  success: boolean;
+  metrics: {
+    devices: {
+      total: number;
+      online: number;
+      offline: number;
+      withErrors: number;
+    };
+    pending: {
+      uploads: number;
+      downloads: number;
+      total: number;
+    };
+    syncOperations: {
+      last24h: number;
+      bytesTransferred24h: number;
+      activeOperations: number;
+      queuedOperations: number;
+    };
+    currentStatus: SyncStatus;
+    lastSynced: string | null;
+  };
 }
 
 interface DevicesResponse {
