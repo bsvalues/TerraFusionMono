@@ -85,11 +85,30 @@ router.post('/analyze', upload.single('image'), async (req: Request, res: Respon
         if (identifications.length > 0) {
           // Format previous history data
           previousHistory = identifications
-            .map(i => `Date: ${new Date(i.timestamp).toLocaleDateString()}, Health: ${i.healthStatus}, Issues: ${i.issues}`)
+            .map(i => {
+              let text = `Date: ${new Date(i.timestamp).toLocaleDateString()}, Crop: ${i.cropName}`;
+              
+              // Add identification details if available
+              if (i.scientificName) {
+                text += `, Scientific Name: ${i.scientificName}`;
+              }
+              
+              // Add custom properties that may not be in the schema
+              const customProps = i as any;
+              if (customProps.healthStatus) {
+                text += `, Health: ${customProps.healthStatus}`;
+              }
+              
+              if (customProps.issues) {
+                text += `, Issues: ${customProps.issues}`;
+              }
+              
+              return text;
+            })
             .join('. ');
         }
       } catch (err) {
-        console.error('Error fetching previous identifications:', err);
+        logger.error('Error fetching previous identifications:', err);
       }
     }
 
@@ -109,23 +128,28 @@ router.post('/analyze', upload.single('image'), async (req: Request, res: Respon
           parcelId,
           userId: req.user?.id || 1, // Use authenticated user ID or default
           cropType: analysisResult.cropType,
-          healthStatus: analysisResult.healthStatus,
-          confidence: analysisResult.confidenceScore,
-          issues: issuesText,
-          assessment: analysisResult.overallAssessment,
+          // Convert health status to a string to match schema
+          scientificName: null, // We don't have scientific name from basic analysis
+          confidence: analysisResult.confidenceScore.toString(), // Convert to string
+          // Store additional data in custom props
+          rawResponse: {
+            healthStatus: analysisResult.healthStatus,
+            issues: issuesText,
+            assessment: analysisResult.overallAssessment
+          },
           imageUrl: file.path, // Store the file path
           notes: notes || '',
           timestamp: new Date()
         });
       } catch (err) {
-        console.error('Error saving crop identification:', err);
+        logger.error('Error saving crop identification:', err);
         // Continue the process even if saving fails
       }
     }
 
     // Delete the temporary file
     fs.unlink(file.path, (err) => {
-      if (err) console.error('Error deleting temporary file:', err);
+      if (err) logger.error('Error deleting temporary file:', err);
     });
 
     // Return the analysis results
@@ -133,9 +157,150 @@ router.post('/analyze', upload.single('image'), async (req: Request, res: Respon
       success: true,
       analysis: analysisResult
     });
-  } catch (error) {
-    console.error('Error in crop analysis:', error);
-    return res.status(500).json({ error: 'Error processing crop analysis', details: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('Error in crop analysis:', { error });
+    return res.status(500).json({ error: 'Error processing crop analysis', details: errorMessage });
+  }
+});
+
+// Advanced multi-image analysis validation schema
+const advancedAnalysisRequestSchema = z.object({
+  parcelId: z.string().optional(),
+  cropType: z.string().optional(),
+  region: z.string().optional(),
+  elevation: z.number().optional(),
+  latitude: z.number().optional(),
+  longitude: z.number().optional(),
+  temperature: z.number().optional(),
+  humidity: z.number().optional(),
+  rainfall: z.number().optional(),
+  recentRainfall: z.string().optional(),
+  soilType: z.string().optional(),
+  soilPh: z.number().optional(),
+  soilOrganicMatter: z.number().optional(),
+  notes: z.string().optional()
+});
+
+// Route for advanced multi-image crop health analysis
+router.post('/advanced-analyze', upload.array('images', 5), async (req: Request, res: Response) => {
+  try {
+    const files = req.files as Express.Multer.File[];
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No image files uploaded' });
+    }
+
+    // Validate request data
+    const validationResult = advancedAnalysisRequestSchema.safeParse(req.body);
+    if (!validationResult.success) {
+      return res.status(400).json({ error: 'Invalid request data', details: validationResult.error });
+    }
+
+    const { 
+      parcelId, cropType, region, elevation, latitude, longitude,
+      temperature, humidity, rainfall, recentRainfall,
+      soilType, soilPh, soilOrganicMatter, notes 
+    } = validationResult.data;
+
+    // Convert images to base64
+    const base64Images: string[] = [];
+    for (const file of files) {
+      const imageBuffer = fs.readFileSync(file.path);
+      base64Images.push(imageBuffer.toString('base64'));
+    }
+
+    // Get previous analysis if parcelId is provided
+    let previousAnalysis: any = undefined;
+    if (parcelId) {
+      try {
+        const analyses = await storage.getCropHealthAnalyses({ parcelId });
+        if (analyses && analyses.length > 0) {
+          // Get the most recent analysis
+          const latestAnalysis = analyses[0];
+          if (latestAnalysis.rawResponse) {
+            previousAnalysis = latestAnalysis.rawResponse;
+          }
+        }
+      } catch (err) {
+        logger.error('Error fetching previous crop health analyses:', err);
+      }
+    }
+
+    // Prepare location data
+    const locationData: EnhancedLocationData | undefined = latitude && longitude ? {
+      latitude,
+      longitude,
+      elevation,
+      region,
+      weatherConditions: temperature || humidity || rainfall || recentRainfall ? {
+        temperature,
+        humidity,
+        rainfall,
+        recentRainfall
+      } : undefined,
+      soilProperties: soilType || soilPh || soilOrganicMatter ? {
+        type: soilType,
+        ph: soilPh,
+        organicMatter: soilOrganicMatter
+      } : undefined
+    } : undefined;
+
+    // Perform advanced analysis
+    const analysisResult = await performAdvancedCropAnalysis(
+      base64Images,
+      cropType,
+      locationData,
+      previousAnalysis
+    );
+
+    // Save the analysis results to database if parcelId is provided
+    if (parcelId) {
+      try {
+        // Store the analysis in crop_health_analyses table
+        await storage.createCropHealthAnalysis({
+          parcelId,
+          timestamp: new Date(),
+          userId: req.user?.id || 1,
+          cropType: analysisResult.cropType,
+          overallHealth: analysisResult.healthStatus,
+          healthScore: Math.round(analysisResult.confidenceScore * 100), // Convert 0-1 to 0-100
+          confidenceLevel: analysisResult.confidenceScore.toString(),
+          growthStage: analysisResult.growthStage,
+          growthProgress: 0, // This would need to be calculated based on crop type and growth stage
+          estimatedHarvestDate: null, // Would need additional calculation
+          aiModel: "gpt-4o",
+          rawResponse: analysisResult,
+          recommendations: analysisResult.issues.flatMap(issue => issue.recommendedActions),
+          images: files.map(file => file.path)
+        });
+
+        // Save disease detections if any
+        if (analysisResult.diseaseRisk && analysisResult.diseaseRisk.currentRisks.length > 0) {
+          // Code to save disease detections would go here
+          // Requires relationship between crop_health_analyses and disease_detections
+        }
+      } catch (err) {
+        logger.error('Error saving crop health analysis:', err);
+        // Continue the process even if saving fails
+      }
+    }
+
+    // Delete temporary files
+    for (const file of files) {
+      fs.unlink(file.path, (err) => {
+        if (err) logger.error(`Error deleting temporary file ${file.path}:`, err);
+      });
+    }
+
+    // Return the analysis results
+    return res.status(200).json({
+      success: true,
+      analysis: analysisResult
+    });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('Error in advanced crop analysis:', { error });
+    return res.status(500).json({ error: 'Error performing advanced crop analysis', details: errorMessage });
   }
 });
 
@@ -161,9 +326,10 @@ router.post('/recommendations', async (req: Request, res: Response) => {
       success: true,
       recommendations
     });
-  } catch (error) {
-    console.error('Error generating recommendations:', error);
-    return res.status(500).json({ error: 'Error generating recommendations', details: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('Error generating recommendations:', { error });
+    return res.status(500).json({ error: 'Error generating recommendations', details: errorMessage });
   }
 });
 
@@ -190,9 +356,10 @@ router.post('/predict-yield', async (req: Request, res: Response) => {
       success: true,
       prediction
     });
-  } catch (error) {
-    console.error('Error predicting yield:', error);
-    return res.status(500).json({ error: 'Error predicting yield', details: error.message });
+  } catch (error: unknown) {
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    logger.error('Error predicting yield:', { error });
+    return res.status(500).json({ error: 'Error predicting yield', details: errorMessage });
   }
 });
 

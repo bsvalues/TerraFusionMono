@@ -13,6 +13,7 @@ import {
   parcelNotes, type ParcelNote, type InsertParcelNote,
   parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement,
   cropIdentifications, type CropIdentification, type InsertCropIdentification,
+  cropHealthAnalyses, type InsertCropHealthAnalysis,
   // WebSocket Collaboration
   collaborationSessions, sessionParticipants, documentVersions, collaborationEvents,
   type CollaborationSession, type SessionParticipant, type DocumentVersion, type CollaborationEvent,

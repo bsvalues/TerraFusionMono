@@ -19,7 +19,7 @@ interface CropAnalysisResult {
 }
 
 // Extended interface for advanced analysis with additional fields
-interface AdvancedCropAnalysisResult extends CropAnalysisResult {
+export interface AdvancedCropAnalysisResult extends CropAnalysisResult {
   growthStage: string;
   nutritionalStatus: {
     overall: 'optimal' | 'adequate' | 'deficient' | 'toxic';
@@ -53,7 +53,7 @@ interface AdvancedCropAnalysisResult extends CropAnalysisResult {
 }
 
 // Location data structure with additional weather and soil info
-interface EnhancedLocationData {
+export interface EnhancedLocationData {
   latitude: number;
   longitude: number;
   elevation?: number;
