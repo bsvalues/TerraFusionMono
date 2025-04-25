@@ -150,6 +150,16 @@ We provide tools to test the crop analysis capabilities:
 - `tools/`: Development and utility scripts
 - `grafana/`: Monitoring dashboards
 - `prometheus/`: Metrics collection
+- `docs/`: Documentation for development and integration
+
+## Documentation
+
+For detailed information about specific aspects of the platform, refer to these guides:
+
+- [Repository Import Process](docs/REPOSITORY_IMPORT.md) - How repositories are imported into the monorepo
+- [Apollo Gateway Integration](docs/GATEWAY_INTEGRATION.md) - How to integrate services with the Federation Gateway
+- [WebSocket Fix for Replit](docs/WEBSOCKET_FIX.md) - How to fix WebSocket connections in Replit environment
+- [WebSocket Testing Guide](docs/WEBSOCKET_TESTING.md) - How to test and debug WebSocket connections
 
 ## Development Guidelines
 
@@ -157,6 +167,8 @@ We provide tools to test the crop analysis capabilities:
 - Use the provided development tools for testing
 - Ensure compatibility with mobile sync requirements
 - Add comprehensive unit and integration tests
+- Add WebSocket fixes for Replit when creating Vite-based applications
+- Register new GraphQL services with the Federation Gateway
 
 ## License
 

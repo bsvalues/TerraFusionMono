@@ -9,7 +9,7 @@
 console.log('[vite-hmr-fix] Loading WebSocket fix for Replit');
 
 // Check if we're running on Replit
-if (window.location.hostname.includes('.replit.dev') || window.location.hostname.includes('.repl.co')) {
+if (window.location.hostname.includes('.replit.dev') || window.location.hostname.includes('.repl.co') || window.location.hostname.includes('.janeway.')) {
   // Store the original WebSocket constructor
   const OriginalWebSocket = window.WebSocket;
   
@@ -19,11 +19,25 @@ if (window.location.hostname.includes('.replit.dev') || window.location.hostname
       // Get the current hostname from the page URL
       const currentHost = window.location.host;
       
-      // Handle both localhost URLs and undefined URLs
-      if (!url || url === 'undefined' || url === 'null') {
+      // Handle various cases of problematic URLs
+      if (!url || url === 'undefined' || url === 'null' || url.includes('localhost:undefined') || url.includes('127.0.0.1:undefined')) {
         // Create a fallback WebSocket URL using the current host
         const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-        const fallbackUrl = `${protocol}//${currentHost}`;
+        
+        // If we have a token in the original URL, preserve it
+        let token = '';
+        if (url && url.includes('token=')) {
+          try {
+            const tokenMatch = url.match(/token=([^&]*)/);
+            if (tokenMatch && tokenMatch[1]) {
+              token = `?token=${tokenMatch[1]}`;
+            }
+          } catch (e) {
+            console.error('[vite-hmr-fix] Error extracting token:', e);
+          }
+        }
+        
+        const fallbackUrl = `${protocol}//${currentHost}${token}`;
         console.log('[vite-hmr-fix] Using fallback WebSocket URL:', fallbackUrl);
         return new OriginalWebSocket(fallbackUrl, protocols);
       }
@@ -48,7 +62,21 @@ if (window.location.hostname.includes('.replit.dev') || window.location.hostname
           console.error('[vite-hmr-fix] Error parsing WebSocket URL:', e);
           // If URL parsing fails, fall back to the current host
           const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-          const fallbackUrl = `${protocol}//${currentHost}`;
+          
+          // If we have a token in the original URL, preserve it
+          let token = '';
+          if (url && url.includes('token=')) {
+            try {
+              const tokenMatch = url.match(/token=([^&]*)/);
+              if (tokenMatch && tokenMatch[1]) {
+                token = `?token=${tokenMatch[1]}`;
+              }
+            } catch (e) {
+              console.error('[vite-hmr-fix] Error extracting token:', e);
+            }
+          }
+          
+          const fallbackUrl = `${protocol}//${currentHost}${token}`;
           return new OriginalWebSocket(fallbackUrl, protocols);
         }
       }
@@ -70,4 +98,30 @@ if (window.location.hostname.includes('.replit.dev') || window.location.hostname
   window.WebSocket.prototype = OriginalWebSocket.prototype;
   
   console.log('[vite-hmr-fix] WebSocket fix applied for Replit environment');
+  
+  // Inform Vite about our production URL for better HMR connections
+  if (window.__VUE_HMR_RUNTIME__ || window.__vite_plugin_react_preamble_installed__) {
+    console.log('[vite-hmr-fix] Setting up HMR runtime configuration');
+    
+    // Force HMR to use the correct host
+    const hmrPort = ''; // Empty string means use the same port as the page
+    const hmrHost = window.location.hostname;
+    
+    // Check if we can access Vite's HMR configuration
+    if (window.__vite_plugin_react_preamble_installed__ && window.__vite__) {
+      console.log('[vite-hmr-fix] Configuring React HMR');
+      if (window.__vite__.config) {
+        window.__vite__.config.server = window.__vite__.config.server || {};
+        window.__vite__.config.server.hmr = window.__vite__.config.server.hmr || {};
+        window.__vite__.config.server.hmr.host = hmrHost;
+        window.__vite__.config.server.hmr.port = hmrPort;
+      }
+    }
+    
+    // For Vue HMR
+    if (window.__VUE_HMR_RUNTIME__) {
+      console.log('[vite-hmr-fix] Configuring Vue HMR');
+      // No direct config access for Vue, but our WebSocket override should handle it
+    }
+  }
 }
