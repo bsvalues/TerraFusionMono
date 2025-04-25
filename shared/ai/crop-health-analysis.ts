@@ -1,11 +1,22 @@
 import OpenAI from "openai";
+import { 
+  getFallbackCropAnalysis, 
+  getFallbackAdvancedAnalysis,
+  getFallbackRecommendations,
+  getFallbackYieldPrediction
+} from './fallbacks';
 
 // Initialize OpenAI with the API key
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 
+// Flag to track if the API key has been confirmed to work
+let apiKeyConfirmed = false;
+// Flag to use fallbacks when API is unavailable
+let useFallbacks = false;
+
 // Base interface for crop analysis results
-interface CropAnalysisResult {
+export interface CropAnalysisResult {
   cropType: string;
   healthStatus: 'excellent' | 'good' | 'moderate' | 'poor' | 'critical';
   issues: Array<{
@@ -147,10 +158,30 @@ export async function analyzeCropHealth(
     }
     
     const result = JSON.parse(content) as CropAnalysisResult;
+    
+    // Mark API as working if we reach this point
+    apiKeyConfirmed = true;
+    useFallbacks = false;
+    
     return result;
   } catch (error: unknown) {
     console.error("Failed to analyze crop health:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+
+    // Check for API key errors
+    if (errorMessage.includes('API key') || 
+        errorMessage.includes('exceeded your current quota') || 
+        errorMessage.includes('Rate limit') ||
+        errorMessage.includes('429')) {
+      console.warn("OpenAI API issue detected, using fallback crop analysis");
+      useFallbacks = true;
+      
+      // Return fallback response
+      return getFallbackCropAnalysis({ 
+        cropType: location ? `crop from coordinates ${location.latitude},${location.longitude}` : undefined 
+      });
+    }
+    
     throw new Error(`Crop health analysis failed: ${errorMessage}`);
   }
 }
@@ -197,10 +228,28 @@ export async function generateCropCareRecommendations(
     }
     
     const parsedResponse = JSON.parse(content);
+    
+    // Mark API as working
+    apiKeyConfirmed = true;
+    useFallbacks = false;
+    
     return Array.isArray(parsedResponse) ? parsedResponse : [];
   } catch (error: unknown) {
     console.error("Failed to generate crop care recommendations:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Check for API key errors
+    if (errorMessage.includes('API key') || 
+        errorMessage.includes('exceeded your current quota') || 
+        errorMessage.includes('Rate limit') ||
+        errorMessage.includes('429')) {
+      console.warn("OpenAI API issue detected, using fallback recommendations");
+      useFallbacks = true;
+      
+      // Return fallback recommendations
+      return getFallbackRecommendations(cropType, healthIssues);
+    }
+    
     throw new Error(`Recommendation generation failed: ${errorMessage}`);
   }
 }
@@ -257,10 +306,29 @@ export async function predictCropYield(
       throw new Error('No response content received from OpenAI');
     }
     
-    return JSON.parse(content);
+    const result = JSON.parse(content);
+    
+    // Mark API as working
+    apiKeyConfirmed = true;
+    useFallbacks = false;
+    
+    return result;
   } catch (error: unknown) {
     console.error("Failed to predict crop yield:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Check for API key errors
+    if (errorMessage.includes('API key') || 
+        errorMessage.includes('exceeded your current quota') || 
+        errorMessage.includes('Rate limit') ||
+        errorMessage.includes('429')) {
+      console.warn("OpenAI API issue detected, using fallback yield prediction");
+      useFallbacks = true;
+      
+      // Return fallback prediction
+      return getFallbackYieldPrediction(cropType, healthStatus);
+    }
+    
     throw new Error(`Yield prediction failed: ${errorMessage}`);
   }
 }
@@ -463,9 +531,31 @@ export async function performAdvancedCropAnalysis(
     
     const result = JSON.parse(responseContent) as AdvancedCropAnalysisResult;
     return result;
+    
+    // Mark API as working
+    apiKeyConfirmed = true;
+    useFallbacks = false;
+    
+    return result;
   } catch (error: unknown) {
     console.error("Failed to perform advanced crop analysis:", error);
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
+    
+    // Check for API key errors
+    if (errorMessage.includes('API key') || 
+        errorMessage.includes('exceeded your current quota') || 
+        errorMessage.includes('Rate limit') ||
+        errorMessage.includes('429')) {
+      console.warn("OpenAI API issue detected, using fallback advanced analysis");
+      useFallbacks = true;
+      
+      // Return fallback analysis
+      return getFallbackAdvancedAnalysis({ 
+        cropType, 
+        location: locationData ? { region: locationData.region } : undefined
+      });
+    }
+    
     throw new Error(`Advanced crop analysis failed: ${errorMessage}`);
   }
 }
