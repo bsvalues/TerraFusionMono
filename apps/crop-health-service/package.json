@@ -1,0 +1,26 @@
+{
+  "name": "crop-health-service",
+  "version": "1.0.0",
+  "description": "Crop Health Analysis GraphQL Service",
+  "main": "dist/index.js",
+  "scripts": {
+    "build": "tsc",
+    "start": "node dist/index.js",
+    "dev": "tsx src/index.ts",
+    "test": "jest"
+  },
+  "dependencies": {
+    "@apollo/server": "^4.12.0",
+    "@apollo/subgraph": "^2.10.2",
+    "apollo-server": "^3.13.0",
+    "axios": "^1.6.5",
+    "dotenv": "^16.4.1",
+    "graphql": "^16.8.1",
+    "openai": "^4.28.0"
+  },
+  "devDependencies": {
+    "@types/node": "^20.10.5",
+    "typescript": "^5.3.3",
+    "tsx": "^3.14.0"
+  }
+}
