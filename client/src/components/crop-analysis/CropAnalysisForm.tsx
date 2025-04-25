@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -8,6 +8,9 @@ import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { LoaderCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Separator } from '@/components/ui/separator';
+import { Progress } from '@/components/ui/progress';
+import { useToast } from '@/hooks/use-toast';
+import { useWebSocketSubscription } from '@/lib/websocket';
 
 type AnalysisResult = {
   cropType: string;
@@ -26,9 +29,20 @@ type ApiResponse = {
   success: boolean;
   analysis: AnalysisResult;
   usedFallback: boolean;
+  analysisId?: string;
+};
+
+type WebSocketUpdateData = {
+  type: string;
+  status: 'processing' | 'completed' | 'error';
+  progress?: number;
+  analysisId?: string;
+  result?: ApiResponse;
+  error?: string;
 };
 
 const CropAnalysisForm = () => {
+  const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
   const [parcelId, setParcelId] = useState('');
@@ -36,8 +50,66 @@ const CropAnalysisForm = () => {
   const [longitude, setLongitude] = useState('');
   const [notes, setNotes] = useState('');
   const [loading, setLoading] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<ApiResponse | null>(null);
+  const [currentAnalysisId, setCurrentAnalysisId] = useState<string | null>(null);
+
+  // Set up WebSocket subscription for real-time updates
+  useWebSocketSubscription({
+    channel: 'crop_analysis',
+    onMessage: (data: WebSocketUpdateData) => {
+      // Only process updates for the current analysis
+      if (data.analysisId && data.analysisId === currentAnalysisId) {
+        console.log('Received WebSocket update:', data);
+
+        if (data.status === 'processing') {
+          // Update progress
+          setAnalysisProgress(data.progress || 0);
+          
+          // Show progress notification
+          if (data.progress && data.progress % 25 === 0) {
+            toast({
+              title: 'Analysis in Progress',
+              description: `Processing: ${data.progress}% complete`,
+              variant: 'default',
+            });
+          }
+        } else if (data.status === 'completed' && data.result) {
+          // Analysis completed - update state
+          setLoading(false);
+          setAnalysisProgress(100);
+          setResult(data.result);
+          
+          // Show success notification
+          toast({
+            title: 'Analysis Complete',
+            description: `Crop analysis completed successfully`,
+            variant: 'default',
+          });
+        } else if (data.status === 'error') {
+          // Analysis failed - show error
+          setLoading(false);
+          setError(data.error || 'An error occurred during analysis');
+          
+          toast({
+            title: 'Analysis Failed',
+            description: data.error || 'An error occurred during analysis',
+            variant: 'destructive',
+          });
+        }
+      }
+    }
+  });
+
+  // Cleanup preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     const selectedFile = e.target.files?.[0] || null;
@@ -65,6 +137,7 @@ const CropAnalysisForm = () => {
     setLoading(true);
     setError(null);
     setResult(null);
+    setAnalysisProgress(5); // Start with a small progress indication
     
     try {
       const formData = new FormData();
@@ -81,11 +154,31 @@ const CropAnalysisForm = () => {
         },
       });
       
-      setResult(response.data);
+      if (response.data.analysisId) {
+        // Store the analysis ID to filter WebSocket messages
+        setCurrentAnalysisId(response.data.analysisId);
+        
+        // For long-running analyses, we'll get updates via WebSocket
+        if (!response.data.analysis) {
+          toast({
+            title: 'Analysis Started',
+            description: 'Your crop image is being analyzed. You will receive real-time updates on the progress.',
+            variant: 'default',
+          });
+          setAnalysisProgress(10); // Bump up progress slightly
+        } else {
+          // For quick analyses that complete immediately
+          setResult(response.data);
+          setLoading(false);
+        }
+      } else {
+        // If no analysis ID is returned, treat as immediate result
+        setResult(response.data);
+        setLoading(false);
+      }
     } catch (error: any) {
       console.error('Error analyzing crop:', error);
       setError(error.response?.data?.error || 'An error occurred during analysis');
-    } finally {
       setLoading(false);
     }
   };
@@ -200,6 +293,19 @@ const CropAnalysisForm = () => {
               ) : 'Analyze Crop Health'}
             </Button>
           </form>
+          
+          {loading && (
+            <div className="mt-6 space-y-2">
+              <div className="flex justify-between text-sm">
+                <p>Analysis in progress... Please wait</p>
+                <p>{analysisProgress}%</p>
+              </div>
+              <Progress value={analysisProgress} />
+              <p className="text-xs text-gray-500">
+                Receiving real-time updates via WebSocket
+              </p>
+            </div>
+          )}
           
           {error && (
             <Alert variant="destructive" className="mt-6">
