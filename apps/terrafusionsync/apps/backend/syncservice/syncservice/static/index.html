@@ -1,0 +1,219 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraFusion SyncService Dashboard</title>
+    <link href="https://cdn.replit.com/agent/bootstrap-agent-dark-theme.min.css" rel="stylesheet" integrity="sha384-WB19mBN2C7gRJc3rSiTUzOg+YDQYp2JdLsF5I06K3zfnK+dBHJzJLCz70ELV8eRx" crossorigin="anonymous">
+    <style>
+        body {
+            padding-top: 2rem;
+            padding-bottom: 3rem;
+        }
+        
+        .feature-card {
+            height: 100%;
+            transition: all 0.2s ease;
+        }
+        
+        .feature-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+        }
+        
+        .feature-icon {
+            font-size: 2rem;
+            margin-bottom: 1rem;
+        }
+    </style>
+</head>
+<body data-bs-theme="dark">
+    <div class="container">
+        <div class="row mb-5">
+            <div class="col-md-8 mx-auto text-center">
+                <h1 class="display-4">TerraFusion SyncService</h1>
+                <p class="lead">Multi-system data synchronization and migration platform</p>
+            </div>
+        </div>
+        
+        <div class="row mb-4">
+            <div class="col">
+                <div class="card">
+                    <div class="card-body">
+                        <div class="d-flex justify-content-between align-items-center">
+                            <div>
+                                <h2 class="card-title h4">Service Status</h2>
+                                <p class="card-text text-success mb-0">
+                                    <i class="bi bi-check-circle-fill"></i> Service is running
+                                </p>
+                            </div>
+                            <div>
+                                <a href="/health/status" class="btn btn-sm btn-outline-info" target="_blank">Health Details</a>
+                                <a href="/docs" class="btn btn-sm btn-outline-primary" target="_blank">API Documentation</a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row mb-5">
+            <div class="col-lg-4 mb-4">
+                <div class="card feature-card">
+                    <div class="card-body text-center">
+                        <div class="feature-icon">
+                            <i class="bi bi-diagram-3"></i>
+                        </div>
+                        <h3 class="card-title h5">System Compatibility Matrix</h3>
+                        <p class="card-text">Configure and manage system compatibility with drag-and-drop interface</p>
+                        <a href="/compatibility.html" class="btn btn-primary">Open Compatibility Matrix</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 mb-4">
+                <div class="card feature-card">
+                    <div class="card-body text-center">
+                        <div class="feature-icon">
+                            <i class="bi bi-arrow-repeat"></i>
+                        </div>
+                        <h3 class="card-title h5">Sync Operations</h3>
+                        <p class="card-text">Monitor and manage ongoing and scheduled sync operations</p>
+                        <a href="#" class="btn btn-secondary">View Sync Operations</a>
+                    </div>
+                </div>
+            </div>
+            <div class="col-lg-4 mb-4">
+                <div class="card feature-card">
+                    <div class="card-body text-center">
+                        <div class="feature-icon">
+                            <i class="bi bi-graph-up"></i>
+                        </div>
+                        <h3 class="card-title h5">Metrics & Analytics</h3>
+                        <p class="card-text">View performance metrics and synchronization analytics</p>
+                        <a href="#" class="btn btn-secondary">View Metrics</a>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div class="row">
+            <div class="col-lg-8">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3 class="card-title h5 mb-0">Recent Sync Activity</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="table-responsive">
+                            <table class="table table-dark table-striped">
+                                <thead>
+                                    <tr>
+                                        <th>Operation ID</th>
+                                        <th>Source → Target</th>
+                                        <th>Status</th>
+                                        <th>Progress</th>
+                                        <th>Started</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <tr>
+                                        <td>op-12345</td>
+                                        <td>PACS → CAMA</td>
+                                        <td><span class="badge bg-success">Completed</span></td>
+                                        <td>100%</td>
+                                        <td>2 hours ago</td>
+                                    </tr>
+                                    <tr>
+                                        <td>op-12346</td>
+                                        <td>GIS → CAMA</td>
+                                        <td><span class="badge bg-warning">In Progress</span></td>
+                                        <td>65%</td>
+                                        <td>30 minutes ago</td>
+                                    </tr>
+                                    <tr>
+                                        <td>op-12347</td>
+                                        <td>ERP → CAMA</td>
+                                        <td><span class="badge bg-secondary">Scheduled</span></td>
+                                        <td>0%</td>
+                                        <td>Starts in 1 hour</td>
+                                    </tr>
+                                </tbody>
+                            </table>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <div class="col-lg-4">
+                <div class="card mb-4">
+                    <div class="card-header">
+                        <h3 class="card-title h5 mb-0">System Health</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>CPU Usage</span>
+                                <span>45%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 45%;" aria-valuenow="45" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        <div class="mb-3">
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Memory</span>
+                                <span>68%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-warning" role="progressbar" style="width: 68%;" aria-valuenow="68" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                        <div>
+                            <div class="d-flex justify-content-between mb-1">
+                                <span>Disk Space</span>
+                                <span>32%</span>
+                            </div>
+                            <div class="progress">
+                                <div class="progress-bar bg-success" role="progressbar" style="width: 32%;" aria-valuenow="32" aria-valuemin="0" aria-valuemax="100"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="card">
+                    <div class="card-header">
+                        <h3 class="card-title h5 mb-0">Quick Actions</h3>
+                    </div>
+                    <div class="card-body">
+                        <div class="d-grid gap-2">
+                            <a href="/compatibility.html" class="btn btn-primary">
+                                <i class="bi bi-diagram-3"></i> Manage System Compatibility
+                            </a>
+                            <button class="btn btn-outline-primary" disabled>
+                                <i class="bi bi-arrow-repeat"></i> Start New Sync
+                            </button>
+                            <button class="btn btn-outline-primary" disabled>
+                                <i class="bi bi-gear"></i> System Configuration
+                            </button>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer class="bg-dark text-light mt-5 py-3">
+        <div class="container">
+            <div class="row">
+                <div class="col-md-6">
+                    <p class="mb-0">TerraFusion SyncService - Version 1.0.0</p>
+                </div>
+                <div class="col-md-6 text-md-end">
+                    <p class="mb-0">© 2025 TerraFusion. All rights reserved.</p>
+                </div>
+            </div>
+        </div>
+    </footer>
+    
+    <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0-alpha1/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

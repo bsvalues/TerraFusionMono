@@ -1,0 +1,130 @@
+{% extends "base.html" %}
+
+{% block title %}Generate CMA Report | TerraMiner{% endblock %}
+
+{% block content %}
+<div class="container mt-4">
+    <div class="card mb-4">
+        <div class="card-header bg-primary text-white">
+            <h2 class="mb-0">
+                <i class="fas fa-chart-line mr-2"></i> Generate CMA Report
+            </h2>
+        </div>
+        <div class="card-body">
+            <p class="mb-4">Enter the subject property details below to generate a comprehensive comparative market analysis report.</p>
+            
+            <form method="post" action="{{ url_for('cma.cma_generator') }}">
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="mb-3">Property Location</h5>
+                        <div class="form-group">
+                            <label for="subject_address">Address*</label>
+                            <input type="text" class="form-control" id="subject_address" name="subject_address" 
+                                   placeholder="123 Main St" value="{{ form_data.subject_address if form_data else '' }}" required>
+                        </div>
+                
+                        <div class="form-row">
+                            <div class="form-group col-md-6">
+                                <label for="subject_city">City*</label>
+                                <input type="text" class="form-control" id="subject_city" name="subject_city" 
+                                       placeholder="San Francisco" value="{{ form_data.subject_city if form_data else '' }}" required>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="subject_state">State*</label>
+                                <input type="text" class="form-control" id="subject_state" name="subject_state" 
+                                       placeholder="CA" maxlength="2" value="{{ form_data.subject_state if form_data else '' }}" required>
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="subject_zip">ZIP Code*</label>
+                                <input type="text" class="form-control" id="subject_zip" name="subject_zip" 
+                                       placeholder="94105" value="{{ form_data.subject_zip if form_data else '' }}" required>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Why this matters?</h6>
+                                <p class="card-text small">We use the property location to find comparable properties in the same area. Accurate location information helps ensure the most relevant comparable properties are included in your analysis.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <hr class="my-4">
+                
+                <div class="row">
+                    <div class="col-md-8">
+                        <h5 class="mb-3">Property Details</h5>
+                        <div class="form-row">
+                            <div class="form-group col-md-3">
+                                <label for="subject_beds">Bedrooms</label>
+                                <input type="number" class="form-control" id="subject_beds" name="subject_beds" 
+                                       min="0" step="1" value="{{ form_data.subject_beds if form_data else '3' }}">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="subject_baths">Bathrooms</label>
+                                <input type="number" class="form-control" id="subject_baths" name="subject_baths" 
+                                       min="0" step="0.5" value="{{ form_data.subject_baths if form_data else '2' }}">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="subject_sqft">Square Footage</label>
+                                <input type="number" class="form-control" id="subject_sqft" name="subject_sqft" 
+                                       min="0" step="1" value="{{ form_data.subject_sqft if form_data else '1800' }}">
+                            </div>
+                            <div class="form-group col-md-3">
+                                <label for="subject_lot_size">Lot Size (sq ft)</label>
+                                <input type="number" class="form-control" id="subject_lot_size" name="subject_lot_size" 
+                                       min="0" step="1" value="{{ form_data.subject_lot_size if form_data else '5000' }}">
+                            </div>
+                        </div>
+                
+                        <div class="form-row">
+                            <div class="form-group col-md-4">
+                                <label for="subject_year_built">Year Built</label>
+                                <input type="number" class="form-control" id="subject_year_built" name="subject_year_built" 
+                                       min="1800" max="2025" step="1" value="{{ form_data.subject_year_built if form_data else '2000' }}">
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="subject_property_type">Property Type</label>
+                                <select class="form-control" id="subject_property_type" name="subject_property_type">
+                                    <option value="Single Family" {% if form_data and form_data.subject_property_type == 'Single Family' %}selected{% endif %}>Single Family</option>
+                                    <option value="Condo" {% if form_data and form_data.subject_property_type == 'Condo' %}selected{% endif %}>Condo</option>
+                                    <option value="Townhouse" {% if form_data and form_data.subject_property_type == 'Townhouse' %}selected{% endif %}>Townhouse</option>
+                                    <option value="Multi-Family" {% if form_data and form_data.subject_property_type == 'Multi-Family' %}selected{% endif %}>Multi-Family</option>
+                                </select>
+                            </div>
+                            <div class="form-group col-md-4">
+                                <label for="subject_price">Current Price (optional)</label>
+                                <div class="input-group">
+                                    <div class="input-group-prepend">
+                                        <span class="input-group-text">$</span>
+                                    </div>
+                                    <input type="number" class="form-control" id="subject_price" name="subject_price" 
+                                           min="0" step="1000" value="{{ form_data.subject_price if form_data else '' }}" placeholder="e.g., 750000">
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="col-md-4">
+                        <div class="card bg-light mb-3">
+                            <div class="card-body">
+                                <h6 class="card-title">Why these details matter?</h6>
+                                <p class="card-text small">We use these property characteristics to find the most similar comparable properties and make appropriate price adjustments. The more accurate these details are, the more precise your property valuation will be.</p>
+                                <p class="card-text small">Current price is optional and helps calibrate our AI recommendations.</p>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="form-group mt-4 text-center">
+                    <button type="submit" class="btn btn-primary btn-lg">
+                        <i class="fas fa-magic mr-2"></i> Generate Report
+                    </button>
+                    <a href="{{ url_for('cma.cma_home') }}" class="btn btn-secondary btn-lg ml-2">Cancel</a>
+                </div>
+            </form>
+        </div>
+    </div>
+</div>
+{% endblock %}

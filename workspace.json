@@ -13,6 +13,13 @@
     "cost-approach": "plugins/cost-approach",
     "eslint-config": "tools/eslint-config",
     "plugin-scaffold": "tools/plugin-scaffold",
-    "dev-container": "tools/dev-container"
+    "dev-container": "tools/dev-container",
+    "terraagent": "apps/terraagent",
+    "terraf": "apps/terraf",
+    "terraflow": "apps/terraflow",
+    "terrafusionpro": "apps/terrafusionpro",
+    "terrafusionsync": "apps/terrafusionsync",
+    "terralegislativepulsepub": "apps/terralegislativepulsepub",
+    "terraminer": "apps/terraminer"
   }
 }
