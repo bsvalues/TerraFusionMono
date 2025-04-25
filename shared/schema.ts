@@ -649,6 +649,32 @@ export type WeatherData = typeof weatherData.$inferSelect;
 export type InsertWeatherData = z.infer<typeof insertWeatherDataSchema>;
 
 // Crop Identification results (from AR tool)
+// Crop Analysis Requests table for tracking crop analysis API requests
+export const cropAnalysisRequests = pgTable("crop_analysis_requests", {
+  id: serial("id").primaryKey(),
+  requestType: varchar("request_type", { length: 50 }).notNull(), // basic, advanced, recommendation, yield-prediction
+  cropType: varchar("crop_type", { length: 100 }).notNull(),
+  location: varchar("location", { length: 255 }),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+  filePath: varchar("file_path", { length: 255 }),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'set null' }),
+  metadata: json("metadata") // For additional data like soil type, weather, etc.
+}, (table) => {
+  return {
+    requestTypeIdx: index("crop_analysis_requests_type_idx").on(table.requestType),
+    cropTypeIdx: index("crop_analysis_requests_crop_type_idx").on(table.cropType),
+    timestampIdx: index("crop_analysis_requests_timestamp_idx").on(table.timestamp),
+    userIdIdx: index("crop_analysis_requests_user_id_idx").on(table.userId),
+  };
+});
+
+export const insertCropAnalysisRequestSchema = createInsertSchema(cropAnalysisRequests).omit({
+  id: true,
+});
+
+export type CropAnalysisRequest = typeof cropAnalysisRequests.$inferSelect;
+export type InsertCropAnalysisRequest = z.infer<typeof insertCropAnalysisRequestSchema>;
+
 export const cropIdentifications = pgTable("crop_identifications", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id),

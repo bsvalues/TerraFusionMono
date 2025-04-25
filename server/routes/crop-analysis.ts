@@ -2,417 +2,273 @@ import { Router, Request, Response } from 'express';
 import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
-import { z } from 'zod';
-import {
-  analyzeCropHealth,
-  performAdvancedCropAnalysis,
-  generateCropCareRecommendations,
-  predictCropYield,
-  type EnhancedLocationData
-} from '@shared/ai/crop-health-analysis';
+import { db } from '../db';
+import { cropAnalysisRequests } from '../../shared/schema';
+import { analyzeImages, generateRecommendations, advancedAnalyze } from '../../shared/ai/crop-health-analysis';
+import { 
+  getBasicAnalysisFallback, 
+  getAdvancedAnalysisFallback, 
+  getRecommendationsFallback,
+  getYieldPredictionFallback
+} from '../../shared/ai/fallbacks';
+import OpenAI from 'openai';
 
-const router = Router();
+// Initialize OpenAI with API key
+const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
-// Setup multer for handling file uploads
+// Configure multer for file uploads
 const upload = multer({
-  storage: multer.diskStorage({
-    destination: (req, file, cb) => {
-      const uploadDir = path.join(process.cwd(), 'temp', 'uploads');
-      
-      // Create directory if it doesn't exist
-      if (!fs.existsSync(uploadDir)) {
-        fs.mkdirSync(uploadDir, { recursive: true });
-      }
-      
-      cb(null, uploadDir);
-    },
-    filename: (req, file, cb) => {
-      const uniqueSuffix = Date.now() + '-' + Math.round(Math.random() * 1E9);
-      cb(null, file.fieldname + '-' + uniqueSuffix + path.extname(file.originalname));
-    }
-  }),
+  dest: 'temp/uploads/',
   limits: {
-    fileSize: 10 * 1024 * 1024, // 10MB max file size
-  }
+    fileSize: 10 * 1024 * 1024, // 10MB limit
+  },
 });
 
-// Flag to track if the OpenAI API key is working
-let openAIApiKeyValid = true;
+const cropAnalysisRoutes = Router();
 
-// Define validation schemas
-const analyzeRequestSchema = z.object({
-  parcelId: z.string().optional(),
-  latitude: z.string().transform(Number).optional(),
-  longitude: z.string().transform(Number).optional(),
-  previousAnalysisId: z.string().optional(),
-  notes: z.string().optional(),
-});
+export default cropAnalysisRoutes;
 
-const recommendationsRequestSchema = z.object({
-  cropType: z.string(),
-  healthIssues: z.array(z.string()),
-  historicalData: z.string().optional(),
-});
-
-const yieldPredictionRequestSchema = z.object({
-  cropType: z.string(),
-  healthStatus: z.string(),
-  environmentalConditions: z.string().optional(),
-  historicalYields: z.string().optional(),
-});
-
-const advancedAnalyzeRequestSchema = z.object({
-  cropType: z.string().optional(),
-  latitude: z.string().transform(Number).optional(),
-  longitude: z.string().transform(Number).optional(),
-  elevation: z.string().transform(Number).optional(),
-  region: z.string().optional(),
-  temperature: z.string().transform(Number).optional(),
-  humidity: z.string().transform(Number).optional(),
-  rainfall: z.string().transform(Number).optional(),
-  recentRainfall: z.string().optional(),
-  soilType: z.string().optional(),
-  soilPH: z.string().transform(Number).optional(),
-  soilOrganicMatter: z.string().transform(Number).optional(),
-  previousAnalysisId: z.string().optional(),
-});
-
-// Basic crop health analysis endpoint
-router.post('/analyze', upload.single('image'), async (req: Request, res: Response) => {
+// Basic Crop Analysis Endpoint
+cropAnalysisRoutes.post('/analyze', upload.single('image'), async (req: Request, res: Response) => {
   try {
-    // Validate request data
-    const validationResult = analyzeRequestSchema.safeParse(req.body);
-    
-    if (!validationResult.success) {
-      return res.status(400).json({ 
-        error: 'Invalid request data', 
-        details: validationResult.error 
-      });
-    }
-    
-    const { 
-      parcelId,
-      latitude,
-      longitude,
-      previousAnalysisId,
-      notes
-    } = validationResult.data;
-    
-    // Check if file was uploaded
     if (!req.file) {
-      return res.status(400).json({ 
-        error: 'Missing image file',
-        details: 'An image file is required for analysis'
-      });
+      return res.status(400).json({ error: 'No image file uploaded' });
     }
+
+    const { cropType, location } = req.body;
     
-    // Read the image file
-    const imageBuffer = fs.readFileSync(req.file.path);
-    const imageBase64 = imageBuffer.toString('base64');
-    
-    // Optional location data if provided
-    const locationData = (latitude && longitude) ? {
-      latitude,
-      longitude
-    } : undefined;
-    
-    // Retrieve previous analysis if provided
-    let previousAnalysis;
-    if (previousAnalysisId) {
-      // TODO: Get previous analysis from database
-      // previousAnalysis = await storage.getCropAnalysis(previousAnalysisId);
+    if (!cropType) {
+      return res.status(400).json({ error: 'Crop type is required' });
     }
+
+    const filePath = req.file.path;
     
-    // Perform crop health analysis
+    // Log the request to the database
+    await db.insert(cropAnalysisRequests).values({
+      requestType: 'basic',
+      cropType,
+      location: location || null,
+      timestamp: new Date(),
+      filePath: filePath,
+    });
+
     try {
-      const analysis = await analyzeCropHealth(
-        imageBase64,
-        locationData,
-        previousAnalysis
-      );
+      // Convert image to base64
+      const imageBuffer = fs.readFileSync(filePath);
+      const base64Image = imageBuffer.toString('base64');
       
-      // Check if this was a fallback response
-      const usedFallback = analysis.confidenceScore <= 0.1;
-      
-      // Store analysis results in database
-      // TODO: Save analysis to database
-      // const savedAnalysis = await storage.saveCropAnalysis({
-      //   parcelId,
-      //   analysis,
-      //   imageId: req.file.filename,
-      //   notes: notes || '',
-      //   latitude,
-      //   longitude
-      // });
+      // Call the OpenAI API for analysis
+      const result = await analyzeImages(openai, base64Image, cropType, location);
       
       // Clean up the uploaded file
-      fs.unlinkSync(req.file.path);
+      fs.unlinkSync(filePath);
       
-      return res.status(200).json({
+      return res.json({
         success: true,
-        analysis,
-        parcelId,
-        usedFallback
+        analysis: result,
+        usedFallback: false
       });
-    } catch (error: any) {
-      console.error("Error analyzing crop health:", error);
+    } catch (aiError) {
+      console.error('Error calling AI service:', aiError);
       
-      // Clean up the uploaded file
-      fs.unlinkSync(req.file.path);
+      // Use fallback data if AI service fails
+      const fallbackResult = getBasicAnalysisFallback(cropType);
       
-      return res.status(500).json({
-        error: 'Error analyzing crop health',
-        details: error.message
+      return res.json({
+        success: true,
+        analysis: fallbackResult,
+        usedFallback: true
       });
     }
-  } catch (error: any) {
-    console.error("Unexpected error in /analyze endpoint:", error);
-    
-    // Clean up the uploaded file if it exists
-    if (req.file?.path) {
-      fs.unlinkSync(req.file.path);
-    }
-    
-    return res.status(500).json({
-      error: 'Server error',
-      details: error.message
-    });
+  } catch (error) {
+    console.error('Error processing crop analysis:', error);
+    return res.status(500).json({ error: 'Failed to process crop analysis' });
   }
 });
 
-// Advanced crop health analysis with multiple images and context data
-router.post('/advanced-analyze', upload.array('images', 5), async (req: Request, res: Response) => {
+// Advanced Crop Analysis Endpoint
+cropAnalysisRoutes.post('/advanced-analyze', upload.array('images', 5), async (req: Request, res: Response) => {
   try {
-    // Validate request data
-    const validationResult = advancedAnalyzeRequestSchema.safeParse(req.body);
+    const files = req.files as Express.Multer.File[];
     
-    if (!validationResult.success) {
-      return res.status(400).json({ 
-        error: 'Invalid request data', 
-        details: validationResult.error 
-      });
+    if (!files || files.length === 0) {
+      return res.status(400).json({ error: 'No image files uploaded' });
     }
-    
+
     const { 
+      cropType, 
+      location, 
+      soilType, 
+      weather, 
+      plantingDate, 
+      previousIssues 
+    } = req.body;
+    
+    if (!cropType) {
+      return res.status(400).json({ error: 'Crop type is required' });
+    }
+
+    // Log the request to the database
+    await db.insert(cropAnalysisRequests).values({
+      requestType: 'advanced',
       cropType,
-      latitude,
-      longitude,
-      elevation,
-      region,
-      temperature,
-      humidity,
-      rainfall,
-      recentRainfall,
-      soilType,
-      soilPH,
-      soilOrganicMatter,
-      previousAnalysisId
-    } = validationResult.data;
-    
-    // Check if files were uploaded
-    if (!req.files || !Array.isArray(req.files) || req.files.length === 0) {
-      return res.status(400).json({ 
-        error: 'Missing image files',
-        details: 'At least one image file is required for analysis'
-      });
-    }
-    
-    // Read the image files
-    const imageBase64Array = req.files.map(file => {
-      const imageBuffer = fs.readFileSync(file.path);
-      return imageBuffer.toString('base64');
+      location: location || null,
+      timestamp: new Date(),
+      filePath: files[0].path, // Store the path of at least one file
+      metadata: JSON.stringify({
+        soilType,
+        weather,
+        plantingDate,
+        previousIssues,
+        totalImages: files.length
+      })
     });
-    
-    // Build enhanced location data if provided
-    const locationData: EnhancedLocationData | undefined = (latitude && longitude) ? {
-      latitude,
-      longitude,
-      elevation,
-      region,
-      weatherConditions: temperature || humidity || rainfall || recentRainfall ? {
-        temperature,
-        humidity,
-        rainfall,
-        recentRainfall
-      } : undefined,
-      soilProperties: soilType || soilPH || soilOrganicMatter ? {
-        type: soilType,
-        ph: soilPH,
-        organicMatter: soilOrganicMatter
-      } : undefined
-    } : undefined;
-    
-    // Retrieve previous analysis if provided
-    let previousAnalysis;
-    if (previousAnalysisId) {
-      // TODO: Get previous analysis from database
-      // previousAnalysis = await storage.getAdvancedCropAnalysis(previousAnalysisId);
-    }
-    
-    // Perform advanced crop health analysis
+
     try {
-      const analysis = await performAdvancedCropAnalysis(
-        imageBase64Array,
+      // Convert images to base64
+      const base64Images = files.map(file => {
+        const imageBuffer = fs.readFileSync(file.path);
+        return imageBuffer.toString('base64');
+      });
+      
+      // Call the OpenAI API for advanced analysis
+      const result = await advancedAnalyze(
+        openai,
+        base64Images,
         cropType,
-        locationData,
-        previousAnalysis
+        location,
+        soilType,
+        weather,
+        plantingDate,
+        previousIssues
       );
-      
-      // Check if this was a fallback response
-      const usedFallback = analysis.confidenceScore <= 0.1;
-      
-      // Store analysis results in database
-      // TODO: Save analysis to database
-      // const savedAnalysis = await storage.saveAdvancedCropAnalysis({
-      //   analysis,
-      //   imageIds: req.files.map(f => f.filename),
-      //   locationData
-      // });
       
       // Clean up the uploaded files
-      req.files.forEach(file => {
+      files.forEach(file => {
         fs.unlinkSync(file.path);
       });
       
-      return res.status(200).json({
+      return res.json({
         success: true,
-        analysis,
-        usedFallback
+        analysis: result,
+        usedFallback: false
       });
-    } catch (error: any) {
-      console.error("Error performing advanced crop analysis:", error);
+    } catch (aiError) {
+      console.error('Error calling AI service for advanced analysis:', aiError);
       
-      // Clean up the uploaded files
-      req.files.forEach(file => {
-        fs.unlinkSync(file.path);
-      });
+      // Use fallback data if AI service fails
+      const fallbackResult = getAdvancedAnalysisFallback(cropType);
       
-      return res.status(500).json({
-        error: 'Error performing advanced crop analysis',
-        details: error.message
+      return res.json({
+        success: true,
+        analysis: fallbackResult,
+        usedFallback: true
       });
     }
-  } catch (error: any) {
-    console.error("Unexpected error in /advanced-analyze endpoint:", error);
-    
-    // Clean up the uploaded files if they exist
-    if (req.files && Array.isArray(req.files)) {
-      req.files.forEach(file => {
-        fs.unlinkSync(file.path);
-      });
-    }
-    
-    return res.status(500).json({
-      error: 'Server error',
-      details: error.message
-    });
+  } catch (error) {
+    console.error('Error processing advanced crop analysis:', error);
+    return res.status(500).json({ error: 'Failed to process advanced crop analysis' });
   }
 });
 
-// Generate care recommendations based on crop type and health issues
-router.post('/recommendations', async (req: Request, res: Response) => {
+// Recommendations Endpoint
+cropAnalysisRoutes.post('/recommendations', async (req: Request, res: Response) => {
   try {
-    // Validate request data
-    const validationResult = recommendationsRequestSchema.safeParse(req.body);
+    const { cropType, issues, severity, growthStage } = req.body;
     
-    if (!validationResult.success) {
-      return res.status(400).json({ 
-        error: 'Invalid request data', 
-        details: validationResult.error 
-      });
+    if (!cropType || !issues) {
+      return res.status(400).json({ error: 'Crop type and issues are required' });
     }
-    
-    const { 
-      cropType,
-      healthIssues,
-      historicalData
-    } = validationResult.data;
-    
+
     try {
-      const recommendations = await generateCropCareRecommendations(
+      // Call the OpenAI API for recommendations
+      const result = await generateRecommendations(
+        openai,
         cropType,
-        healthIssues,
-        historicalData
+        issues,
+        severity,
+        growthStage
       );
       
-      // Check if this was a fallback response
-      const usedFallback = recommendations.length > 0 && recommendations[0].includes('fallback');
-      
-      return res.status(200).json({
+      return res.json({
         success: true,
-        recommendations,
-        usedFallback
+        recommendations: result,
+        usedFallback: false
       });
-    } catch (error: any) {
-      console.error("Error generating recommendations:", error);
+    } catch (aiError) {
+      console.error('Error calling AI service for recommendations:', aiError);
       
-      return res.status(500).json({
-        error: 'Error generating recommendations',
-        details: error.message
+      // Use fallback data if AI service fails
+      const fallbackResult = getRecommendationsFallback(cropType, issues);
+      
+      return res.json({
+        success: true,
+        recommendations: fallbackResult,
+        usedFallback: true
       });
     }
-  } catch (error: any) {
-    console.error("Unexpected error in /recommendations endpoint:", error);
-    
-    return res.status(500).json({
-      error: 'Server error',
-      details: error.message
-    });
+  } catch (error) {
+    console.error('Error generating recommendations:', error);
+    return res.status(500).json({ error: 'Failed to generate recommendations' });
   }
 });
 
-// Predict crop yield based on health status and environmental conditions
-router.post('/predict-yield', async (req: Request, res: Response) => {
+// Yield Prediction Endpoint
+cropAnalysisRoutes.post('/predict-yield', async (req: Request, res: Response) => {
   try {
-    // Validate request data
-    const validationResult = yieldPredictionRequestSchema.safeParse(req.body);
+    const { cropType, healthStatus, environmentalConditions, historicalYields } = req.body;
     
-    if (!validationResult.success) {
-      return res.status(400).json({ 
-        error: 'Invalid request data', 
-        details: validationResult.error 
-      });
+    if (!cropType || !healthStatus) {
+      return res.status(400).json({ error: 'Crop type and health status are required' });
     }
-    
-    const { 
-      cropType,
-      healthStatus,
-      environmentalConditions,
-      historicalYields
-    } = validationResult.data;
-    
+
     try {
-      const prediction = await predictCropYield(
-        cropType,
-        healthStatus,
-        environmentalConditions,
-        historicalYields
-      );
-      
-      // Check if this was a fallback response
-      const usedFallback = prediction.confidenceLevel <= 0.3;
-      
-      return res.status(200).json({
-        success: true,
-        prediction,
-        usedFallback
+      // Call OpenAI for yield prediction
+      const response = await openai.chat.completions.create({
+        model: "gpt-4o", // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
+        messages: [
+          {
+            role: "system",
+            content: 
+              "You are an agricultural expert specializing in crop yield prediction. Analyze the provided information and generate a detailed yield prediction. Respond with JSON in this format: { 'prediction': string, 'confidenceLevel': number, 'factors': string[] }",
+          },
+          {
+            role: "user",
+            content: `Predict the yield for ${cropType} with current health status: ${healthStatus}.\n` +
+                    `${environmentalConditions ? `Environmental conditions: ${environmentalConditions}\n` : ''}` +
+                    `${historicalYields ? `Historical yields: ${historicalYields}` : ''}`
+          },
+        ],
+        response_format: { type: "json_object" },
       });
-    } catch (error: any) {
-      console.error("Error predicting yield:", error);
+
+      // Handle null content (unlikely but possible)
+      const content = response.choices[0].message.content || '{}';
+      const result = JSON.parse(content);
       
-      return res.status(500).json({
-        error: 'Error predicting yield',
-        details: error.message
+      return res.json({
+        success: true,
+        prediction: {
+          prediction: result.prediction,
+          confidenceLevel: Math.max(0, Math.min(1, result.confidenceLevel)),
+          factors: result.factors,
+        },
+        usedFallback: false
+      });
+    } catch (aiError) {
+      console.error('Error calling AI service for yield prediction:', aiError);
+      
+      // Use fallback data if AI service fails
+      const fallbackResult = getYieldPredictionFallback(cropType, healthStatus);
+      
+      return res.json({
+        success: true,
+        prediction: fallbackResult,
+        usedFallback: true
       });
     }
-  } catch (error: any) {
-    console.error("Unexpected error in /predict-yield endpoint:", error);
-    
-    return res.status(500).json({
-      error: 'Server error',
-      details: error.message
-    });
+  } catch (error) {
+    console.error('Error predicting yield:', error);
+    return res.status(500).json({ error: 'Failed to predict yield' });
   }
 });
-
-export default router;

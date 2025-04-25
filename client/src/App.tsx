@@ -23,6 +23,7 @@ import CropHealthDashboard from "@/pages/crop-health-dashboard";
 import CropIdentifierPage from "@/pages/crop-identifier-page";
 import CropAnalysisPage from "@/pages/CropAnalysisPage";
 import AdvancedCropAnalysisPage from "@/pages/AdvancedCropAnalysisPage";
+import YieldPredictionPage from "@/pages/YieldPredictionPage";
 import CollaborationDemo from "@/pages/CollaborationDemo";
 
 function Router() {
@@ -49,6 +50,7 @@ function Router() {
         <Route path="/crop-identifier" component={CropIdentifierPage} />
         <Route path="/crop-analysis" component={CropAnalysisPage} />
         <Route path="/advanced-crop-analysis" component={AdvancedCropAnalysisPage} />
+        <Route path="/yield-prediction" component={YieldPredictionPage} />
         <Route path="/collaboration" component={CollaborationDemo} />
         
         {/* Dynamic routes for apps and plugins */}
