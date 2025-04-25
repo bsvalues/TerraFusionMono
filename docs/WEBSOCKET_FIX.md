@@ -1,123 +1,114 @@
-# Enhanced WebSocket Fix for Vite HMR in Replit
+# WebSocket Connectivity Fixes for Replit and Janeway Environments
 
-This repository includes an enhanced fix for WebSocket connections when using Vite's Hot Module Replacement (HMR) in the Replit environment. Without this fix, development mode in Vite-based applications will not work correctly as WebSocket connections to `localhost` will fail.
+This document explains the WebSocket connectivity fixes implemented for TerraFusionMono to ensure stable connections in various Replit environments, particularly focusing on Vite's Hot Module Replacement (HMR).
 
-## How It Works
+## Overview of the Problem
 
-The fix consists of two main parts:
+Replit environments, especially Janeway (the AI Agent environment), face challenges with WebSocket connections due to:
 
-1. **Client-side scripts**:
-   - `vite-hmr-fix.js` - Base version that intercepts WebSocket connections and redirects them to the correct Replit domain
-   - `improved-vite-hmr-fix.js` - Enhanced version with extra support for Janeway environment and token handling
+1. Hostname/domain discrepancies
+2. Proxy configurations
+3. Security tokens not being properly forwarded
+4. Cross-origin constraints
 
-2. **Server-side plugins**:
-   - `vite-hmr-fix-plugin.js` - Base plugin that configures Vite's server for Replit
-   - `enhanced-vite-hmr-fix-plugin.js` - Advanced plugin with support for different Replit environments and improved debugging
+## Fix Implementation Layers
 
-## Adding the Fix to Imported Applications
+We've implemented a multi-layered approach to ensure robustness:
 
-When adding a new application to the monorepo or working with existing applications, ensure that the WebSocket fix is applied:
+### 1. Client-Side JavaScript Fixes
 
-### For Applications Using Vite
+These are injected into the HTML and execute in the browser to patch WebSocket connections:
 
-1. Include the client-side fix in the HTML template by adding this line in the `<head>` section:
+- **vite-hmr-fix.js**: Basic fix for standard Replit environments
+- **improved-vite-hmr-fix.js**: Enhanced fix with better token handling and fallback mechanisms
+- **janeway-vite-hmr-fix.js**: Specialized fix for the Janeway AI Agent environment
+- **janeway-direct-fix.js**: Aggressive WebSocket patching for Janeway when other fixes fail
+
+### 2. Auto-Detecting Launcher
+
+**vite-hmr-launcher.js** detects the current environment and loads the appropriate fix scripts:
+
+```javascript
+// Example from vite-hmr-launcher.js
+if (isJaneway) {
+  console.log('[vite-hmr-launcher] Janeway environment detected');
+  scriptsToLoad.push('/janeway-vite-hmr-fix.js');
+  scriptsToLoad.push('/janeway-direct-fix.js');
+} else {
+  console.log('[vite-hmr-launcher] Standard Replit environment detected');
+  scriptsToLoad.push('/improved-vite-hmr-fix.js');
+}
+```
+
+### 3. Server-Side Plugins
+
+To complement the client-side fixes, we've created Vite plugins:
+
+- **vite-hmr-fix-plugin.js**: Standard plugin for Replit
+- **enhanced-vite-hmr-fix-plugin.js**: Enhanced plugin with Janeway support
+- **janeway-vite-plugin.js**: Janeway-specific plugin
+
+## Utility Scripts
+
+The following scripts help apply and manage the WebSocket fixes:
+
+- **apply-websocket-fix.sh**: Applies the appropriate fix to Vite applications
+- **check-websocket-environment.sh**: Diagnoses the current environment
+- **convert-to-launcher.sh**: Converts existing fixes to use the auto-detecting launcher
+
+## Testing Tools
+
+For validation and debugging:
+
+- **test-websocket-server.js**: Advanced WebSocket server for testing connections
+- **test-websocket-client.js**: Client for testing WebSocket connectivity
+
+## Usage Guidelines
+
+### For New Applications
+
+Add the following to your `index.html` file before any other scripts:
 
 ```html
-<!-- Standard fix -->
-<script src="/vite-hmr-fix.js"></script>
-
-<!-- OR, for Janeway environment or if standard fix doesn't work -->
-<script src="/improved-vite-hmr-fix.js"></script>
+<script src="/vite-hmr-launcher.js"></script>
 ```
 
-2. Import and use the plugin in your `vite.config.js` or `vite.config.ts`:
+### For Existing Applications with WebSocket Issues
 
-```js
-// Standard plugin
-import viteHmrFixPlugin from '../../vite-hmr-fix-plugin.js';
+Run the converter script:
 
-// OR, enhanced plugin with more features
-import enhancedViteHmrFixPlugin from '../../enhanced-vite-hmr-fix-plugin.js';
-
-export default defineConfig({
-  plugins: [
-    // ... other plugins
-    
-    // Use either the standard or enhanced plugin:
-    viteHmrFixPlugin(),
-    // OR
-    enhancedViteHmrFixPlugin({ verbose: true }), // verbose option for debugging
-  ],
-  // ... other configuration
-});
+```bash
+./convert-to-launcher.sh
 ```
 
-### Automatic Injection
+### For Advanced Debugging
 
-The plugin will automatically inject the client-side fix into your HTML, so manual inclusion is only needed if automatic injection fails.
+Use the WebSocket test server and client:
 
-### For Applications Not Using Vite
-
-For applications not using Vite or not requiring hot module replacement, no changes are needed.
-
-## Troubleshooting
-
-If HMR is not working in your application, check the browser console for WebSocket-related errors. You might see:
-
+```bash
+node test-websocket-server.js
 ```
-[vite] failed to connect to websocket.
-```
-
-### Common Issues and Solutions
-
-#### 1. WebSocket Connection Failures
-
-If you see WebSocket connection failures:
-
-- Try switching to the improved fix scripts (`improved-vite-hmr-fix.js` and `enhanced-vite-hmr-fix-plugin.js`)
-- Check if the script is correctly included in your HTML (should be in the `<head>` section)
-- Verify the plugin is properly configured in your Vite config
-
-#### 2. Port Conflicts
-
-If you see errors about ports already in use:
-
-- The plugin automatically handles port conflicts by setting `strictPort: false`
-- Check if other services are using the same port
-
-#### 3. HMR Working Partially
-
-If HMR connects but doesn't reload changes:
-
-- Check the browser console for more specific errors
-- Try running `./check-vite-apps.sh` to analyze your Vite application setup
-- Use `node test-websocket-client.js` to test the WebSocket connection directly
 
 ## Environment Detection
 
-The fix automatically detects the Replit environment type:
+The fixes use the following environment detection strategy:
 
-- Standard Replit environments (`.replit.dev` domains)
-- Classic Replit (`.repl.co` domains)
-- Janeway environment (specific to Replit's Janeway system)
-- Nix-based environments
+1. **Replit Standard**: Checks for `process.env.REPL_ID` and `process.env.REPL_SLUG`
+2. **Janeway**: Checks for `process.env.REPLIT_ENVIRONMENT === 'janeway' || process.env.REPLIT_ENVIRONMENT === 'ai'`
 
-## Advanced Configuration
+## Troubleshooting
 
-The enhanced plugin supports additional configuration options:
+If WebSocket connections still fail:
 
-```js
-enhancedViteHmrFixPlugin({
-  verbose: true,  // Enable verbose logging for debugging
-})
-```
+1. Check console logs for detailed error messages
+2. Verify that the launcher script is loaded before any Vite-related code
+3. Try running `check-websocket-environment.sh` to diagnose connectivity issues
+4. For Janeway environments, ensure both fix scripts are loaded
 
-## Testing Your WebSocket Connection
+## Notes for Maintenance
 
-Use the included test client to verify WebSocket connectivity:
+When updating Vite or related packages:
 
-```bash
-node test-websocket-client.js
-```
-
-This will attempt to connect to your application's WebSocket server and report any issues encountered.
+1. Test WebSocket connectivity in both standard Replit and Janeway environments
+2. Check if the fix strategies are still applicable
+3. Update the fix scripts as needed to accommodate changes in Vite's WebSocket implementation

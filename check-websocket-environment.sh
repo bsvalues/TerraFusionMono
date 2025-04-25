@@ -1,139 +1,261 @@
 #!/bin/bash
-# Script to check WebSocket environment and configuration
+# Script to check WebSocket connectivity environment and issues
 
+# Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}WebSocket Environment Check${NC}"
-echo -e "------------------------"
+echo -e "${BLUE}TerraFusionMono WebSocket Environment Check${NC}"
+echo
 
-# Check for Replit environment variables
-echo -e "${BLUE}Replit Environment:${NC}"
-echo -e "  REPL_ID: ${GREEN}${REPL_ID:-${RED}Not set}${NC}"
-echo -e "  REPL_SLUG: ${GREEN}${REPL_SLUG:-${RED}Not set}${NC}"
-echo -e "  REPL_OWNER: ${GREEN}${REPL_OWNER:-${RED}Not set}${NC}"
-echo -e "  REPLIT_ENVIRONMENT: ${GREEN}${REPLIT_ENVIRONMENT:-${RED}Not set}${NC}"
+# Function to check if a command exists
+function command_exists() {
+  command -v "$1" &> /dev/null
+}
 
-# Check for domains
-echo -e "\n${BLUE}Replit Domains:${NC}"
-if [ -n "$REPLIT_DOMAINS" ]; then
-  echo -e "  REPLIT_DOMAINS: ${GREEN}${REPLIT_DOMAINS}${NC}"
+# Check for curl
+if ! command_exists curl; then
+  echo -e "${RED}Error: curl is not installed${NC}"
+  echo "Please install curl to run this check"
+  exit 1
+fi
+
+# Function to print section header
+function print_section() {
+  echo -e "${BLUE}$1${NC}"
+  echo -e "${BLUE}$(printf '=%.0s' $(seq 1 ${#1}))${NC}"
+}
+
+# Function to print test result
+function print_result() {
+  local test_name=$1
+  local result=$2
+  local details=$3
   
-  # Parse domains if available
-  if command -v jq &> /dev/null; then
-    domains=$(echo "$REPLIT_DOMAINS" | jq -r '.[]')
-    if [ -n "$domains" ]; then
-      echo -e "  Parsed domains:"
-      echo "$domains" | while read -r domain; do
-        echo -e "    - ${GREEN}${domain}${NC}"
-        echo -e "      HTTP URL: ${GREEN}https://${domain}${NC}"
-        echo -e "      WS URL:   ${GREEN}wss://${domain}${NC}"
-      done
-    fi
+  if [ "$result" == "pass" ]; then
+    echo -e "${GREEN}✓ $test_name${NC}"
+  elif [ "$result" == "warn" ]; then
+    echo -e "${YELLOW}⚠ $test_name${NC}"
   else
-    echo -e "  ${YELLOW}jq is not installed, cannot parse REPLIT_DOMAINS${NC}"
+    echo -e "${RED}✗ $test_name${NC}"
   fi
+  
+  if [ -n "$details" ]; then
+    echo "  $details"
+  fi
+}
+
+# Environment information
+print_section "Environment Information"
+
+# Check if we're in Replit
+if [ -n "$REPL_ID" ] && [ -n "$REPL_SLUG" ]; then
+  echo -e "Running in: ${GREEN}Replit Environment${NC}"
+  echo -e "Repl ID: ${YELLOW}$REPL_ID${NC}"
+  echo -e "Repl Slug: ${YELLOW}$REPL_SLUG${NC}"
+  echo -e "Repl Owner: ${YELLOW}$REPL_OWNER${NC}"
+  
+  # Check for Janeway/AI environment
+  if [ "$REPLIT_ENVIRONMENT" == "janeway" ] || [ "$REPLIT_ENVIRONMENT" == "ai" ]; then
+    echo -e "Environment Type: ${YELLOW}Janeway/AI Agent${NC}"
+    echo -e "Deployment ID: ${YELLOW}$REPLIT_DEPLOYMENT_ID${NC}"
+    IS_JANEWAY=true
+  else
+    echo -e "Environment Type: ${GREEN}Standard Replit${NC}"
+    IS_JANEWAY=false
+  fi
+  
+  IS_REPLIT=true
 else
-  echo -e "  ${RED}No domains found${NC}"
+  echo -e "Running in: ${BLUE}Local Environment${NC}"
+  IS_REPLIT=false
+  IS_JANEWAY=false
 fi
 
-# Check for WebSocket fix files
-echo -e "\n${BLUE}WebSocket Fix Files:${NC}"
-files=("vite-hmr-fix.js" "improved-vite-hmr-fix.js" "janeway-vite-hmr-fix.js" "vite-hmr-launcher.js")
-for file in "${files[@]}"; do
+echo
+
+# Network configuration
+print_section "Network Configuration"
+
+# Get hostname and check DNS
+HOSTNAME=$(hostname)
+echo -e "Hostname: ${YELLOW}$HOSTNAME${NC}"
+
+if [ "$IS_REPLIT" = true ]; then
+  EXPECTED_URL="https://$REPL_SLUG.$REPL_OWNER.repl.co"
+  
+  if [ "$IS_JANEWAY" = true ] && [ -n "$REPLIT_DEPLOYMENT_ID" ]; then
+    EXPECTED_URL="https://$REPLIT_DEPLOYMENT_ID-00-$REPL_SLUG.$REPL_OWNER.repl.co"
+  fi
+  
+  echo -e "Expected URL: ${YELLOW}$EXPECTED_URL${NC}"
+  
+  # Check if we can resolve the domain
+  if host $REPL_SLUG.$REPL_OWNER.repl.co &> /dev/null; then
+    print_result "Domain Resolution" "pass" "Domain resolves correctly"
+  else
+    print_result "Domain Resolution" "fail" "Cannot resolve domain $REPL_SLUG.$REPL_OWNER.repl.co"
+  fi
+else
+  echo -e "Expected URL: ${YELLOW}http://localhost:3000${NC} (local development)"
+fi
+
+echo
+
+# WebSocket connectivity
+print_section "WebSocket Connectivity"
+
+# Define test endpoints
+WS_TEST_ENDPOINTS=(
+  "ws://localhost:3000"
+  "wss://localhost:3000"
+)
+
+if [ "$IS_REPLIT" = true ]; then
+  WS_TEST_ENDPOINTS+=(
+    "ws://$REPL_SLUG.$REPL_OWNER.repl.co"
+    "wss://$REPL_SLUG.$REPL_OWNER.repl.co"
+  )
+  
+  if [ "$IS_JANEWAY" = true ] && [ -n "$REPLIT_DEPLOYMENT_ID" ]; then
+    WS_TEST_ENDPOINTS+=(
+      "ws://$REPLIT_DEPLOYMENT_ID-00-$REPL_SLUG.$REPL_OWNER.repl.co"
+      "wss://$REPLIT_DEPLOYMENT_ID-00-$REPL_SLUG.$REPL_OWNER.repl.co"
+    )
+  fi
+fi
+
+# Check if we have a WebSocket testing tool
+if command_exists wscat; then
+  WS_TOOL="wscat"
+elif command_exists websocat; then
+  WS_TOOL="websocat"
+else
+  print_result "WebSocket Testing" "warn" "No WebSocket client tool found (wscat or websocat)"
+  echo "Consider installing a WebSocket client tool for better testing"
+  WS_TOOL="none"
+fi
+
+# Basic connectivity check using curl
+for endpoint in "${WS_TEST_ENDPOINTS[@]}"; do
+  http_endpoint="${endpoint/ws:/http:}"
+  http_endpoint="${http_endpoint/wss:/https:}"
+  
+  # Try to connect with curl
+  if curl -s --max-time 2 "$http_endpoint" &> /dev/null; then
+    print_result "HTTP Connectivity to $http_endpoint" "pass" "HTTP connection successful"
+  else
+    print_result "HTTP Connectivity to $http_endpoint" "fail" "Cannot connect via HTTP"
+  fi
+  
+  # Try WebSocket if we have a tool
+  if [ "$WS_TOOL" != "none" ]; then
+    if [ "$WS_TOOL" = "wscat" ]; then
+      if wscat -c "$endpoint" --connect-timeout 2 &> /dev/null; then
+        print_result "WebSocket Connectivity to $endpoint" "pass" "WebSocket connection successful"
+      else
+        print_result "WebSocket Connectivity to $endpoint" "fail" "Cannot connect via WebSocket"
+      fi
+    elif [ "$WS_TOOL" = "websocat" ]; then
+      if websocat "$endpoint" -t 2 &> /dev/null; then
+        print_result "WebSocket Connectivity to $endpoint" "pass" "WebSocket connection successful"
+      else
+        print_result "WebSocket Connectivity to $endpoint" "fail" "Cannot connect via WebSocket"
+      fi
+    fi
+  fi
+done
+
+echo
+
+# WebSocket fixes check
+print_section "WebSocket Fixes Status"
+
+# Check for fix scripts
+WS_FIX_FILES=(
+  "public/vite-hmr-fix.js"
+  "public/improved-vite-hmr-fix.js"
+  "public/janeway-vite-hmr-fix.js"
+  "public/janeway-direct-fix.js"
+  "public/vite-hmr-launcher.js"
+)
+
+for file in "${WS_FIX_FILES[@]}"; do
   if [ -f "$file" ]; then
-    echo -e "  $file: ${GREEN}Found${NC}"
-  elif [ -f "public/$file" ]; then
-    echo -e "  public/$file: ${GREEN}Found${NC}"
+    print_result "Fix Script: $file" "pass" "Script exists"
   else
-    echo -e "  $file: ${RED}Not found${NC}"
+    print_result "Fix Script: $file" "fail" "Script not found"
   fi
 done
 
-# Check for WebSocket fix plugins
-echo -e "\n${BLUE}WebSocket Fix Plugins:${NC}"
-plugins=("vite-hmr-fix-plugin.js" "enhanced-vite-hmr-fix-plugin.js" "janeway-vite-plugin.js")
-for plugin in "${plugins[@]}"; do
-  if [ -f "$plugin" ]; then
-    echo -e "  $plugin: ${GREEN}Found${NC}"
+# Check for plugin scripts
+WS_PLUGIN_FILES=(
+  "vite-hmr-fix-plugin.js"
+  "enhanced-vite-hmr-fix-plugin.js"
+  "janeway-vite-plugin.js"
+)
+
+for file in "${WS_PLUGIN_FILES[@]}"; do
+  if [ -f "$file" ]; then
+    print_result "Plugin Script: $file" "pass" "Plugin exists"
   else
-    echo -e "  $plugin: ${RED}Not found${NC}"
+    print_result "Plugin Script: $file" "fail" "Plugin not found"
   fi
 done
 
-# Check for running servers
-echo -e "\n${BLUE}Server Status:${NC}"
-if command -v lsof &> /dev/null; then
-  echo "  Checking for listening ports:"
-  ports=$(lsof -i -P -n | grep LISTEN)
-  if [ -n "$ports" ]; then
-    echo "$ports" | while read -r line; do
-      echo -e "    ${GREEN}$line${NC}"
-    done
-  else
-    echo -e "  ${RED}No listening ports found${NC}"
-  fi
-else
-  echo -e "  ${YELLOW}lsof is not installed, cannot check listening ports${NC}"
-fi
+# Check index.html files for fix inclusion
+echo
+echo -e "${BLUE}Checking for fix script inclusion in HTML files:${NC}"
+echo
 
-# Check network connectivity
-echo -e "\n${BLUE}Network Connectivity:${NC}"
-if command -v curl &> /dev/null; then
-  echo "  Testing HTTP connectivity:"
-  if [ -n "$REPLIT_DOMAINS" ] && command -v jq &> /dev/null; then
-    domain=$(echo "$REPLIT_DOMAINS" | jq -r '.[0]')
-    if [ -n "$domain" ]; then
-      echo -e "    Testing ${GREEN}https://$domain${NC}"
-      curl -s -o /dev/null -w "    Status: %{http_code}, Time: %{time_total}s\n" "https://$domain"
+# Find all index.html files
+INDEX_FILES=$(find . -name "index.html" 2>/dev/null)
+
+for file in $INDEX_FILES; do
+  echo -e "File: ${YELLOW}$file${NC}"
+  
+  if grep -q "vite-hmr-launcher.js" "$file"; then
+    print_result "Launcher Script" "pass" "Using launcher script"
+  elif grep -q "improved-vite-hmr-fix.js" "$file"; then
+    print_result "Improved Fix" "pass" "Using improved fix"
+  elif grep -q "janeway-vite-hmr-fix.js" "$file"; then
+    print_result "Janeway Fix" "pass" "Using Janeway fix"
+  elif grep -q "vite-hmr-fix.js" "$file"; then
+    print_result "Basic Fix" "pass" "Using basic fix"
+  else
+    print_result "WebSocket Fix" "fail" "No WebSocket fix script found"
+    
+    # Check if this is a Vite app
+    if grep -q "script type=\"module\"" "$file"; then
+      echo -e "${YELLOW}This appears to be a Vite application without WebSocket fix${NC}"
+      echo -e "Consider adding the fix with: ./apply-websocket-fix.sh"
     fi
-  else
-    echo -e "  ${YELLOW}Cannot determine domain for testing${NC}"
   fi
+  
+  echo
+done
+
+# Recommendations
+print_section "Recommendations"
+
+if [ "$IS_JANEWAY" = true ]; then
+  echo -e "${YELLOW}You are running in Janeway environment:${NC}"
+  echo -e "1. Use ${GREEN}janeway-direct-fix.js${NC} for most aggressive WebSocket fix"
+  echo -e "2. Apply fix with: ${GREEN}./convert-to-launcher.sh${NC}"
+  echo -e "3. For manual fix, add: ${GREEN}<script src=\"/vite-hmr-launcher.js\"></script>${NC} to HTML files"
+elif [ "$IS_REPLIT" = true ]; then
+  echo -e "${YELLOW}You are running in standard Replit environment:${NC}"
+  echo -e "1. Use ${GREEN}improved-vite-hmr-fix.js${NC} for best compatibility"
+  echo -e "2. Apply fix with: ${GREEN}./convert-to-launcher.sh${NC}"
+  echo -e "3. For manual fix, add: ${GREEN}<script src=\"/vite-hmr-launcher.js\"></script>${NC} to HTML files"
 else
-  echo -e "  ${YELLOW}curl is not installed, cannot check connectivity${NC}"
+  echo -e "${YELLOW}You are running in local development environment:${NC}"
+  echo -e "1. WebSocket fixes are not typically needed for local development"
+  echo -e "2. Be aware that WebSocket behavior may differ when deployed to Replit"
 fi
 
-# Check WebSocket server using Node
-echo -e "\n${BLUE}WebSocket Server Test:${NC}"
-if [ -f "test-websocket-client.js" ]; then
-  echo -e "  WebSocket test client is available: ${GREEN}test-websocket-client.js${NC}"
-  echo -e "  Run with: ${GREEN}node test-websocket-client.js${NC}"
-else
-  echo -e "  ${RED}WebSocket test client not found${NC}"
-fi
-
-if [ -f "test-websocket-server.js" ]; then
-  echo -e "  WebSocket test server is available: ${GREEN}test-websocket-server.js${NC}"
-  echo -e "  Run with: ${GREEN}node test-websocket-server.js${NC}"
-else
-  echo -e "  ${RED}WebSocket test server not found${NC}"
-fi
-
-# Show suggestions
-echo -e "\n${BLUE}Suggestions:${NC}"
-if [ "$REPLIT_ENVIRONMENT" = "janeway" ]; then
-  echo -e "  ${YELLOW}Janeway environment detected:${NC}"
-  echo -e "  1. Use ${GREEN}janeway-vite-hmr-fix.js${NC} for client-side fix"
-  echo -e "  2. Use ${GREEN}janeway-vite-plugin.js${NC} for server-side fix"
-  echo -e "  3. Test with ${GREEN}node test-websocket-client.js${NC}"
-elif [ -n "$REPLIT_DOMAINS" ]; then
-  echo -e "  ${YELLOW}Standard Replit environment detected:${NC}"
-  echo -e "  1. Use ${GREEN}vite-hmr-launcher.js${NC} for automatic fix selection"
-  echo -e "  2. Use ${GREEN}enhanced-vite-hmr-fix-plugin.js${NC} for server-side fix"
-else
-  echo -e "  ${YELLOW}Unknown environment:${NC}"
-  echo -e "  1. Try all fixes to determine which one works best"
-  echo -e "  2. Start with ${GREEN}vite-hmr-launcher.js${NC} for automatic selection"
-fi
-
-echo -e "\n${BLUE}Next Steps:${NC}"
-echo -e "  1. Run ${GREEN}./apply-websocket-fix.sh --enhanced --all${NC} to apply fixes to all Vite applications"
-echo -e "  2. Run ${GREEN}node test-websocket-server.js${NC} to start a test WebSocket server"
-echo -e "  3. Run ${GREEN}node test-websocket-client.js${NC} to test WebSocket connectivity"
-echo -e "  4. Restart your application with ${GREEN}npm run dev${NC} or via the workflow system"
-
-echo -e "\n${BLUE}Check complete!${NC}"
+echo
+echo -e "${GREEN}Environment check complete!${NC}"
