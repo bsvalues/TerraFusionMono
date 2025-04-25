@@ -36,6 +36,16 @@
       "enabled": true
     },
     {
+      "name": "crop-health-analysis",
+      "url": "http://localhost:4008/graphql",
+      "enabled": true
+    },
+    {
+      "name": "crop-identifier",
+      "url": "http://localhost:4009/graphql",
+      "enabled": true
+    },
+    {
       "name": "bcbscostapp",
       "url": "http://localhost:4010/graphql",
       "enabled": true
