@@ -11,7 +11,34 @@ import {
   EnhancedLocationData
 } from '../../shared/ai/crop-health-analysis';
 import { storage } from '../storage';
-import { logger } from '../utils/logger';
+
+// Use the built-in console for logging until we have a proper logger
+const logger = {
+  debug: (message: string, metadata?: any) => console.debug(message, metadata),
+  info: (message: string, metadata?: any) => console.info(message, metadata),
+  warn: (message: string, metadata?: any) => console.warn(message, metadata),
+  error: (message: string, metadata?: any) => console.error(message, metadata)
+};
+
+// Helper function to map growth stages to our enum values
+function mapGrowthStage(stage: string): 'germination' | 'seedling' | 'vegetative' | 'flowering' | 'fruiting' | 'maturity' | 'senescence' {
+  const stageMap: Record<string, 'germination' | 'seedling' | 'vegetative' | 'flowering' | 'fruiting' | 'maturity' | 'senescence'> = {
+    'germination': 'germination',
+    'seedling': 'seedling',
+    'vegetative': 'vegetative',
+    'vegetative growth': 'vegetative',
+    'flowering': 'flowering',
+    'fruiting': 'fruiting',
+    'fruit development': 'fruiting',
+    'maturity': 'maturity',
+    'mature': 'maturity',
+    'senescence': 'senescence',
+    'dying': 'senescence'
+  };
+  
+  // Default to vegetative if unknown
+  return stageMap[stage.toLowerCase()] || 'vegetative';
+};
 
 // Create a multer instance for handling file uploads
 const upload = multer({
@@ -127,8 +154,7 @@ router.post('/analyze', upload.single('image'), async (req: Request, res: Respon
         await storage.createCropIdentification({
           parcelId,
           userId: req.user?.id || 1, // Use authenticated user ID or default
-          cropType: analysisResult.cropType,
-          // Convert health status to a string to match schema
+          cropName: analysisResult.cropType,
           scientificName: null, // We don't have scientific name from basic analysis
           confidence: analysisResult.confidenceScore.toString(), // Convert to string
           // Store additional data in custom props
@@ -262,10 +288,10 @@ router.post('/advanced-analyze', upload.array('images', 5), async (req: Request,
           timestamp: new Date(),
           userId: req.user?.id || 1,
           cropType: analysisResult.cropType,
-          overallHealth: analysisResult.healthStatus,
+          overallHealth: analysisResult.healthStatus === 'moderate' ? 'fair' : analysisResult.healthStatus,
           healthScore: Math.round(analysisResult.confidenceScore * 100), // Convert 0-1 to 0-100
           confidenceLevel: analysisResult.confidenceScore.toString(),
-          growthStage: analysisResult.growthStage,
+          growthStage: mapGrowthStage(analysisResult.growthStage),
           growthProgress: 0, // This would need to be calculated based on crop type and growth stage
           estimatedHarvestDate: null, // Would need additional calculation
           aiModel: "gpt-4o",

@@ -126,6 +126,11 @@ export interface IStorage {
   createCropIdentification(identification: InsertCropIdentification): Promise<CropIdentification>;
   updateCropIdentification(id: number, updates: Partial<CropIdentification>): Promise<CropIdentification | undefined>;
   
+  // Crop Health Analysis operations
+  getCropHealthAnalyses(options?: { limit?: number, userId?: number, parcelId?: string, since?: Date }): Promise<any[]>;
+  getCropHealthAnalysis(id: number): Promise<any | undefined>;
+  createCropHealthAnalysis(analysis: InsertCropHealthAnalysis): Promise<any>;
+  
   // ==== WebSocket Collaboration operations ====
   
   // Collaboration Session operations
@@ -738,6 +743,48 @@ export class DatabaseStorage implements IStorage {
       .where(eq(cropIdentifications.id, id))
       .returning();
     return updatedIdentification;
+  }
+  
+  // Crop Health Analysis operations
+  async getCropHealthAnalyses(options?: { limit?: number, userId?: number, parcelId?: string, since?: Date }): Promise<any[]> {
+    let query = db
+      .select()
+      .from(cropHealthAnalyses)
+      .orderBy(desc(cropHealthAnalyses.timestamp));
+    
+    if (options?.userId) {
+      query = query.where(eq(cropHealthAnalyses.userId, options.userId));
+    }
+    
+    if (options?.parcelId) {
+      query = query.where(eq(cropHealthAnalyses.parcelId, options.parcelId));
+    }
+    
+    if (options?.since) {
+      query = query.where(gte(cropHealthAnalyses.timestamp, options.since));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query;
+  }
+  
+  async getCropHealthAnalysis(id: number): Promise<any | undefined> {
+    const [analysis] = await db
+      .select()
+      .from(cropHealthAnalyses)
+      .where(eq(cropHealthAnalyses.id, id));
+    return analysis;
+  }
+  
+  async createCropHealthAnalysis(analysis: InsertCropHealthAnalysis): Promise<any> {
+    const [newAnalysis] = await db
+      .insert(cropHealthAnalyses)
+      .values(analysis)
+      .returning();
+    return newAnalysis;
   }
   
   // ==== WebSocket Collaboration operations ====
