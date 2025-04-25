@@ -164,7 +164,7 @@ router.post('/analyze', upload.single('image'), async (req: Request, res: Respon
             assessment: analysisResult.overallAssessment
           },
           imageUrl: file.path, // Store the file path
-          notes: notes || '',
+          details: notes || '',
           timestamp: new Date()
         });
       } catch (err) {
@@ -292,7 +292,7 @@ router.post('/advanced-analyze', upload.array('images', 5), async (req: Request,
           healthScore: Math.round(analysisResult.confidenceScore * 100), // Convert 0-1 to 0-100
           confidenceLevel: analysisResult.confidenceScore.toString(),
           growthStage: mapGrowthStage(analysisResult.growthStage),
-          growthProgress: 0, // This would need to be calculated based on crop type and growth stage
+          growthProgress: "50", // This would need to be calculated based on crop type and growth stage
           estimatedHarvestDate: null, // Would need additional calculation
           aiModel: "gpt-4o",
           rawResponse: analysisResult,
