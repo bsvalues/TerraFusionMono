@@ -3,8 +3,15 @@ import multer from 'multer';
 import fs from 'fs';
 import path from 'path';
 import { z } from 'zod';
-import { analyzeCropHealth, generateCropCareRecommendations, predictCropYield } from '../../shared/ai/crop-health-analysis';
+import { 
+  analyzeCropHealth, 
+  generateCropCareRecommendations, 
+  predictCropYield,
+  performAdvancedCropAnalysis,
+  EnhancedLocationData
+} from '../../shared/ai/crop-health-analysis';
 import { storage } from '../storage';
+import { logger } from '../utils/logger';
 
 // Create a multer instance for handling file uploads
 const upload = multer({
