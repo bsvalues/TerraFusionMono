@@ -1,413 +1,416 @@
-import React, { useState } from 'react';
-import { useQuery, useMutation } from '@tanstack/react-query';
+import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useWebSocketSubscription } from '@/lib/websocket';
+import { useToast } from '@/hooks/use-toast';
+import { Card } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { Progress } from '@/components/ui/progress';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { 
+  Loader2, 
   Upload, 
-  ImagePlus, 
+  Camera, 
   Leaf, 
+  AlertTriangle, 
   Check, 
-  AlertCircle, 
-  Loader2 
+  Info, 
+  BarChart4, 
+  Clock, 
+  Activity 
 } from 'lucide-react';
 
-import { Button } from '@/components/ui/button';
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardFooter,
-  CardHeader,
-  CardTitle,
-} from '@/components/ui/card';
-import { Input } from '@/components/ui/input';
-import { Label } from '@/components/ui/label';
-import {
-  Tabs,
-  TabsContent,
-  TabsList,
-  TabsTrigger,
-} from '@/components/ui/tabs';
-import {
-  Table,
-  TableBody,
-  TableCaption,
-  TableCell,
-  TableHead,
-  TableHeader,
-  TableRow,
-} from '@/components/ui/table';
-import { Progress } from '@/components/ui/progress';
-import { Badge } from '@/components/ui/badge';
-import { Textarea } from '@/components/ui/textarea';
-import { Switch } from '@/components/ui/switch';
-import { queryClient } from '@/lib/queryClient';
-import { useToast } from '@/hooks/use-toast';
-
-type HealthStatus = 'excellent' | 'good' | 'moderate' | 'poor' | 'critical';
-
-interface CropHealthIssue {
-  name: string;
-  description: string;
-  severity: number;
-  recommendedActions: string[];
-}
-
-interface AnalysisResult {
+interface CropAnalysisResult {
+  id: string;
+  timestamp: string;
   cropType: string;
-  healthStatus: HealthStatus;
-  issues: CropHealthIssue[];
-  overallAssessment: string;
+  healthStatus: string;
+  overallHealth: number;
+  issues: Array<{
+    name: string;
+    description: string;
+    severity: number;
+    affectedArea: number;
+    detectionConfidence: number;
+    recommendedActions: string[];
+  }>;
   confidenceScore: number;
+  imageUrl: string;
+  analyzedBy: string;
 }
 
-interface AnalysisResponse {
-  success: boolean;
-  analysis: AnalysisResult;
-}
-
-const CropAnalysisPage: React.FC = () => {
+export default function CropAnalysisPage() {
   const { toast } = useToast();
-  const [file, setFile] = useState<File | null>(null);
-  const [analysisResult, setAnalysisResult] = useState<AnalysisResult | null>(null);
+  const [activeTab, setActiveTab] = useState('recent');
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
   const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-  const [notes, setNotes] = useState<string>('');
-  const [saveToParcel, setSaveToParcel] = useState<boolean>(false);
-  const [parcelId, setParcelId] = useState<string>('');
-  const [latitude, setLatitude] = useState<string>('');
-  const [longitude, setLongitude] = useState<string>('');
-
+  const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [analysisProgress, setAnalysisProgress] = useState(0);
+  const [currentAnalysis, setCurrentAnalysis] = useState<CropAnalysisResult | null>(null);
+  
+  // Fetch recent analyses using React Query
+  const { 
+    data: recentAnalyses, 
+    isLoading, 
+    error,
+    refetch 
+  } = useQuery({
+    queryKey: ['/api/crop-health'],
+    enabled: activeTab === 'recent'
+  });
+  
+  // Set up WebSocket subscription for real-time updates
+  useWebSocketSubscription({
+    channel: 'crop_analysis',
+    onMessage: (data) => {
+      // Handle real-time updates for crop analysis
+      if (data.status === 'processing') {
+        // Update progress
+        setAnalysisProgress(data.progress || 0);
+      } else if (data.status === 'completed') {
+        // Analysis completed - update state
+        setIsAnalyzing(false);
+        setAnalysisProgress(100);
+        setCurrentAnalysis(data.result);
+        
+        // Show success notification
+        toast({
+          title: 'Analysis Complete',
+          description: `Crop analysis for ${data.result.cropType} completed successfully.`,
+          variant: 'default',
+        });
+        
+        // Refresh the recent analyses list
+        refetch();
+      } else if (data.status === 'error') {
+        // Analysis failed - show error
+        setIsAnalyzing(false);
+        
+        toast({
+          title: 'Analysis Failed',
+          description: data.error || 'An error occurred during analysis.',
+          variant: 'destructive',
+        });
+      }
+    }
+  });
+  
   // Handle file selection
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files[0]) {
-      const selectedFile = e.target.files[0];
-      setFile(selectedFile);
+  const handleFileChange = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      setSelectedFile(file);
       
       // Create preview URL
-      const reader = new FileReader();
-      reader.onloadend = () => {
-        setPreviewUrl(reader.result as string);
-      };
-      reader.readAsDataURL(selectedFile);
+      const url = URL.createObjectURL(file);
+      setPreviewUrl(url);
+      
+      // Reset analysis states
+      setCurrentAnalysis(null);
+      setAnalysisProgress(0);
     }
   };
-
-  // Mutation for analyzing crop image
-  const { mutate: analyzeImage, isPending } = useMutation({
-    mutationFn: async () => {
-      if (!file) {
-        throw new Error('No file selected');
-      }
-      
+  
+  // Submit image for analysis
+  const handleSubmitAnalysis = async () => {
+    if (!selectedFile) {
+      toast({
+        title: 'No Image Selected',
+        description: 'Please select an image to analyze.',
+        variant: 'destructive',
+      });
+      return;
+    }
+    
+    setIsAnalyzing(true);
+    setAnalysisProgress(5); // Start progress
+    
+    try {
+      // Create form data
       const formData = new FormData();
-      formData.append('image', file);
+      formData.append('image', selectedFile);
+      formData.append('cropType', 'auto'); // Auto-detect crop type
       
-      if (notes) formData.append('notes', notes);
-      if (saveToParcel && parcelId) formData.append('parcelId', parcelId);
-      if (latitude && !isNaN(parseFloat(latitude))) formData.append('latitude', latitude);
-      if (longitude && !isNaN(parseFloat(longitude))) formData.append('longitude', longitude);
-      
+      // Send for analysis
       const response = await fetch('/api/crop-analysis/analyze', {
         method: 'POST',
         body: formData,
       });
       
       if (!response.ok) {
-        const error = await response.json();
-        throw new Error(error.message || 'Error analyzing image');
+        throw new Error('Analysis request failed');
       }
       
-      return response.json() as Promise<AnalysisResponse>;
-    },
-    onSuccess: (data) => {
-      setAnalysisResult(data.analysis);
+      const result = await response.json();
+      
+      // Set initial progress - the real updates will come over WebSocket
+      setAnalysisProgress(15);
+      
+      // Success notification
       toast({
-        title: 'Analysis Complete',
-        description: `Successfully analyzed ${data.analysis.cropType} crop`,
+        title: 'Analysis Started',
+        description: 'Your image is being analyzed. You\'ll receive real-time updates.',
+        variant: 'default',
       });
-    },
-    onError: (error: Error) => {
+      
+    } catch (error) {
+      console.error('Error submitting analysis:', error);
+      setIsAnalyzing(false);
+      
       toast({
-        title: 'Analysis Failed',
-        description: error.message,
+        title: 'Submission Failed',
+        description: 'Unable to submit image for analysis. Please try again.',
         variant: 'destructive',
       });
-    },
-  });
-
-  // Helper to determine card color based on health status
-  const getStatusColor = (status: HealthStatus) => {
-    switch (status) {
-      case 'excellent': return 'bg-green-50 border-green-200';
-      case 'good': return 'bg-emerald-50 border-emerald-200';
-      case 'moderate': return 'bg-yellow-50 border-yellow-200';
-      case 'poor': return 'bg-orange-50 border-orange-200';
-      case 'critical': return 'bg-red-50 border-red-200';
-      default: return '';
     }
   };
-
-  // Helper to render badge by health status
-  const getStatusBadge = (status: HealthStatus) => {
-    switch (status) {
-      case 'excellent': return <Badge variant="outline" className="bg-green-100 text-green-800">Excellent</Badge>;
-      case 'good': return <Badge variant="outline" className="bg-emerald-100 text-emerald-800">Good</Badge>;
-      case 'moderate': return <Badge variant="outline" className="bg-yellow-100 text-yellow-800">Moderate</Badge>;
-      case 'poor': return <Badge variant="outline" className="bg-orange-100 text-orange-800">Poor</Badge>;
-      case 'critical': return <Badge variant="outline" className="bg-red-100 text-red-800">Critical</Badge>;
-      default: return null;
-    }
+  
+  // Clean up preview URL on unmount
+  useEffect(() => {
+    return () => {
+      if (previewUrl) {
+        URL.revokeObjectURL(previewUrl);
+      }
+    };
+  }, [previewUrl]);
+  
+  // Get health status color
+  const getHealthStatusColor = (status: string): string => {
+    const statusMap: Record<string, string> = {
+      'EXCELLENT': 'bg-green-500',
+      'GOOD': 'bg-green-400',
+      'MODERATE': 'bg-yellow-400',
+      'POOR': 'bg-orange-500',
+      'CRITICAL': 'bg-red-500',
+    };
+    
+    return statusMap[status] || 'bg-gray-400';
   };
-
+  
+  // Get severity level display
+  const getSeverityDisplay = (level: number): { color: string, text: string } => {
+    if (level >= 8) return { color: 'text-red-500', text: 'Severe' };
+    if (level >= 6) return { color: 'text-orange-500', text: 'High' };
+    if (level >= 4) return { color: 'text-yellow-500', text: 'Moderate' };
+    return { color: 'text-green-500', text: 'Low' };
+  };
+  
   return (
-    <div className="container mx-auto p-4 space-y-6">
-      <div className="flex flex-col md:flex-row justify-between gap-4">
-        <div className="flex-1 space-y-4">
-          <h1 className="text-2xl font-bold">Crop Health Analysis</h1>
-          <p className="text-gray-500">
-            Upload an image of a crop to analyze its health status and receive recommendations.
-          </p>
-          
-          <Card>
-            <CardHeader>
-              <CardTitle>Upload Crop Image</CardTitle>
-              <CardDescription>
-                Select a clear image of the crop for the best analysis results
-              </CardDescription>
-            </CardHeader>
-            <CardContent className="space-y-4">
-              <div className="grid w-full max-w-sm items-center gap-1.5">
-                <Label htmlFor="crop-image">Crop Image</Label>
-                <Input 
-                  id="crop-image" 
-                  type="file" 
-                  accept="image/*"
-                  onChange={handleFileChange}
-                  disabled={isPending}
-                />
-              </div>
-              
-              {previewUrl && (
-                <div className="mt-4">
-                  <Label>Preview</Label>
-                  <div className="mt-1 relative rounded-md overflow-hidden border border-gray-200 h-48">
-                    <img 
-                      src={previewUrl} 
-                      alt="Crop preview" 
-                      className="w-full h-full object-cover"
-                    />
-                  </div>
-                </div>
-              )}
-              
-              <div className="grid w-full gap-1.5">
-                <Label htmlFor="notes">Notes (Optional)</Label>
-                <Textarea 
-                  id="notes" 
-                  placeholder="Add any notes about the crop or growing conditions"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  disabled={isPending}
-                />
-              </div>
-              
-              <div className="flex items-center space-x-2">
-                <Switch 
-                  id="save-to-parcel" 
-                  checked={saveToParcel}
-                  onCheckedChange={setSaveToParcel}
-                  disabled={isPending}
-                />
-                <Label htmlFor="save-to-parcel">Save to parcel record</Label>
-              </div>
-              
-              {saveToParcel && (
-                <div className="grid w-full gap-4">
-                  <div>
-                    <Label htmlFor="parcel-id">Parcel ID</Label>
-                    <Input 
-                      id="parcel-id" 
-                      placeholder="Enter parcel identifier"
-                      value={parcelId}
-                      onChange={(e) => setParcelId(e.target.value)}
-                      disabled={isPending}
-                    />
-                  </div>
-                  <div className="grid grid-cols-2 gap-4">
-                    <div>
-                      <Label htmlFor="latitude">Latitude (Optional)</Label>
-                      <Input 
-                        id="latitude" 
-                        placeholder="e.g. 37.7749"
-                        value={latitude}
-                        onChange={(e) => setLatitude(e.target.value)}
-                        disabled={isPending}
-                      />
-                    </div>
-                    <div>
-                      <Label htmlFor="longitude">Longitude (Optional)</Label>
-                      <Input 
-                        id="longitude" 
-                        placeholder="e.g. -122.4194"
-                        value={longitude}
-                        onChange={(e) => setLongitude(e.target.value)}
-                        disabled={isPending}
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-            </CardContent>
-            <CardFooter>
-              <Button
-                onClick={() => analyzeImage()}
-                disabled={!file || isPending}
-                className="w-full"
-              >
-                {isPending ? (
-                  <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                    Analyzing...
-                  </>
-                ) : (
-                  <>
-                    <Leaf className="mr-2 h-4 w-4" />
-                    Analyze Crop Health
-                  </>
-                )}
-              </Button>
-            </CardFooter>
-          </Card>
-        </div>
-        
-        <div className="flex-1">
-          {analysisResult ? (
-            <Card className={`${getStatusColor(analysisResult.healthStatus)}`}>
-              <CardHeader>
-                <div className="flex justify-between items-center">
-                  <CardTitle>Analysis Results</CardTitle>
-                  {getStatusBadge(analysisResult.healthStatus)}
-                </div>
-                <CardDescription>
-                  {analysisResult.cropType} - Confidence: {(analysisResult.confidenceScore * 100).toFixed(0)}%
-                </CardDescription>
-              </CardHeader>
-              <CardContent className="space-y-4">
-                <div>
-                  <h3 className="font-semibold mb-2">Overall Assessment</h3>
-                  <p className="text-sm">{analysisResult.overallAssessment}</p>
-                </div>
-                
-                {analysisResult.issues.length > 0 && (
-                  <div>
-                    <h3 className="font-semibold mb-2">Identified Issues</h3>
-                    <Tabs defaultValue="list" className="w-full">
-                      <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="list">List View</TabsTrigger>
-                        <TabsTrigger value="details">Details</TabsTrigger>
-                      </TabsList>
-                      
-                      <TabsContent value="list" className="mt-2">
-                        <Table>
-                          <TableHeader>
-                            <TableRow>
-                              <TableHead>Issue</TableHead>
-                              <TableHead>Severity</TableHead>
-                            </TableRow>
-                          </TableHeader>
-                          <TableBody>
-                            {analysisResult.issues.map((issue, index) => (
-                              <TableRow key={index}>
-                                <TableCell>{issue.name}</TableCell>
-                                <TableCell>
-                                  <div className="flex items-center gap-2">
-                                    <Progress value={issue.severity * 10} className="h-2 w-20" />
-                                    <span className="text-xs">{issue.severity}/10</span>
-                                  </div>
-                                </TableCell>
-                              </TableRow>
-                            ))}
-                          </TableBody>
-                        </Table>
-                      </TabsContent>
-                      
-                      <TabsContent value="details" className="mt-2 space-y-4">
-                        {analysisResult.issues.map((issue, index) => (
-                          <Card key={index} className="overflow-hidden">
-                            <CardHeader className="pb-2">
-                              <CardTitle className="text-base">{issue.name}</CardTitle>
-                              <div className="flex items-center gap-2">
-                                <Progress value={issue.severity * 10} className="h-2 flex-1" />
-                                <span className="text-xs font-medium">Severity: {issue.severity}/10</span>
-                              </div>
-                            </CardHeader>
-                            <CardContent className="pb-2 pt-0">
-                              <p className="text-sm mb-2">{issue.description}</p>
-                              
-                              {issue.recommendedActions.length > 0 && (
-                                <div className="mt-2">
-                                  <h4 className="text-xs font-semibold text-gray-500 mb-1">
-                                    Recommended Actions:
-                                  </h4>
-                                  <ul className="text-sm space-y-1">
-                                    {issue.recommendedActions.map((action, actionIndex) => (
-                                      <li key={actionIndex} className="flex items-start gap-2">
-                                        <Check className="h-4 w-4 text-green-500 mt-0.5 shrink-0" />
-                                        <span>{action}</span>
-                                      </li>
-                                    ))}
-                                  </ul>
-                                </div>
-                              )}
-                            </CardContent>
-                          </Card>
-                        ))}
-                      </TabsContent>
-                    </Tabs>
-                  </div>
-                )}
-              </CardContent>
-              <CardFooter className="flex justify-between">
-                <Button 
-                  variant="outline" 
-                  onClick={() => {
-                    setAnalysisResult(null);
-                    setFile(null);
-                    setPreviewUrl(null);
-                    setNotes('');
-                    setSaveToParcel(false);
-                    setParcelId('');
-                  }}
-                >
-                  Start New Analysis
-                </Button>
-                
-                <Button 
-                  variant="secondary"
-                  onClick={() => {
-                    // You can implement a print or export function here
-                    window.print();
-                  }}
-                >
-                  Export Results
-                </Button>
-              </CardFooter>
-            </Card>
-          ) : (
-            <Card className="h-full bg-gray-50 border-dashed border-2 flex flex-col justify-center items-center">
-              <CardContent className="pt-6 flex flex-col items-center text-center">
-                <div className="w-16 h-16 rounded-full bg-gray-100 flex items-center justify-center mb-4">
-                  <ImagePlus className="h-8 w-8 text-gray-400" />
-                </div>
-                <h3 className="text-lg font-medium mb-2">No Analysis Yet</h3>
-                <p className="text-gray-500 mb-6 max-w-xs">
-                  Upload a crop image and analyze it to see the results here.
-                </p>
-              </CardContent>
-            </Card>
-          )}
-        </div>
+    <div className="container mx-auto py-6">
+      <div className="flex justify-between items-center mb-6">
+        <h1 className="text-2xl font-semibold">Crop Health Analysis</h1>
       </div>
+      
+      <Tabs defaultValue="upload" value={activeTab} onValueChange={setActiveTab} className="w-full">
+        <TabsList className="mb-4">
+          <TabsTrigger value="upload">Upload New Image</TabsTrigger>
+          <TabsTrigger value="recent">Recent Analyses</TabsTrigger>
+        </TabsList>
+        
+        <TabsContent value="upload" className="space-y-4">
+          <Card className="p-6">
+            <div className="grid md:grid-cols-2 gap-6">
+              <div className="space-y-4">
+                <h3 className="text-lg font-medium">Upload Image for Analysis</h3>
+                <div className="border-2 border-dashed border-gray-300 rounded-lg p-4 text-center">
+                  <input
+                    type="file"
+                    id="image-upload"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={handleFileChange}
+                  />
+                  <label 
+                    htmlFor="image-upload"
+                    className="flex flex-col items-center justify-center cursor-pointer h-40"
+                  >
+                    {!previewUrl ? (
+                      <>
+                        <Upload className="h-8 w-8 mb-2 text-gray-500" />
+                        <p className="text-sm text-gray-500">Click to upload or drag and drop</p>
+                        <p className="text-xs text-gray-400 mt-1">PNG, JPG, GIF up to 10MB</p>
+                      </>
+                    ) : (
+                      <img 
+                        src={previewUrl} 
+                        alt="Preview" 
+                        className="max-h-40 max-w-full object-contain" 
+                      />
+                    )}
+                  </label>
+                </div>
+                
+                <div className="flex justify-between items-center">
+                  <div>
+                    {selectedFile && (
+                      <p className="text-sm text-gray-500">{selectedFile.name}</p>
+                    )}
+                  </div>
+                  <Button
+                    onClick={handleSubmitAnalysis}
+                    disabled={!selectedFile || isAnalyzing}
+                  >
+                    {isAnalyzing ? (
+                      <>
+                        <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                        Analyzing...
+                      </>
+                    ) : (
+                      <>
+                        <Camera className="mr-2 h-4 w-4" />
+                        Analyze Image
+                      </>
+                    )}
+                  </Button>
+                </div>
+                
+                {isAnalyzing && (
+                  <div className="space-y-2">
+                    <div className="flex justify-between text-sm">
+                      <span>Analysis in progress...</span>
+                      <span>{analysisProgress}%</span>
+                    </div>
+                    <Progress value={analysisProgress} />
+                  </div>
+                )}
+              </div>
+              
+              <div>
+                {currentAnalysis ? (
+                  <div className="space-y-4">
+                    <h3 className="text-lg font-medium flex items-center">
+                      <Leaf className="mr-2 h-5 w-5 text-green-500" />
+                      Analysis Results
+                    </h3>
+                    
+                    <div className="flex items-center space-x-3 mb-3">
+                      <div className={`w-3 h-3 rounded-full ${getHealthStatusColor(currentAnalysis.healthStatus)}`}></div>
+                      <span className="font-medium">{currentAnalysis.healthStatus}</span>
+                      <span className="text-gray-500">|</span>
+                      <span>Health Score: {currentAnalysis.overallHealth}/100</span>
+                    </div>
+                    
+                    <div className="space-y-3 mt-4">
+                      <h4 className="font-medium">Detected Issues:</h4>
+                      {currentAnalysis.issues.length === 0 ? (
+                        <p className="text-sm text-gray-500">No issues detected</p>
+                      ) : (
+                        <div className="space-y-2">
+                          {currentAnalysis.issues.map((issue, index) => {
+                            const severity = getSeverityDisplay(issue.severity);
+                            return (
+                              <Alert key={index} variant={issue.severity > 6 ? 'destructive' : 'default'}>
+                                <AlertTriangle className="h-4 w-4" />
+                                <AlertTitle className="flex items-center">
+                                  {issue.name}
+                                  <span className={`ml-2 text-sm ${severity.color}`}>
+                                    ({severity.text})
+                                  </span>
+                                </AlertTitle>
+                                <AlertDescription className="text-sm">
+                                  {issue.description}
+                                </AlertDescription>
+                              </Alert>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="text-sm text-gray-500 mt-4">
+                      <p>Analyzed with {currentAnalysis.confidenceScore * 100}% confidence</p>
+                      <p>Model: {currentAnalysis.analyzedBy}</p>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full space-y-4 text-center text-gray-500">
+                    <div className="h-16 w-16 rounded-full bg-gray-100 flex items-center justify-center">
+                      <Leaf className="h-8 w-8 text-gray-400" />
+                    </div>
+                    <div>
+                      <h3 className="font-medium text-gray-900">No Analysis Results</h3>
+                      <p className="text-sm">Upload and analyze an image to see results here</p>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          </Card>
+        </TabsContent>
+        
+        <TabsContent value="recent" className="space-y-4">
+          {isLoading ? (
+            <div className="flex justify-center p-6">
+              <Loader2 className="h-8 w-8 animate-spin text-gray-500" />
+            </div>
+          ) : error ? (
+            <Alert variant="destructive">
+              <AlertTriangle className="h-4 w-4" />
+              <AlertTitle>Error</AlertTitle>
+              <AlertDescription>
+                Failed to load recent analyses. Please try again.
+              </AlertDescription>
+            </Alert>
+          ) : recentAnalyses?.length === 0 ? (
+            <div className="text-center p-6">
+              <Info className="h-10 w-10 mx-auto text-gray-400 mb-2" />
+              <h3 className="text-lg font-medium">No Recent Analyses</h3>
+              <p className="text-gray-500">Upload your first image to get started.</p>
+            </div>
+          ) : (
+            <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-4">
+              {recentAnalyses?.map((analysis: CropAnalysisResult) => (
+                <Card key={analysis.id} className="overflow-hidden">
+                  <div className="h-40 overflow-hidden">
+                    {analysis.imageUrl ? (
+                      <img 
+                        src={analysis.imageUrl} 
+                        alt={`${analysis.cropType}`} 
+                        className="w-full h-full object-cover"
+                      />
+                    ) : (
+                      <div className="w-full h-full bg-gray-100 flex items-center justify-center">
+                        <Leaf className="h-10 w-10 text-gray-300" />
+                      </div>
+                    )}
+                  </div>
+                  
+                  <div className="p-4">
+                    <div className="flex justify-between items-start">
+                      <h3 className="font-medium">{analysis.cropType}</h3>
+                      <div className={`px-2 py-1 rounded-full text-xs ${
+                        getHealthStatusColor(analysis.healthStatus)
+                      } text-white`}>
+                        {analysis.healthStatus}
+                      </div>
+                    </div>
+                    
+                    <div className="mt-2 flex items-center text-sm text-gray-500">
+                      <Clock className="h-3 w-3 mr-1" />
+                      {new Date(analysis.timestamp).toLocaleDateString()}
+                    </div>
+                    
+                    <div className="mt-3 flex items-center justify-between">
+                      <div className="flex items-center">
+                        <Activity className="h-4 w-4 mr-1 text-blue-500" />
+                        <span className="text-sm">Health: {analysis.overallHealth}/100</span>
+                      </div>
+                      
+                      <div className="text-xs text-gray-500">
+                        {analysis.issues.length} {analysis.issues.length === 1 ? 'issue' : 'issues'}
+                      </div>
+                    </div>
+                    
+                    <Button variant="outline" className="w-full mt-3" size="sm">
+                      View Details
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+            </div>
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
-};
-
-export default CropAnalysisPage;
+}
