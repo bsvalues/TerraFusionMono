@@ -70,16 +70,16 @@ const server = http.createServer((req, res) => {
           
           function log(message, type = 'info') {
             const date = new Date().toISOString();
-            logEl.innerHTML += `<div class="\${type}">\${date}: \${message}</div>`;
+            logEl.innerHTML += `<div class="${type}">${date}: ${message}</div>`;
             logEl.scrollTop = logEl.scrollHeight;
           }
           
           connectBtn.addEventListener('click', () => {
             // Determine WebSocket URL based on the current page
             const protocol = location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const wsUrl = `\${protocol}//${location.host}/ws`;
+            const wsUrl = `${protocol}//${location.host}/ws`;
             
-            log(\`Connecting to \${wsUrl}...\`);
+            log(`Connecting to ${wsUrl}...`);
             
             try {
               socket = new WebSocket(wsUrl);
@@ -102,23 +102,23 @@ const server = http.createServer((req, res) => {
                 } catch (e) {
                   // Keep as-is if not JSON
                 }
-                log(\`Received: \${message}\`, 'received');
+                log(`Received: ${message}`, 'received');
               };
               
               socket.onclose = (event) => {
-                statusEl.textContent = \`Disconnected (code: \${event.code})\`;
+                statusEl.textContent = `Disconnected (code: ${event.code})`;
                 statusEl.className = 'disconnected';
                 connectBtn.disabled = false;
                 disconnectBtn.disabled = true;
                 sendBtn.disabled = true;
-                log(\`Connection closed with code \${event.code}\`, 'error');
+                log(`Connection closed with code ${event.code}`, 'error');
               };
               
               socket.onerror = (error) => {
-                log(\`Error: \${error.message || 'Unknown error'}\`, 'error');
+                log(`Error: ${error.message || 'Unknown error'}`, 'error');
               };
             } catch (e) {
-              log(\`Connection error: \${e.message}\`, 'error');
+              log(`Connection error: ${e.message}`, 'error');
             }
           });
           
@@ -132,7 +132,7 @@ const server = http.createServer((req, res) => {
             if (socket && socket.readyState === WebSocket.OPEN) {
               const message = messageInput.value;
               if (message) {
-                log(\`Sent: \${message}\`, 'sent');
+                log(`Sent: ${message}`, 'sent');
                 socket.send(message);
                 messageInput.value = '';
               }
@@ -149,8 +149,8 @@ const server = http.createServer((req, res) => {
           log('Test client loaded', 'info');
           
           // Log environment information
-          log(\`Current URL: \${location.href}\`, 'info');
-          log(\`Using \${navigator.userAgent}\`, 'info');
+          log(`Current URL: ${location.href}`, 'info');
+          log(`Using ${navigator.userAgent}`, 'info');
         </script>
       </body>
       </html>

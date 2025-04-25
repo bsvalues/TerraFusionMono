@@ -74,9 +74,9 @@ done
 
 # Set the script name based on the chosen method
 if [ "$USE_ENHANCED" = true ]; then
-  SCRIPT_NAME="improved-vite-hmr-fix.js"
+  SCRIPT_NAME="vite-hmr-launcher.js"
   PLUGIN_NAME="enhanced-vite-hmr-fix-plugin.js"
-  echo -e "${BLUE}Using enhanced WebSocket fix${NC}"
+  echo -e "${BLUE}Using enhanced WebSocket fix with auto-detection${NC}"
 else
   SCRIPT_NAME="vite-hmr-fix.js"
   PLUGIN_NAME="vite-hmr-fix-plugin.js"
