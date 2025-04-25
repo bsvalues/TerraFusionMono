@@ -15,6 +15,7 @@ import { geocodeService } from "./services/geocode";
 import { usageService } from "./services/metering/usage";
 import { mobileSyncService } from "./services/mobile-sync";
 import { CollaborationService } from "./services/collaboration-service";
+import { natsMonitoringService } from "./services/nats-monitoring";
 import Stripe from "stripe";
 import authRoutes from "./routes/auth";
 import mobileRoutes from "./routes/mobile";
@@ -191,6 +192,56 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.send(metrics);
     } catch (error: any) {
       res.status(500).json({ message: `Error fetching Prometheus metrics: ${error.message}` });
+    }
+  });
+  
+  // NATS monitoring endpoints
+  app.get('/api/nats/info', async (req, res) => {
+    try {
+      const info = await natsMonitoringService.getServerInfo();
+      res.json(info);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS server info: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/connections', async (req, res) => {
+    try {
+      const connections = await natsMonitoringService.getConnections();
+      res.json(connections);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS connections: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/streams', async (req, res) => {
+    try {
+      const streams = await natsMonitoringService.getStreams();
+      res.json(streams);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS streams: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/streams/:name/consumers', async (req, res) => {
+    try {
+      const consumers = await natsMonitoringService.getConsumers(req.params.name);
+      res.json(consumers);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS consumers: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/status', async (req, res) => {
+    try {
+      const isConnected = await natsMonitoringService.checkConnection();
+      res.json({ 
+        status: isConnected ? "connected" : "disconnected",
+        monitoring_url: process.env.NATS_MONITORING_URL || 'http://localhost:8222',
+        monitoring_enabled: !!process.env.NATS_MONITORING_ENABLED
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error checking NATS status: ${error.message}` });
     }
   });
 
