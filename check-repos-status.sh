@@ -1,139 +1,185 @@
 #!/bin/bash
-# Script to check the status of each repository in the TerraFusionMono workspace
+# Script to check the status of all repositories in the TerraFusionMono workspace
 
-# Colors for better output
+# Colors for output
 GREEN='\033[0;32m'
 YELLOW='\033[1;33m'
 RED='\033[0;31m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-echo -e "${BLUE}=== TerraFusionMono Repository Status Check ===${NC}"
-echo
+echo -e "${BLUE}Checking TerraFusionMono repositories status...${NC}"
 
-# Read the workspace.json file to get all projects
-WORKSPACE_FILE="workspace.json"
-if [ ! -f "$WORKSPACE_FILE" ]; then
-  echo -e "${RED}Error: workspace.json file not found!${NC}"
+# Check if we're in the root directory
+if [ ! -f "workspace.json" ]; then
+  echo -e "${RED}Error: workspace.json not found!${NC}"
+  echo -e "${YELLOW}Please run this script from the repository root directory.${NC}"
   exit 1
 fi
 
-# Check if jq is installed
-if ! command -v jq &> /dev/null; then
-  echo -e "${YELLOW}Warning: jq is not installed. Using grep/sed for JSON parsing (less reliable).${NC}"
+# Function to check if jq is installed
+function check_jq() {
+  if ! command -v jq &> /dev/null; then
+    echo -e "${RED}Error: jq is not installed${NC}"
+    echo -e "${YELLOW}Please install jq to use this script${NC}"
+    exit 1
+  fi
+}
+
+check_jq
+
+# Get a list of all projects from workspace.json
+function get_projects() {
+  jq -r '.projects | keys[]' workspace.json
+}
+
+# Get the path for a specific project
+function get_project_path() {
+  local project_name=$1
+  jq -r --arg name "$project_name" '.projects[$name]' workspace.json
+}
+
+# Check if a directory contains a Git repository
+function is_git_repo() {
+  local path=$1
+  if [ -d "$path/.git" ]; then
+    return 0 # true
+  else
+    return 1 # false
+  fi
+}
+
+# Check if a directory contains a package.json
+function has_package_json() {
+  local path=$1
+  if [ -f "$path/package.json" ]; then
+    return 0 # true
+  else
+    return 1 # false
+  fi
+}
+
+# Check for GraphQL schema files
+function has_graphql_schema() {
+  local path=$1
+  if [ -f "$path/schema.graphql" ] || [ -f "$path/src/schema.graphql" ] || [ -d "$path/src/graphql" ]; then
+    return 0 # true
+  else
+    return 1 # false
+  fi
+}
+
+# Display summary of project information
+echo -e "${BLUE}Project Summary:${NC}"
+echo
+
+# Get project count
+project_count=$(get_projects | wc -l)
+echo -e "Total projects: ${GREEN}$project_count${NC}"
+
+# Initialize counters
+git_count=0
+npm_count=0
+graphql_count=0
+terra_count=0
+bcbs_count=0
+other_count=0
+
+# Process each project
+get_projects | while read -r project; do
+  path=$(get_project_path "$project")
   
-  # Extract project paths using grep/sed
-  PROJECTS=$(grep -o '"projects": {[^}]*}' $WORKSPACE_FILE | sed 's/"projects": {//g' | sed 's/}//g' | tr ',' '\n' | sed 's/"//g' | sed 's/: /:/g')
+  # Determine project type
+  if [[ "$project" == terra* ]]; then
+    project_type="${GREEN}Terra${NC}"
+    ((terra_count++))
+  elif [[ "$project" == bcbs* ]] || [[ "$project" == bsbc* ]] || [[ "$project" == bs* ]]; then
+    project_type="${YELLOW}BCBS${NC}"
+    ((bcbs_count++))
+  else
+    project_type="${BLUE}Other${NC}"
+    ((other_count++))
+  fi
   
-  # Process each project
-  echo "$PROJECTS" | while read -r line; do
-    if [ -n "$line" ]; then
-      PROJECT_NAME=$(echo $line | cut -d':' -f1)
-      PROJECT_PATH=$(echo $line | cut -d':' -f2)
+  # Check Git status
+  if is_git_repo "$path"; then
+    git_status="${GREEN}Git${NC}"
+    ((git_count++))
+  else
+    git_status="${RED}No Git${NC}"
+  fi
+  
+  # Check for package.json
+  if has_package_json "$path"; then
+    npm_status="${GREEN}NPM${NC}"
+    ((npm_count++))
+  else
+    npm_status="${RED}No NPM${NC}"
+  fi
+  
+  # Check for GraphQL schema
+  if has_graphql_schema "$path"; then
+    graphql_status="${GREEN}GraphQL${NC}"
+    ((graphql_count++))
+  else
+    graphql_status="${RED}No GraphQL${NC}"
+  fi
+  
+  # Print project status
+  echo -e "${project_type} ${BLUE}$project${NC} ($path)"
+  echo -e "  ${git_status} | ${npm_status} | ${graphql_status}"
+done
+
+# Display counts
+echo
+echo -e "${BLUE}Repository Types:${NC}"
+echo -e "Terra Repositories: ${GREEN}$terra_count${NC}"
+echo -e "BCBS Repositories:  ${YELLOW}$bcbs_count${NC}"
+echo -e "Other Repositories: ${BLUE}$other_count${NC}"
+echo
+echo -e "${BLUE}Repository Features:${NC}"
+echo -e "Git Repositories:     ${GREEN}$git_count${NC} / $project_count"
+echo -e "NPM Packages:         ${GREEN}$npm_count${NC} / $project_count"
+echo -e "GraphQL Services:     ${GREEN}$graphql_count${NC} / $project_count"
+
+# Check subgraph configuration
+echo
+echo -e "${BLUE}Checking Federation Gateway Configuration:${NC}"
+gateway_config="apps/core-gateway/src/graphql/subgraphs.config.json"
+
+if [ -f "$gateway_config" ]; then
+  subgraph_count=$(jq '.subgraphs | length' "$gateway_config")
+  enabled_count=$(jq '.subgraphs | map(select(.enabled == true)) | length' "$gateway_config")
+  
+  echo -e "Subgraphs configured: ${GREEN}$subgraph_count${NC}"
+  echo -e "Subgraphs enabled:    ${GREEN}$enabled_count${NC}"
+  
+  # Check for missing GraphQL services
+  echo
+  echo -e "${BLUE}Checking for missing subgraphs in gateway config:${NC}"
+  
+  missing_count=0
+  get_projects | while read -r project; do
+    path=$(get_project_path "$project")
+    
+    # If project has GraphQL schema but not in gateway config
+    if has_graphql_schema "$path"; then
+      exists_in_config=$(jq -r --arg name "$project" '.subgraphs | map(select(.name == $name)) | length' "$gateway_config")
       
-      echo -e "${BLUE}Checking ${PROJECT_NAME}...${NC}"
-      
-      if [ -d "$PROJECT_PATH" ]; then
-        echo -e "  ${GREEN}✓ Directory exists:${NC} $PROJECT_PATH"
-        
-        # Check for package.json
-        if [ -f "${PROJECT_PATH}/package.json" ]; then
-          echo -e "  ${GREEN}✓ package.json found${NC}"
-          
-          # Extract version and name
-          PKG_VERSION=$(grep -o '"version": "[^"]*"' ${PROJECT_PATH}/package.json | head -1 | cut -d'"' -f4)
-          PKG_NAME=$(grep -o '"name": "[^"]*"' ${PROJECT_PATH}/package.json | head -1 | cut -d'"' -f4)
-          
-          echo -e "  ${BLUE}ℹ Package:${NC} $PKG_NAME@$PKG_VERSION"
-          
-          # Check for dependencies
-          DEPS_COUNT=$(grep -o '"dependencies":' ${PROJECT_PATH}/package.json | wc -l)
-          if [ $DEPS_COUNT -gt 0 ]; then
-            echo -e "  ${GREEN}✓ Has dependencies${NC}"
-          else
-            echo -e "  ${YELLOW}⚠ No dependencies found${NC}"
-          fi
-        else
-          echo -e "  ${YELLOW}⚠ No package.json found${NC}"
-        fi
-        
-        # Check for source files
-        SRC_DIR="${PROJECT_PATH}/src"
-        if [ -d "$SRC_DIR" ]; then
-          FILES_COUNT=$(find $SRC_DIR -type f | wc -l)
-          echo -e "  ${GREEN}✓ src directory found with ${FILES_COUNT} files${NC}"
-        else
-          echo -e "  ${YELLOW}⚠ No src directory found${NC}"
-        fi
-        
-        # Check for GraphQL schema
-        if [ -f "${PROJECT_PATH}/src/graphql/schema.js" ] || [ -f "${PROJECT_PATH}/src/graphql/schema.ts" ]; then
-          echo -e "  ${GREEN}✓ GraphQL schema found${NC}"
-        fi
-      else
-        echo -e "  ${RED}✗ Directory does not exist:${NC} $PROJECT_PATH"
+      if [ "$exists_in_config" -eq 0 ]; then
+        echo -e "${YELLOW}Warning: $project has GraphQL schema but is not configured in gateway${NC}"
+        ((missing_count++))
       fi
-      
-      echo ""
     fi
   done
+  
+  if [ "$missing_count" -eq 0 ]; then
+    echo -e "${GREEN}All GraphQL services are configured in gateway${NC}"
+  fi
 else
-  # Use jq for better JSON parsing
-  # Get list of projects and their paths
-  PROJECTS=$(jq -r '.projects | to_entries | .[] | .key + ":" + .value' $WORKSPACE_FILE)
-  
-  # Process each project
-  echo "$PROJECTS" | while read -r line; do
-    PROJECT_NAME=$(echo $line | cut -d':' -f1)
-    PROJECT_PATH=$(echo $line | cut -d':' -f2)
-    
-    echo -e "${BLUE}Checking ${PROJECT_NAME}...${NC}"
-    
-    if [ -d "$PROJECT_PATH" ]; then
-      echo -e "  ${GREEN}✓ Directory exists:${NC} $PROJECT_PATH"
-      
-      # Check for package.json
-      if [ -f "${PROJECT_PATH}/package.json" ]; then
-        echo -e "  ${GREEN}✓ package.json found${NC}"
-        
-        # Extract details using jq
-        PKG_NAME=$(jq -r '.name // "not-specified"' ${PROJECT_PATH}/package.json)
-        PKG_VERSION=$(jq -r '.version // "not-specified"' ${PROJECT_PATH}/package.json)
-        
-        echo -e "  ${BLUE}ℹ Package:${NC} $PKG_NAME@$PKG_VERSION"
-        
-        # Check for dependencies
-        if jq -e '.dependencies' ${PROJECT_PATH}/package.json > /dev/null 2>&1; then
-          DEPS_COUNT=$(jq '.dependencies | length' ${PROJECT_PATH}/package.json)
-          echo -e "  ${GREEN}✓ Has ${DEPS_COUNT} dependencies${NC}"
-        else
-          echo -e "  ${YELLOW}⚠ No dependencies found${NC}"
-        fi
-      else
-        echo -e "  ${YELLOW}⚠ No package.json found${NC}"
-      fi
-      
-      # Check for source files
-      SRC_DIR="${PROJECT_PATH}/src"
-      if [ -d "$SRC_DIR" ]; then
-        FILES_COUNT=$(find $SRC_DIR -type f | wc -l)
-        echo -e "  ${GREEN}✓ src directory found with ${FILES_COUNT} files${NC}"
-      else
-        echo -e "  ${YELLOW}⚠ No src directory found${NC}"
-      fi
-      
-      # Check for GraphQL schema
-      if [ -f "${PROJECT_PATH}/src/graphql/schema.js" ] || [ -f "${PROJECT_PATH}/src/graphql/schema.ts" ]; then
-        echo -e "  ${GREEN}✓ GraphQL schema found${NC}"
-      fi
-    else
-      echo -e "  ${RED}✗ Directory does not exist:${NC} $PROJECT_PATH"
-    fi
-    
-    echo ""
-  done
+  echo -e "${RED}Gateway configuration file not found!${NC}"
+  echo -e "${YELLOW}Expected location: $gateway_config${NC}"
 fi
 
-echo -e "${BLUE}=== Status Check Complete ===${NC}"
 echo
-echo -e "For detailed information on specific repositories, run: ${YELLOW}nx show project [project-name]${NC}"
+echo -e "${BLUE}Status check complete!${NC}"
