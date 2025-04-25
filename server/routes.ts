@@ -289,13 +289,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Check database connection
       await db.execute(sql`SELECT 1`);
       
+      // Check NATS connection if monitoring is enabled
+      const natsStatus = process.env.NATS_MONITORING_ENABLED 
+        ? await natsMonitoringService.checkConnection() 
+        : null;
+      
       // Check services status
       const servicesStatus = {
         collaboration: "online",
         mobileSync: "online",
         plugin: "online",
-        database: "online"
+        database: "online",
+        messageBus: process.env.NATS_MONITORING_ENABLED
+          ? (natsStatus ? "online" : "offline")
+          : "not_configured"
       };
+      
+      // If NATS is required for the service to function and it's not available, 
+      // return a non-200 status so that Kubernetes won't route traffic to this instance
+      if (process.env.NATS_MONITORING_ENABLED && 
+          process.env.NATS_REQUIRED === 'true' && 
+          !natsStatus) {
+        return res.status(503).json({
+          status: "error",
+          message: "Service is not ready: NATS connection required but unavailable",
+          services: servicesStatus
+        });
+      }
       
       res.status(200).json({ 
         status: "ok",
@@ -314,6 +334,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Detailed health endpoint
   app.get('/api/health', async (req, res) => {
     try {
+      // Check NATS connection
+      const natsStatus = await natsMonitoringService.checkConnection();
+      
       const healthData = {
         status: "ok",
         database: {
@@ -333,6 +356,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           collaborationService: "online",
           mobileSyncService: "online",
           pluginService: "online"
+        },
+        messageBus: {
+          nats: {
+            status: natsStatus ? "connected" : "disconnected",
+            monitoring: {
+              enabled: !!process.env.NATS_MONITORING_ENABLED,
+              url: process.env.NATS_MONITORING_URL || 'http://localhost:8222'
+            }
+          }
         }
       };
       res.json(healthData);

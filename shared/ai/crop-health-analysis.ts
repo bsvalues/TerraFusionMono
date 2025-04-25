@@ -4,6 +4,7 @@ import OpenAI from "openai";
 const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 // the newest OpenAI model is "gpt-4o" which was released May 13, 2024. do not change this unless explicitly requested by the user
 
+// Base interface for crop analysis results
 interface CropAnalysisResult {
   cropType: string;
   healthStatus: 'excellent' | 'good' | 'moderate' | 'poor' | 'critical';
@@ -15,6 +16,59 @@ interface CropAnalysisResult {
   }>;
   overallAssessment: string;
   confidenceScore: number;
+}
+
+// Extended interface for advanced analysis with additional fields
+interface AdvancedCropAnalysisResult extends CropAnalysisResult {
+  growthStage: string;
+  nutritionalStatus: {
+    overall: 'optimal' | 'adequate' | 'deficient' | 'toxic';
+    deficiencies: Array<{
+      nutrient: string;
+      severity: 'mild' | 'moderate' | 'severe';
+      symptoms: string[];
+      corrections: string[];
+    }>;
+  };
+  estimatedYield: {
+    prediction: string;
+    optimisticScenario: string;
+    pessimisticScenario: string;
+    confidenceLevel: number;
+  };
+  diseaseRisk: {
+    currentRisks: Array<{
+      diseaseName: string;
+      likelihood: number;
+      impact: 'low' | 'medium' | 'high';
+      preventativeMeasures: string[];
+    }>;
+  };
+  temporalChanges?: {
+    comparedToPrevious: string;
+    trendAnalysis: string;
+    keyChanges: string[];
+  };
+  regionSpecificInsights?: string[];
+}
+
+// Location data structure with additional weather and soil info
+interface EnhancedLocationData {
+  latitude: number;
+  longitude: number;
+  elevation?: number;
+  region?: string;
+  weatherConditions?: {
+    temperature?: number;
+    humidity?: number;
+    rainfall?: number;
+    recentRainfall?: string;
+  };
+  soilProperties?: {
+    type?: string;
+    ph?: number;
+    organicMatter?: number;
+  };
 }
 
 /**
