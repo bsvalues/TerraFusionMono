@@ -70,6 +70,62 @@ TerraFusion integrates advanced technologies to provide farmers and agricultural
    npm run dev
    ```
 
+## Monorepo Structure & Federation
+
+This repository is organized as a monorepo using Nx, integrating multiple applications with Apollo Federation for GraphQL services.
+
+### Imported Repositories
+
+The following repositories have been imported and integrated:
+
+#### Terra Repositories:
+- `terraagent`: Agent-based data collection and analysis
+- `terraf`: Field mapping and analysis tools
+- `terraflow`: Workflow engine for agricultural processes
+- `terrafusionpro`: Professional analytics suite
+- `terrafusionsync`: Mobile data synchronization service
+- `terralegislativepulsepub`: Legislative tracking and reporting
+- `terraminer`: Data mining and pattern analysis
+
+#### BCBS Repositories:
+- `bcbscostapp`: Cost assessment application
+- `bcbsgispro`: GIS professional tools
+- `bcbslevy`: Levy calculation service
+- `bcbswebhub`: Web portal and hub
+- `bsbcmaster`: Master data management
+- `bsincomevaluation`: Income and asset valuation tools
+
+### Import Scripts
+
+The repository includes scripts to manage the import process:
+- `import-repos.sh`: Main import script for all repositories
+- `import-bcbs-repos.sh`: Import BCBS-specific repositories
+- `import-remaining-repos.sh`: Import any remaining repositories
+- `import-single-repo.sh`: Import a single repository with:
+  ```
+  ./import-single-repo.sh RepositoryName
+  ```
+
+### Working with the Federation Gateway
+
+The Apollo Federation Gateway consolidates all GraphQL services:
+
+1. Start the gateway:
+   ```
+   ./start-gateway.sh
+   ```
+
+2. Access the GraphQL endpoint at `http://localhost:4000/graphql`
+
+3. Check gateway health at:
+   - `http://localhost:4000/health/live` - Service liveness
+   - `http://localhost:4000/health/ready` - Service readiness with subgraph status
+
+4. Start individual services with:
+   ```
+   nx serve <service-name>
+   ```
+
 ## Testing the OpenAI Integration
 
 We provide tools to test the crop analysis capabilities:

@@ -8,81 +8,66 @@
 
 console.log('[vite-hmr-fix] Loading WebSocket fix for Replit');
 
-(function() {
-  if (window.location.hostname.includes('.replit.dev') || window.location.hostname.includes('.repl.co')) {
-    // Store the original WebSocket constructor
-    const OriginalWebSocket = window.WebSocket;
-    
-    // Override the WebSocket constructor
-    window.WebSocket = function(url, protocols) {
-      try {
-        // Get the current hostname from the page URL
-        const currentHost = window.location.host;
-        
-        // Check if this is a Vite HMR WebSocket connection (includes localhost or undefined port)
-        if (url.includes('localhost') || url.includes('undefined')) {
-          try {
-            // Extract the path and query string
-            const urlObj = new URL(url);
-            const path = urlObj.pathname;
-            const search = urlObj.search;
-            
-            // Create a new WebSocket URL using the correct hostname
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const newUrl = `${protocol}//${currentHost}${path}${search}`;
-            
-            console.log('[vite-hmr-fix] Fixed WebSocket URL from', url, 'to', newUrl);
-            
-            // Create a WebSocket with the fixed URL
-            return new OriginalWebSocket(newUrl, protocols);
-          } catch (urlError) {
-            console.error('[vite-hmr-fix] Error parsing WebSocket URL:', urlError);
-            
-            // Fallback: try a simpler replacement if URL parsing fails
-            const wsProtocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            const simpleUrl = `${wsProtocol}//${currentHost}`;
-            console.log('[vite-hmr-fix] Using fallback WebSocket URL:', simpleUrl);
-            return new OriginalWebSocket(simpleUrl, protocols);
-          }
-        }
-      } catch (e) {
-        console.error('[vite-hmr-fix] Error in WebSocket override:', e);
+// Check if we're running on Replit
+if (window.location.hostname.includes('.replit.dev') || window.location.hostname.includes('.repl.co')) {
+  // Store the original WebSocket constructor
+  const OriginalWebSocket = window.WebSocket;
+  
+  // Override the WebSocket constructor
+  window.WebSocket = function(url, protocols) {
+    try {
+      // Get the current hostname from the page URL
+      const currentHost = window.location.host;
+      
+      // Handle both localhost URLs and undefined URLs
+      if (!url || url === 'undefined' || url === 'null') {
+        // Create a fallback WebSocket URL using the current host
+        const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+        const fallbackUrl = `${protocol}//${currentHost}`;
+        console.log('[vite-hmr-fix] Using fallback WebSocket URL:', fallbackUrl);
+        return new OriginalWebSocket(fallbackUrl, protocols);
       }
       
-      // For non-Vite WebSockets or if any errors occurred, use the original connection
-      return new OriginalWebSocket(url, protocols);
-    };
-    
-    // Copy over static properties from the original WebSocket
-    for (const prop in OriginalWebSocket) {
-      if (OriginalWebSocket.hasOwnProperty(prop)) {
-        window.WebSocket[prop] = OriginalWebSocket[prop];
-      }
-    }
-    
-    window.WebSocket.prototype = OriginalWebSocket.prototype;
-    
-    // Also attempt to patch Vite's HMR directly if it becomes available
-    function patchViteHmr() {
-      if (window.__vite_hmr_client__) {
+      // Check if this is a Vite HMR WebSocket connection to localhost
+      if (typeof url === 'string' && (url.includes('localhost') || url.includes('127.0.0.1'))) {
         try {
-          const client = window.__vite_hmr_client__;
-          if (client && client.wss && client.wss.startsWith('ws://localhost')) {
-            const newWss = `${window.location.protocol === 'https:' ? 'wss:' : 'ws:'}//${window.location.host}`;
-            console.log('[vite-hmr-fix] Patching Vite HMR client WSS from', client.wss, 'to', newWss);
-            client.wss = newWss;
-          }
+          // Extract the path and query string
+          const urlObj = new URL(url);
+          const path = urlObj.pathname;
+          const search = urlObj.search;
+          
+          // Create a new WebSocket URL using the correct hostname
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const newUrl = `${protocol}//${currentHost}${path}${search}`;
+          
+          console.log('[vite-hmr-fix] Fixed WebSocket URL from', url, 'to', newUrl);
+          
+          // Create a WebSocket with the fixed URL
+          return new OriginalWebSocket(newUrl, protocols);
         } catch (e) {
-          console.error('[vite-hmr-fix] Failed to patch Vite HMR client:', e);
+          console.error('[vite-hmr-fix] Error parsing WebSocket URL:', e);
+          // If URL parsing fails, fall back to the current host
+          const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+          const fallbackUrl = `${protocol}//${currentHost}`;
+          return new OriginalWebSocket(fallbackUrl, protocols);
         }
       }
+    } catch (err) {
+      console.error('[vite-hmr-fix] Error in WebSocket constructor:', err);
     }
     
-    // Try to patch immediately and also set up a listener for when Vite's code might load
-    patchViteHmr();
-    setTimeout(patchViteHmr, 1000);
-    setTimeout(patchViteHmr, 3000);
-    
-    console.log('[vite-hmr-fix] WebSocket fix applied for Replit environment');
+    // For non-Vite WebSockets or if any of our fixes fail, use the original connection
+    return new OriginalWebSocket(url, protocols);
+  };
+  
+  // Copy over static properties from the original WebSocket
+  for (const prop in OriginalWebSocket) {
+    if (OriginalWebSocket.hasOwnProperty(prop)) {
+      window.WebSocket[prop] = OriginalWebSocket[prop];
+    }
   }
-})();
+  
+  window.WebSocket.prototype = OriginalWebSocket.prototype;
+  
+  console.log('[vite-hmr-fix] WebSocket fix applied for Replit environment');
+}

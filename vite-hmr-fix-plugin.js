@@ -6,7 +6,11 @@
  */
 
 export default function viteHmrFixPlugin() {
-  const isReplit = process.env.REPL_ID && process.env.REPL_SLUG;
+  // Check for Replit environment
+  const isReplit = process.env.REPL_ID || 
+                  process.env.REPLIT_ENVIRONMENT || 
+                  process.env.REPL_SLUG || 
+                  process.env.REPL_OWNER;
 
   return {
     name: 'vite-hmr-fix-plugin',
@@ -14,6 +18,7 @@ export default function viteHmrFixPlugin() {
     // This hook runs during server configuration
     configureServer(server) {
       if (isReplit) {
+        console.log('[vite-hmr-fix-plugin] Detected Replit environment');
         const originalListen = server.listen.bind(server);
         
         // Override the server.listen method to set HMR options
@@ -21,21 +26,37 @@ export default function viteHmrFixPlugin() {
           // Always bind to 0.0.0.0 on Replit to allow external connections
           server.config.server.host = '0.0.0.0';
           
+          // Disable strictPort to allow alternative port if the default is already in use
+          server.config.server.strictPort = false;
+          
           // Configure HMR for Replit
           if (!server.config.server.hmr || typeof server.config.server.hmr === 'boolean') {
             server.config.server.hmr = {};
           }
           
-          // Use the current Replit URL for WebSocket connections
-          const replSlug = process.env.REPL_SLUG;
-          const replOwner = process.env.REPL_OWNER;
-          
-          if (replSlug && replOwner) {
-            console.log('[vite-hmr-fix-plugin] Applying Replit HMR configuration');
-            server.config.server.hmr.host = `${replSlug}.${replOwner}.repl.co`;
-            server.config.server.hmr.clientPort = 443;
-            server.config.server.hmr.protocol = 'wss';
+          // Get Replit domain
+          let hmrHost;
+          if (process.env.REPL_SLUG && process.env.REPL_OWNER) {
+            // Classic Replit environment
+            hmrHost = `${process.env.REPL_SLUG}.${process.env.REPL_OWNER}.repl.co`;
+          } else if (process.env.REPL_ID) {
+            // Modern Replit environment with deployment domains
+            hmrHost = `${process.env.REPL_ID}.id.repl.co`;
+          } else {
+            // Fallback to default
+            hmrHost = 'localhost';
           }
+          
+          console.log(`[vite-hmr-fix-plugin] Applying Replit HMR configuration with host: ${hmrHost}`);
+          
+          // Apply the HMR configuration
+          server.config.server.hmr.host = hmrHost;
+          server.config.server.hmr.clientPort = 443;
+          server.config.server.hmr.protocol = 'wss';
+          
+          // Enable auto-fixing of HMR connections
+          server.config.server.hmr.path = '/__vite_hmr';
+          server.config.server.hmr.overlay = true;
           
           // Call the original listen method with our new configuration
           return originalListen(...args);
@@ -46,8 +67,11 @@ export default function viteHmrFixPlugin() {
     // Inject our client-side fix script into the HTML
     transformIndexHtml(html) {
       if (isReplit) {
-        // We're already doing this via the script tag in index.html
-        return html;
+        // Add the vite-hmr-fix.js script to the HTML if not already present
+        if (!html.includes('vite-hmr-fix.js')) {
+          const scriptTag = `<script src="/vite-hmr-fix.js"></script>`;
+          return html.replace('</head>', `${scriptTag}\n</head>`);
+        }
       }
       return html;
     }
