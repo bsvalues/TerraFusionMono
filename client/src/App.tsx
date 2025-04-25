@@ -21,7 +21,8 @@ import ParcelsPage from "@/pages/parcels";
 import GeocodePage from "@/pages/geocode";
 import CropHealthDashboard from "@/pages/crop-health-dashboard";
 import CropIdentifierPage from "@/pages/crop-identifier-page";
-import CropAnalysisPage from "@/pages/crop-analysis";
+import CropAnalysisPage from "@/pages/CropAnalysisPage";
+import AdvancedCropAnalysisPage from "@/pages/AdvancedCropAnalysisPage";
 import CollaborationDemo from "@/pages/CollaborationDemo";
 
 function Router() {
@@ -47,6 +48,7 @@ function Router() {
         <Route path="/crop-health" component={CropHealthDashboard} />
         <Route path="/crop-identifier" component={CropIdentifierPage} />
         <Route path="/crop-analysis" component={CropAnalysisPage} />
+        <Route path="/advanced-crop-analysis" component={AdvancedCropAnalysisPage} />
         <Route path="/collaboration" component={CollaborationDemo} />
         
         {/* Dynamic routes for apps and plugins */}
