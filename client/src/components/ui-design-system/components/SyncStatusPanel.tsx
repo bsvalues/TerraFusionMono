@@ -68,6 +68,7 @@ interface SyncStatusResponse {
 // Device status types from the server
 type DeviceStatus = 'online' | 'offline' | 'synchronizing' | 'error';
 type SyncOperation = 'pull' | 'push' | 'bidirectional';
+type SyncPriority = 'low' | 'medium' | 'high' | 'critical';
 
 // Sync history entry type
 interface SyncHistoryEntry {
@@ -159,12 +160,52 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
     refetchInterval: 60000, // Refetch every minute
   });
   
-  // Trigger manual sync
+  // Query to fetch sync metrics
+  const { data: metricsData } = useQuery<SyncMetricsResponse>({
+    queryKey: ['/api/sync/metrics'],
+    refetchInterval: 60000, // Refetch every minute
+  });
+  
+  // State for advanced sync options
+  const [showAdvancedOptions, setShowAdvancedOptions] = useState(false);
+  const [syncOperation, setSyncOperation] = useState<SyncOperation>('bidirectional');
+  const [syncPriority, setSyncPriority] = useState<SyncPriority>('medium');
+  const [selectedDeviceId, setSelectedDeviceId] = useState<string>('all');
+  
+  // Define available priority options
+  const priorityOptions: Array<{ value: SyncPriority; label: string }> = [
+    { value: 'low', label: 'Low' },
+    { value: 'medium', label: 'Medium' },
+    { value: 'high', label: 'High' },
+    { value: 'critical', label: 'Critical' }
+  ];
+  
+  // Define available operation types
+  const operationOptions: Array<{ value: SyncOperation; label: string; description: string }> = [
+    { value: 'bidirectional', label: 'Bidirectional', description: 'Sync data in both directions' },
+    { value: 'push', label: 'Push', description: 'Send local changes to the server' },
+    { value: 'pull', label: 'Pull', description: 'Download latest data from the server' }
+  ];
+  
+  // Trigger manual sync with options
   const triggerSync = async () => {
     try {
       await fetch('/api/sync/trigger', {
         method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({
+          operationType: syncOperation,
+          deviceId: selectedDeviceId,
+          priority: syncPriority
+        })
       });
+      
+      // Reset advanced options panel
+      setShowAdvancedOptions(false);
+      
+      // Refresh data
       refetch();
     } catch (err) {
       console.error('Failed to trigger sync:', err);
@@ -298,20 +339,26 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
           </Badge>
         </DialogTrigger>
         
-        <DialogContent className="sm:max-w-md">
+        <DialogContent className="sm:max-w-[90vw] md:max-w-2xl">
           <DialogHeader>
             <DialogTitle>Mobile Sync Status</DialogTitle>
             <DialogDescription>
-              Monitor and manage synchronization with mobile devices.
+              Monitor and manage synchronization with mobile devices
             </DialogDescription>
           </DialogHeader>
           
           <div className="grid gap-4 py-4">
+            {/* Current Sync Status Card */}
             <Card>
               <CardHeader className="pb-2">
                 <CardTitle className="text-lg flex items-center">
                   {renderIcon()}
                   <span className="ml-2">{getStatusLabel()}</span>
+                  {status === 'syncing' && data?.activeOperations && (
+                    <Badge variant="outline" className="ml-2">
+                      {data.activeOperations} active operation{data.activeOperations !== 1 ? 's' : ''}
+                    </Badge>
+                  )}
                 </CardTitle>
                 <CardDescription>
                   Last synchronized: {formatLastSynced()}
@@ -320,21 +367,56 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
               
               <CardContent className="pb-2">
                 <div className="space-y-4">
-                  <div className="flex justify-between items-center">
-                    <span className="text-sm text-gray-500">Connected devices:</span>
-                    <Badge variant="outline" className="flex items-center">
-                      <Database className="h-3 w-3 mr-1" />
-                      <span>{deviceCount}</span>
-                    </Badge>
-                  </div>
-                  
-                  {pendingChanges > 0 && (
+                  {/* Device statistics */}
+                  <div className="grid grid-cols-2 gap-2">
                     <div className="flex justify-between items-center">
-                      <span className="text-sm text-gray-500">Pending changes:</span>
-                      <Badge variant="secondary">{pendingChanges}</Badge>
+                      <span className="text-sm text-gray-500 flex items-center">
+                        <Smartphone className="h-3.5 w-3.5 mr-1.5" />
+                        Devices:
+                      </span>
+                      <Badge variant="outline" className="flex items-center">
+                        {deviceCount}
+                      </Badge>
+                    </div>
+                    
+                    {metricsData?.metrics?.devices?.online !== undefined && (
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500 flex items-center">
+                          <Signal className="h-3.5 w-3.5 mr-1.5" />
+                          Online:
+                        </span>
+                        <Badge variant="outline" className="flex items-center bg-green-50">
+                          {metricsData?.metrics?.devices?.online || 0}
+                        </Badge>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Pending changes */}
+                  {(pendingChanges > 0 || (metricsData?.metrics?.pending?.total || 0) > 0) && (
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500 flex items-center">
+                          <Upload className="h-3.5 w-3.5 mr-1.5" />
+                          Pending uploads:
+                        </span>
+                        <Badge variant="secondary">
+                          {metricsData?.metrics?.pending?.uploads || 0}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-gray-500 flex items-center">
+                          <Download className="h-3.5 w-3.5 mr-1.5" />
+                          Pending downloads:
+                        </span>
+                        <Badge variant="secondary">
+                          {metricsData?.metrics?.pending?.downloads || 0}
+                        </Badge>
+                      </div>
                     </div>
                   )}
                   
+                  {/* Sync progress bar */}
                   {status === 'syncing' && (
                     <div className="space-y-1">
                       <div className="flex justify-between text-xs">
@@ -342,26 +424,268 @@ export default function SyncStatusPanel({ className = '' }: SyncStatusPanelProps
                         <span>{progress}%</span>
                       </div>
                       <Progress value={progress} className="h-2" />
+                      {data?.totalBytes && data?.totalSyncedBytes && (
+                        <div className="flex justify-end text-xs text-gray-500 mt-1">
+                          {Math.round(data.totalSyncedBytes / 1024 / 1024 * 10) / 10} MB / 
+                          {Math.round(data.totalBytes / 1024 / 1024 * 10) / 10} MB
+                        </div>
+                      )}
+                    </div>
+                  )}
+                  
+                  {/* Sync statistics */}
+                  {metricsData?.metrics?.syncOperations && (
+                    <div className="border rounded-md p-2 bg-gray-50">
+                      <h4 className="text-sm font-medium mb-2 flex items-center">
+                        <BarChart2 className="h-4 w-4 mr-1.5" /> 
+                        Sync Statistics (Last 24h)
+                      </h4>
+                      <div className="grid grid-cols-2 gap-y-1 text-xs">
+                        <div>Sync operations:</div>
+                        <div className="font-medium text-right">
+                          {metricsData.metrics.syncOperations.last24h}
+                        </div>
+                        <div>Data transferred:</div>
+                        <div className="font-medium text-right">
+                          {Math.round(metricsData.metrics.syncOperations.bytesTransferred24h / 1024 / 1024 * 10) / 10} MB
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
               </CardContent>
               
-              <CardFooter className="pt-2">
-                <Button 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    triggerSync();
-                  }} 
-                  variant="outline" 
-                  className="w-full"
-                  disabled={status === 'syncing'}
-                >
-                  <RefreshCw className="h-4 w-4 mr-2" />
-                  Sync Now
-                </Button>
+              <CardFooter className="pt-2 flex flex-col space-y-2">
+                {!showAdvancedOptions ? (
+                  <>
+                    <Button 
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        triggerSync();
+                      }} 
+                      variant="outline" 
+                      className="w-full"
+                      disabled={status === 'syncing'}
+                    >
+                      <RefreshCw className="h-4 w-4 mr-2" />
+                      Sync Now
+                    </Button>
+                    <Button
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setShowAdvancedOptions(true);
+                      }}
+                      variant="ghost"
+                      className="w-full text-xs"
+                      disabled={status === 'syncing'}
+                    >
+                      Show advanced options
+                    </Button>
+                  </>
+                ) : (
+                  <>
+                    <div className="border rounded-md p-3 space-y-3">
+                      {/* Sync Operation Type */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Sync Operation:</label>
+                        <div className="grid grid-cols-3 gap-2">
+                          {operationOptions.map(option => (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant={syncOperation === option.value ? "default" : "outline"}
+                              size="sm"
+                              className="h-auto py-1.5 flex-col items-center justify-center"
+                              onClick={() => setSyncOperation(option.value)}
+                            >
+                              <span>{option.label}</span>
+                              <span className="text-[10px] mt-1 leading-tight opacity-70">
+                                {option.description}
+                              </span>
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Sync Priority */}
+                      <div className="space-y-1.5">
+                        <label className="text-xs font-medium">Priority:</label>
+                        <div className="grid grid-cols-4 gap-2">
+                          {priorityOptions.map(option => (
+                            <Button
+                              key={option.value}
+                              type="button"
+                              variant={syncPriority === option.value ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setSyncPriority(option.value)}
+                            >
+                              {option.label}
+                            </Button>
+                          ))}
+                        </div>
+                      </div>
+                      
+                      {/* Device Selection */}
+                      {deviceData?.devices && deviceData.devices.length > 0 && (
+                        <div className="space-y-1.5">
+                          <label className="text-xs font-medium">Target Device:</label>
+                          <div className="grid grid-cols-2 gap-2">
+                            <Button
+                              type="button"
+                              variant={selectedDeviceId === 'all' ? "default" : "outline"}
+                              size="sm"
+                              onClick={() => setSelectedDeviceId('all')}
+                            >
+                              All Devices
+                            </Button>
+                            
+                            {deviceData.devices.map(device => (
+                              <Button
+                                key={device.id}
+                                type="button"
+                                variant={selectedDeviceId === device.id ? "default" : "outline"}
+                                size="sm"
+                                className="text-xs overflow-hidden text-ellipsis whitespace-nowrap"
+                                title={device.name}
+                                onClick={() => setSelectedDeviceId(device.id)}
+                                disabled={device.status === 'offline'}
+                              >
+                                {device.name}
+                              </Button>
+                            ))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                    
+                    <div className="flex flex-row gap-2">
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setShowAdvancedOptions(false);
+                        }}
+                        variant="outline"
+                        className="flex-1"
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          triggerSync();
+                        }}
+                        className="flex-1"
+                        disabled={status === 'syncing'}
+                      >
+                        <RefreshCw className="h-4 w-4 mr-2" />
+                        Start Sync
+                      </Button>
+                    </div>
+                  </>
+                )}
               </CardFooter>
             </Card>
+            
+            {/* Connected Devices List */}
+            {deviceData?.devices && deviceData.devices.length > 0 && (
+              <Card>
+                <CardHeader className="pb-2">
+                  <CardTitle className="text-md flex items-center">
+                    <Smartphone className="h-4 w-4 mr-2" />
+                    <span>Connected Devices</span>
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="pb-2">
+                  <div className="space-y-3">
+                    {deviceData.devices.map((device) => (
+                      <div key={device.id} className="border rounded-md p-2">
+                        <div className="flex justify-between items-center mb-1">
+                          <span className="font-medium">{device.name}</span>
+                          <Badge 
+                            className={
+                              device.status === 'online' ? 'bg-green-50 text-green-700' :
+                              device.status === 'synchronizing' ? 'bg-blue-50 text-blue-700' :
+                              device.status === 'error' ? 'bg-red-50 text-red-700' :
+                              'bg-gray-50 text-gray-700'
+                            }
+                            variant="outline"
+                          >
+                            {device.status}
+                          </Badge>
+                        </div>
+                        
+                        <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs text-gray-500">
+                          <div className="flex items-center">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            Last seen:
+                          </div>
+                          <div>
+                            {new Date(device.lastSeen).toLocaleString('en-US', { 
+                              month: 'short',
+                              day: 'numeric',
+                              hour: '2-digit',
+                              minute: '2-digit'
+                            })}
+                          </div>
+                          
+                          <div className="flex items-center">
+                            <Battery className="h-3 w-3 mr-1" />
+                            Battery:
+                          </div>
+                          <div>
+                            {device.batteryLevel}%
+                          </div>
+                          
+                          {device.lastLocation && (
+                            <>
+                              <div className="flex items-center">
+                                <MapPin className="h-3 w-3 mr-1" />
+                                Location:
+                              </div>
+                              <div>
+                                {device.lastLocation.latitude.toFixed(4)}, {device.lastLocation.longitude.toFixed(4)}
+                              </div>
+                            </>
+                          )}
+                          
+                          <div className="flex items-center">
+                            <Info className="h-3 w-3 mr-1" />
+                            OS:
+                          </div>
+                          <div>
+                            {device.osVersion}
+                          </div>
+                          
+                          {device.connectionType && (
+                            <>
+                              <div className="flex items-center">
+                                <Signal className="h-3 w-3 mr-1" />
+                                Connection:
+                              </div>
+                              <div>
+                                {device.connectionType}
+                              </div>
+                            </>
+                          )}
+                          
+                          {(device.pendingUploads > 0 || device.pendingDownloads > 0) && (
+                            <>
+                              <div className="flex items-center">
+                                <Upload className="h-3 w-3 mr-1" />
+                                Pending:
+                              </div>
+                              <div>
+                                ↑ {device.pendingUploads}, ↓ {device.pendingDownloads}
+                              </div>
+                            </>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
           </div>
           
           <DialogFooter className="sm:justify-end">

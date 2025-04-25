@@ -405,6 +405,12 @@ router.post('/devices/register', async (req: Request, res: Response) => {
     storageUsed: 0,
     pendingUploads: 0,
     pendingDownloads: 0,
+    lastLocation: {
+      latitude: 37.7749,
+      longitude: -122.4194,
+      accuracy: 10,
+      timestamp: new Date()
+    },
     connectionType: connectionType || 'wifi',
     osVersion: osVersion || 'Unknown',
     appVersion: appVersion || 'Unknown',
