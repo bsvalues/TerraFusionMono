@@ -1,5 +1,14 @@
 {
   "backend": "http://localhost:4001/graphql",
   "gisHub": "http://localhost:4002/graphql",
-  "levyCalc": "http://localhost:4003/graphql"
+  "levyCalc": "http://localhost:4003/graphql",
+  "terraFlow": "http://localhost:4004/graphql",
+  "terraAgent": "http://localhost:4005/graphql",
+  "terraFusionSync": "http://localhost:4006/graphql",
+  "terraMiner": "http://localhost:4007/graphql",
+  "bcbsCostApp": "http://localhost:4008/graphql",
+  "bcbsGisPro": "http://localhost:4009/graphql",
+  "bcbsLevy": "http://localhost:4010/graphql",
+  "bsbcMaster": "http://localhost:4011/graphql",
+  "bsIncomeValuation": "http://localhost:4012/graphql"
 }
