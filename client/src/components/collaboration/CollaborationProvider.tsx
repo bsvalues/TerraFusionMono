@@ -1,420 +1,600 @@
-import React, { createContext, useState, useEffect, useContext, useCallback, useRef } from 'react';
+import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import * as Y from 'yjs';
+import { useToast } from '@/hooks/use-toast';
+import { Button } from '@/components/ui/button';
+import { Card } from '@/components/ui/card';
+import { Badge } from '@/components/ui/badge';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
+import {
+  CardContent,
+  CardDescription,
+  CardFooter,
+  CardHeader,
+  CardTitle,
+} from '@/components/ui/card';
+import { UserRound, Wifi, WifiOff, Clock, X } from 'lucide-react';
 
-interface CollaborationContextType {
-  isConnected: boolean;
-  isAuthenticated: boolean;
-  isJoined: boolean;
-  error: string | null;
-  sessionId: string | null;
-  clientId: string | null;
-  participants: Participant[];
-  connectToSession: (sessionId: string, token: string, userId: number, username: string) => void;
-  disconnectFromSession: () => void;
-  sendUpdate: (update: Uint8Array) => void;
-  updateCursor: (position: { x: number, y: number }, selection?: { anchor: number, head: number }) => void;
-  updatePresence: (state: 'active' | 'inactive' | 'away') => void;
-  addComment: (comment: { text: string, position?: { x: number, y: number }, range?: { start: number, end: number } }) => void;
-  getYDoc: () => Y.Doc | null;
-}
+// Define typings
+export type CollaborationStatus = 'connecting' | 'connected' | 'disconnected' | 'reconnecting' | 'error';
 
-interface Participant {
+export interface Participant {
   clientId: string;
   userId: number;
   username: string;
   color: string;
-  position?: { x: number, y: number };
-  selection?: { anchor: number, head: number };
-  presence?: 'active' | 'inactive' | 'away';
-  joinedAt: Date;
+  position?: any;
+  selection?: any;
+  presence?: any;
 }
 
-const CollaborationContext = createContext<CollaborationContextType | undefined>(undefined);
-
-interface CollaborationProviderProps {
-  children: React.ReactNode | ((context: CollaborationContextType) => React.ReactNode);
+export interface CollaborationContextValue {
+  // Connection state
+  status: CollaborationStatus;
+  connect: (sessionId: string, token: string) => void;
+  disconnect: () => void;
+  
+  // Y.js document
+  ydoc?: Y.Doc;
+  
+  // Participants
+  participants: Participant[];
+  
+  // Session data
+  sessionId?: string;
+  userId?: number;
+  username?: string;
+  
+  // Updates
+  sendUpdate: (update: Uint8Array) => void;
+  sendCursorUpdate: (position: any, selection?: any) => void;
+  sendPresenceUpdate: (presence: any) => void;
+  sendComment: (comment: any) => void;
 }
 
-export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({ children }) => {
-  const [isConnected, setIsConnected] = useState(false);
-  const [isAuthenticated, setIsAuthenticated] = useState(false);
-  const [isJoined, setIsJoined] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [sessionId, setSessionId] = useState<string | null>(null);
-  const [clientId, setClientId] = useState<string | null>(null);
-  const [participants, setParticipants] = useState<Participant[]>([]);
-  
-  const wsRef = useRef<WebSocket | null>(null);
-  const ydocRef = useRef<Y.Doc | null>(null);
-  
-  // Clean up function
-  const cleanup = useCallback(() => {
-    if (wsRef.current) {
-      wsRef.current.close();
-      wsRef.current = null;
-    }
-    
-    if (ydocRef.current) {
-      ydocRef.current.destroy();
-      ydocRef.current = null;
-    }
-    
-    setIsConnected(false);
-    setIsAuthenticated(false);
-    setIsJoined(false);
-    setSessionId(null);
-    setClientId(null);
-    setParticipants([]);
-  }, []);
-  
-  // Reconnection mechanism
-  const [reconnectAttempts, setReconnectAttempts] = useState(0);
-  const [isReconnecting, setIsReconnecting] = useState(false);
-  const maxReconnectAttempts = 5;
-  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
-  
-  // Connect to a collaboration session with reconnection logic
-  const connectToSession = useCallback((
-    sessionId: string, 
-    token: string, 
-    userId: number, 
-    username: string
-  ) => {
-    // Store connection info for reconnection attempts
-    const connectionInfo = { sessionId, token, userId, username };
-    
-    // Clean up any existing connection
-    cleanup();
-    
-    // Reset reconnection state
-    setReconnectAttempts(0);
-    setIsReconnecting(false);
-    
-    // Create a new Y.js document
-    const ydoc = new Y.Doc();
-    ydocRef.current = ydoc;
-    
-    // Set up WebSocket connection
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.host}/ws/collaboration`;
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-    
-    // Set the initial states
-    setError(null);
-    setSessionId(sessionId);
-    
-    // Set up reconnection logic
-    const attemptReconnect = () => {
-      if (reconnectAttempts >= maxReconnectAttempts) {
-        setError('Could not reconnect after several attempts. Please try again later.');
-        setIsReconnecting(false);
-        return;
-      }
-      
-      setIsReconnecting(true);
-      setReconnectAttempts(prev => prev + 1);
-      
-      // Exponential backoff: 1s, 2s, 4s, 8s, 16s
-      const delay = Math.min(1000 * Math.pow(2, reconnectAttempts), 30000);
-      
-      console.log(`Attempting to reconnect in ${delay}ms (attempt ${reconnectAttempts + 1}/${maxReconnectAttempts})`);
-      
-      if (reconnectTimeoutRef.current) {
-        clearTimeout(reconnectTimeoutRef.current);
-      }
-      
-      reconnectTimeoutRef.current = setTimeout(() => {
-        connectToSession(connectionInfo.sessionId, connectionInfo.token, connectionInfo.userId, connectionInfo.username);
-      }, delay);
-    };
-    
-    // Set up event handlers
-    ws.onopen = () => {
-      console.log('WebSocket connection established');
-      setIsConnected(true);
-      setIsReconnecting(false);
-      setReconnectAttempts(0);
-      
-      // Authenticate
-      ws.send(JSON.stringify({
-        type: 'auth',
-        token,
-        userId
-      }));
-    };
-    
-    ws.onclose = (event) => {
-      console.log(`WebSocket connection closed: ${event.code} ${event.reason}`);
-      
-      // Don't attempt to reconnect if this was a clean closure or we're manually disconnecting
-      if (event.code === 1000 || event.code === 1001) {
-        cleanup();
-        return;
-      }
-      
-      // Keep session information but mark as disconnected
-      setIsConnected(false);
-      setIsJoined(false);
-      
-      // Attempt to reconnect
-      attemptReconnect();
-    };
-    
-    ws.onerror = (error) => {
-      console.error('WebSocket error:', error);
-      setError('Connection error. Attempting to reconnect...');
-      // The onclose handler will be called after this and will handle reconnection
-    };
-    
-    ws.onmessage = (event) => {
-      try {
-        const message = JSON.parse(event.data);
-        console.log('Received message:', message);
-        
-        switch (message.type) {
-          case 'welcome':
-            // We're connected, but not authenticated yet
-            console.log('Received welcome message');
-            break;
-            
-          case 'auth_success':
-            console.log('Authentication successful');
-            setIsAuthenticated(true);
-            
-            // Now we can join the session
-            ws.send(JSON.stringify({
-              type: 'join_session',
-              sessionId,
-              username
-            }));
-            break;
-            
-          case 'auth_error':
-            console.error('Authentication error:', message.message);
-            setError(`Authentication error: ${message.message}`);
-            setIsAuthenticated(false);
-            break;
-            
-          case 'error':
-            console.error('Error message:', message.message);
-            setError(message.message);
-            break;
-            
-          case 'initialState':
-            // We've successfully joined the session
-            console.log('Joined session, received initial state');
-            setIsJoined(true);
-            setClientId(message.clientId);
-            
-            // Apply initial state to Y.js document
-            if (message.state) {
-              const stateUpdate = Uint8Array.from(atob(message.state), c => c.charCodeAt(0));
-              Y.applyUpdate(ydoc, stateUpdate);
-            }
-            break;
-            
-          case 'clientList':
-            // Received list of other clients in the session
-            if (message.clients) {
-              const newParticipants = message.clients.map((client: any) => ({
-                clientId: client.clientId,
-                userId: client.userId,
-                username: client.username,
-                color: client.color,
-                position: client.position,
-                selection: client.selection,
-                joinedAt: new Date()
-              }));
-              
-              setParticipants(newParticipants);
-            }
-            break;
-            
-          case 'clientJoin':
-            // A new client has joined the session
-            setParticipants(prev => [
-              ...prev,
-              {
-                clientId: message.clientId,
-                userId: message.userId,
-                username: message.username,
-                color: message.color,
-                joinedAt: new Date()
-              }
-            ]);
-            break;
-            
-          case 'clientLeave':
-            // A client has left the session
-            setParticipants(prev => prev.filter(p => p.clientId !== message.clientId));
-            break;
-            
-          case 'yjsUpdate':
-            // Received an update to the Y.js document
-            if (message.update) {
-              const update = Uint8Array.from(atob(message.update), c => c.charCodeAt(0));
-              Y.applyUpdate(ydoc, update);
-            }
-            break;
-            
-          case 'cursor':
-            // Update cursor position for a participant
-            setParticipants(prev => {
-              const index = prev.findIndex(p => p.clientId === message.data.clientId);
-              if (index === -1) return prev;
-              
-              const newParticipants = [...prev];
-              newParticipants[index] = {
-                ...newParticipants[index],
-                position: message.data.position,
-                selection: message.data.selection
-              };
-              
-              return newParticipants;
-            });
-            break;
-            
-          case 'presence':
-            // Update presence state for a participant
-            setParticipants(prev => {
-              const index = prev.findIndex(p => p.clientId === message.clientId);
-              if (index === -1) return prev;
-              
-              const newParticipants = [...prev];
-              newParticipants[index] = {
-                ...newParticipants[index],
-                presence: message.state
-              };
-              
-              return newParticipants;
-            });
-            break;
-            
-          case 'comment':
-            // Add a comment notification (we'll let the application handle this)
-            // You could add this to an array of comments or trigger a notification
-            console.log('Received comment:', message);
-            break;
-        }
-      } catch (error) {
-        console.error('Error processing message:', error);
-      }
-    };
-    
-  }, [cleanup]);
-  
-  // Disconnect from the session
-  const disconnectFromSession = useCallback(() => {
-    cleanup();
-  }, [cleanup]);
-  
-  // Send a Y.js update
-  const sendUpdate = useCallback((update: Uint8Array) => {
-    if (!wsRef.current || !isJoined) return;
-    
-    // Convert the update to a base64 string
-    const updateBase64 = btoa(String.fromCharCode(...update));
-    
-    wsRef.current.send(JSON.stringify({
-      type: 'update',
-      update: updateBase64
-    }));
-  }, [isJoined]);
-  
-  // Update cursor position
-  const updateCursor = useCallback((
-    position: { x: number, y: number },
-    selection?: { anchor: number, head: number }
-  ) => {
-    if (!wsRef.current || !isJoined) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: 'cursor',
-      position,
-      selection
-    }));
-  }, [isJoined]);
-  
-  // Update presence state
-  const updatePresence = useCallback((state: 'active' | 'inactive' | 'away') => {
-    if (!wsRef.current || !isJoined) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: 'presence',
-      state
-    }));
-  }, [isJoined]);
-  
-  // Add a comment
-  const addComment = useCallback((comment: { 
-    text: string, 
-    position?: { x: number, y: number }, 
-    range?: { start: number, end: number } 
-  }) => {
-    if (!wsRef.current || !isJoined) return;
-    
-    wsRef.current.send(JSON.stringify({
-      type: 'comment',
-      comment
-    }));
-  }, [isJoined]);
-  
-  // Get the Y.js document
-  const getYDoc = useCallback(() => {
-    return ydocRef.current;
-  }, []);
-  
-  // Set up a ping interval to keep the connection alive
-  useEffect(() => {
-    if (!isConnected) return;
-    
-    const pingInterval = setInterval(() => {
-      if (wsRef.current?.readyState === WebSocket.OPEN) {
-        wsRef.current.send(JSON.stringify({ type: 'ping' }));
-      }
-    }, 30000); // Every 30 seconds
-    
-    return () => {
-      clearInterval(pingInterval);
-    };
-  }, [isConnected]);
-  
-  // Clean up on unmount
-  useEffect(() => {
-    return () => {
-      cleanup();
-    };
-  }, [cleanup]);
-  
-  const value = {
-    isConnected,
-    isAuthenticated,
-    isJoined,
-    error,
-    sessionId,
-    clientId,
-    participants,
-    connectToSession,
-    disconnectFromSession,
-    sendUpdate,
-    updateCursor,
-    updatePresence,
-    addComment,
-    getYDoc
-  };
-  
-  return (
-    <CollaborationContext.Provider value={value}>
-      {typeof children === 'function' ? children(value) : children}
-    </CollaborationContext.Provider>
-  );
-};
+// Create the context
+const CollaborationContext = createContext<CollaborationContextValue | undefined>(undefined);
 
-export const useCollaboration = (): CollaborationContextType => {
+// Custom hook to use the collaboration context
+export const useCollaboration = () => {
   const context = useContext(CollaborationContext);
   if (context === undefined) {
     throw new Error('useCollaboration must be used within a CollaborationProvider');
   }
   return context;
 };
+
+export interface CollaborationProviderProps {
+  children: React.ReactNode;
+  initialSessionId?: string;
+  initialToken?: string;
+  autoConnect?: boolean;
+  showUI?: boolean;
+}
+
+export const CollaborationProvider: React.FC<CollaborationProviderProps> = ({
+  children,
+  initialSessionId,
+  initialToken,
+  autoConnect = false,
+  showUI = true
+}) => {
+  // State
+  const [status, setStatus] = useState<CollaborationStatus>('disconnected');
+  const [sessionId, setSessionId] = useState<string | undefined>(initialSessionId);
+  const [userId, setUserId] = useState<number | undefined>();
+  const [username, setUsername] = useState<string | undefined>();
+  const [participants, setParticipants] = useState<Participant[]>([]);
+  const [ydoc, setYdoc] = useState<Y.Doc>();
+  
+  // WebSocket reference
+  const wsRef = useRef<WebSocket | null>(null);
+  
+  // Keep track of reconnection attempts
+  const reconnectAttemptsRef = useRef(0);
+  const reconnectTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  
+  // Toast notifications
+  const { toast } = useToast();
+  
+  // Connect to a collaboration session
+  const connect = (newSessionId: string, token: string) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      disconnect();
+    }
+    
+    setSessionId(newSessionId);
+    
+    try {
+      // Reset reconnection attempts
+      reconnectAttemptsRef.current = 0;
+      
+      // Create WebSocket connection with proper protocol
+      const protocol = window.location.protocol === "https:" ? "wss:" : "ws:";
+      const wsUrl = `${protocol}//${window.location.host}/ws/collaboration`;
+      
+      setStatus('connecting');
+      
+      // Create a new WebSocket
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+      
+      // Setup event handlers
+      ws.onopen = () => {
+        console.log('WebSocket connection established');
+        
+        // Authenticate immediately after connection is established
+        ws.send(JSON.stringify({
+          type: 'auth',
+          token
+        }));
+      };
+      
+      ws.onmessage = (event) => {
+        const message = JSON.parse(event.data);
+        handleServerMessage(message);
+      };
+      
+      ws.onclose = (event) => {
+        console.log('WebSocket connection closed', event.code, event.reason);
+        
+        // Update status
+        if (status !== 'error') {
+          setStatus('disconnected');
+        }
+        
+        // Schedule reconnection attempt if not a clean close
+        if (event.code !== 1000) {
+          scheduleReconnection(newSessionId, token);
+        }
+        
+        // Clean up Y.js document
+        setYdoc(undefined);
+        setParticipants([]);
+      };
+      
+      ws.onerror = (error) => {
+        console.error('WebSocket error:', error);
+        setStatus('error');
+        
+        toast({
+          title: "Connection Error",
+          description: "Failed to connect to collaboration server",
+          variant: "destructive"
+        });
+      };
+    } catch (error) {
+      console.error('Error connecting to collaboration server:', error);
+      setStatus('error');
+      
+      toast({
+        title: "Connection Error",
+        description: "Failed to connect to collaboration server",
+        variant: "destructive"
+      });
+    }
+  };
+  
+  // Handle WebSocket reconnection
+  const scheduleReconnection = (reconnectSessionId: string, token: string) => {
+    if (reconnectTimeoutRef.current) {
+      clearTimeout(reconnectTimeoutRef.current);
+    }
+    
+    // Exponential backoff for reconnection attempts
+    const delay = Math.min(
+      1000 * Math.pow(1.5, reconnectAttemptsRef.current),
+      30000
+    ); // Cap at 30 seconds
+    
+    setStatus('reconnecting');
+    
+    reconnectAttemptsRef.current += 1;
+    reconnectTimeoutRef.current = setTimeout(() => {
+      console.log(`Attempting to reconnect (attempt ${reconnectAttemptsRef.current})...`);
+      connect(reconnectSessionId, token);
+    }, delay);
+  };
+  
+  // Disconnect from the collaboration session
+  const disconnect = () => {
+    if (wsRef.current) {
+      // Cancel any pending reconnection attempts
+      if (reconnectTimeoutRef.current) {
+        clearTimeout(reconnectTimeoutRef.current);
+        reconnectTimeoutRef.current = null;
+      }
+      
+      // Close the WebSocket connection
+      if (wsRef.current.readyState === WebSocket.OPEN) {
+        wsRef.current.close(1000, 'Disconnected by user');
+      }
+      
+      wsRef.current = null;
+      
+      // Update state
+      setStatus('disconnected');
+      setSessionId(undefined);
+      setYdoc(undefined);
+      setParticipants([]);
+    }
+  };
+  
+  // Handle messages from the server
+  const handleServerMessage = (message: any) => {
+    console.log('Received message from server:', message.type);
+    
+    switch (message.type) {
+      case 'welcome':
+        // Just a welcome message, nothing to do
+        break;
+        
+      case 'auth_success':
+        // Authentication successful
+        setUserId(message.userId);
+        setUsername(message.username);
+        
+        // Join the session after authentication
+        if (sessionId) {
+          wsRef.current?.send(JSON.stringify({
+            type: 'join_session',
+            sessionId,
+            username: message.username
+          }));
+        }
+        break;
+        
+      case 'auth_error':
+        toast({
+          title: "Authentication Error",
+          description: message.message || "Failed to authenticate",
+          variant: "destructive"
+        });
+        
+        setStatus('error');
+        break;
+        
+      case 'initialState':
+        // Session joined, update status
+        setStatus('connected');
+        
+        // Create a new Y.js document
+        const newYdoc = new Y.Doc();
+        
+        // Apply the initial state if available
+        if (message.state) {
+          try {
+            // Decode the base64 state to a Uint8Array
+            const state = Uint8Array.from(atob(message.state), c => c.charCodeAt(0));
+            Y.applyUpdate(newYdoc, state);
+          } catch (error) {
+            console.error('Error applying initial state:', error);
+          }
+        }
+        
+        // Store the document
+        setYdoc(newYdoc);
+        
+        // Toast notification
+        toast({
+          title: "Connected",
+          description: `Joined collaboration session`,
+        });
+        break;
+        
+      case 'clientList':
+        // Update the participant list
+        setParticipants(message.clients);
+        break;
+        
+      case 'clientJoin':
+        // Add the new participant
+        setParticipants(current => {
+          // Don't add duplicates
+          if (current.some(p => p.clientId === message.clientId)) {
+            return current;
+          }
+          
+          return [...current, {
+            clientId: message.clientId,
+            userId: message.userId,
+            username: message.username,
+            color: message.color
+          }];
+        });
+        
+        // Toast notification
+        toast({
+          title: "Participant Joined",
+          description: `${message.username} joined the session`,
+        });
+        break;
+        
+      case 'clientLeave':
+        // Remove the participant
+        setParticipants(current => 
+          current.filter(p => p.clientId !== message.clientId)
+        );
+        break;
+        
+      case 'yjsUpdate':
+        // Apply the update to the Y.js document
+        if (ydoc && message.update) {
+          try {
+            // Decode the base64 update to a Uint8Array
+            const update = Uint8Array.from(atob(message.update), c => c.charCodeAt(0));
+            Y.applyUpdate(ydoc, update);
+          } catch (error) {
+            console.error('Error applying update:', error);
+          }
+        }
+        break;
+        
+      case 'cursorUpdate':
+        // Update the participant's cursor position
+        setParticipants(current => {
+          return current.map(p => {
+            if (p.clientId === message.clientId) {
+              return {
+                ...p,
+                position: message.position,
+                selection: message.selection
+              };
+            }
+            return p;
+          });
+        });
+        break;
+        
+      case 'presenceUpdate':
+        // Update the participant's presence
+        setParticipants(current => {
+          return current.map(p => {
+            if (p.clientId === message.clientId) {
+              return {
+                ...p,
+                presence: message.presence
+              };
+            }
+            return p;
+          });
+        });
+        break;
+        
+      case 'error':
+        console.error('Error from server:', message.message);
+        
+        toast({
+          title: "Error",
+          description: message.message || "An error occurred",
+          variant: "destructive"
+        });
+        break;
+        
+      default:
+        console.warn('Unknown message type from server:', message.type);
+    }
+  };
+  
+  // Send a document update to the server
+  const sendUpdate = (update: Uint8Array) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      // Convert the update to base64
+      const updateBase64 = btoa(Array.from(update, byte => String.fromCharCode(byte)).join(''));
+      
+      wsRef.current.send(JSON.stringify({
+        type: 'update',
+        update: updateBase64
+      }));
+    }
+  };
+  
+  // Send a cursor position update to the server
+  const sendCursorUpdate = (position: any, selection?: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'cursor',
+        position,
+        selection
+      }));
+    }
+  };
+  
+  // Send a presence update to the server
+  const sendPresenceUpdate = (presence: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'presence',
+        state: presence
+      }));
+    }
+  };
+  
+  // Send a comment to the server
+  const sendComment = (comment: any) => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({
+        type: 'comment',
+        comment
+      }));
+    }
+  };
+  
+  // Connect automatically if requested
+  useEffect(() => {
+    if (autoConnect && initialSessionId && initialToken) {
+      connect(initialSessionId, initialToken);
+    }
+    
+    // Clean up on unmount
+    return () => {
+      disconnect();
+    };
+  }, []); // Empty dependency array to run only once
+  
+  // Keep WebSocket connection alive with ping/pong
+  useEffect(() => {
+    let pingInterval: NodeJS.Timeout | null = null;
+    
+    if (wsRef.current && status === 'connected') {
+      pingInterval = setInterval(() => {
+        if (wsRef.current?.readyState === WebSocket.OPEN) {
+          wsRef.current.send(JSON.stringify({ type: 'ping' }));
+        }
+      }, 30000); // Send ping every 30 seconds
+    }
+    
+    return () => {
+      if (pingInterval) {
+        clearInterval(pingInterval);
+      }
+    };
+  }, [status]);
+  
+  // Context value
+  const value: CollaborationContextValue = {
+    status,
+    connect,
+    disconnect,
+    ydoc,
+    participants,
+    sessionId,
+    userId,
+    username,
+    sendUpdate,
+    sendCursorUpdate,
+    sendPresenceUpdate,
+    sendComment
+  };
+  
+  // Helper to get status badge styling
+  const getStatusBadgeStyling = () => {
+    switch (status) {
+      case 'connected':
+        return 'bg-green-100 text-green-800';
+      case 'connecting':
+      case 'reconnecting':
+        return 'bg-blue-100 text-blue-800';
+      case 'disconnected':
+        return 'bg-slate-100 text-slate-800';
+      case 'error':
+        return 'bg-red-100 text-red-800';
+      default:
+        return '';
+    }
+  };
+  
+  // Helper to get status icon
+  const getStatusIcon = () => {
+    switch (status) {
+      case 'connected':
+        return <Wifi className="h-4 w-4 mr-1" />;
+      case 'connecting':
+      case 'reconnecting':
+        return <Clock className="h-4 w-4 mr-1 animate-spin" />;
+      case 'disconnected':
+        return <WifiOff className="h-4 w-4 mr-1" />;
+      case 'error':
+        return <X className="h-4 w-4 mr-1" />;
+      default:
+        return null;
+    }
+  };
+  
+  return (
+    <CollaborationContext.Provider value={value}>
+      {children}
+      
+      {showUI && (
+        <Card className="fixed bottom-4 right-4 w-64 shadow-md">
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm flex items-center justify-between">
+              <span>Collaboration</span>
+              <Badge 
+                variant="outline" 
+                className={`flex items-center text-xs ${getStatusBadgeStyling()}`}
+              >
+                {getStatusIcon()}
+                {status === 'connected' ? 'Connected' : 
+                 status === 'connecting' ? 'Connecting' :
+                 status === 'reconnecting' ? 'Reconnecting' :
+                 status === 'disconnected' ? 'Disconnected' :
+                 'Error'}
+              </Badge>
+            </CardTitle>
+            {sessionId && <CardDescription className="text-xs">Session: {sessionId}</CardDescription>}
+          </CardHeader>
+          
+          <CardContent className="pb-2">
+            <div className="space-y-2">
+              {participants.length > 0 ? (
+                <div className="text-xs">
+                  <div className="font-medium mb-1">Participants</div>
+                  <div className="flex flex-wrap gap-1">
+                    {participants.map(participant => (
+                      <TooltipProvider key={participant.clientId}>
+                        <Tooltip>
+                          <TooltipTrigger>
+                            <div 
+                              className="w-6 h-6 rounded-full flex items-center justify-center text-white"
+                              style={{ backgroundColor: participant.color }}
+                            >
+                              {participant.username.charAt(0).toUpperCase()}
+                            </div>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>{participant.username}</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    ))}
+                  </div>
+                </div>
+              ) : status === 'connected' ? (
+                <div className="text-xs text-gray-500 text-center">
+                  No other participants
+                </div>
+              ) : null}
+              
+              {status === 'error' && (
+                <div className="text-xs text-red-500">
+                  Connection error. Please try reconnecting.
+                </div>
+              )}
+            </div>
+          </CardContent>
+          
+          <CardFooter className="pt-0">
+            {status === 'connected' ? (
+              <Button 
+                variant="outline" 
+                size="sm" 
+                className="w-full text-xs" 
+                onClick={disconnect}
+              >
+                Disconnect
+              </Button>
+            ) : (
+              sessionId && (
+                <Button 
+                  variant="outline" 
+                  size="sm" 
+                  className="w-full text-xs" 
+                  onClick={() => connect(sessionId, 'demo-token')}
+                >
+                  {status === 'reconnecting' ? 'Reconnecting...' : 'Reconnect'}
+                </Button>
+              )
+            )}
+          </CardFooter>
+        </Card>
+      )}
+    </CollaborationContext.Provider>
+  );
+};
+
+export default CollaborationProvider;
