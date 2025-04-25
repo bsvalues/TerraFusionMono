@@ -8,7 +8,7 @@
 
 console.log('[vite-hmr-fix] Loading WebSocket fix for Replit');
 
-if (window.location.hostname.includes('.replit.dev') || window.location.hostname.includes('.repl.co')) {
+if (window.location.hostname.includes('.replit.dev')) {
   // Store the original WebSocket constructor
   const OriginalWebSocket = window.WebSocket;
   

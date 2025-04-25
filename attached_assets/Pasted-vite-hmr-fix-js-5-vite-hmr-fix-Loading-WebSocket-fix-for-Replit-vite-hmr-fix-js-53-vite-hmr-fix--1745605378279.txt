@@ -1,0 +1,56 @@
+vite-hmr-fix.js:5 [vite-hmr-fix] Loading WebSocket fix for Replit
+vite-hmr-fix.js:53 [vite-hmr-fix] WebSocket fix applied for Replit environment
+vite-hmr-fix.js:34  WebSocket connection to 'wss://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/?token=y0--xTiC-dIb' failed: 
+window.WebSocket @ vite-hmr-fix.js:34
+vite-hmr-fix.js:27 [vite-hmr-fix] Fixed WebSocket URL from wss://localhost:undefined/?token=y0--xTiC-dIb to wss://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/?token=y0--xTiC-dIb
+vite-hmr-fix.js:30  WebSocket connection to 'wss://6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/?token=y0--xTiC-dIb' failed: 
+window.WebSocket @ vite-hmr-fix.js:30
+hook.js:608  [vite] failed to connect to websocket.
+your current setup:
+  (browser) 6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev/ <--[HTTP]--> localhost:undefined/ (server)
+  (browser) 6afc9bec-5e89-4b72-a7ed-96b48426f799-00-2kvzo3vjr1rx6.janeway.replit.dev:/ <--[WebSocket (failing)]--> localhost:undefined/ (server)
+Check out your Vite / network configuration and https://vite.dev/config/server-options.html#server-hmr .
+overrideMethod @ hook.js:608
+content.js:3  error occurred Object
+(anonymous) @ content.js:3
+hook.js:608  Warning: Function components cannot be given refs. Attempts to access this ref will fail. Did you mean to use React.forwardRef()?
+
+Check the render method of `Primitive.button.SlotClone`. Error Component Stack
+    at Badge (badge.tsx:32:18)
+    at slot.tsx:68:13
+    at slot.tsx:15:13
+    at primitive.tsx:39:13
+    at dialog.tsx:99:13
+    at Provider (create-context.tsx:59:15)
+    at Dialog (dialog.tsx:52:5)
+    at div (<anonymous>)
+    at SyncStatusPanel (SyncStatusPanel.tsx:142:43)
+    at div (<anonymous>)
+    at div (<anonymous>)
+    at header (<anonymous>)
+    at Navbar (navbar.tsx:8:22)
+    at div (<anonymous>)
+    at MainLayout (main-layout.tsx:9:38)
+    at Router (<anonymous>)
+    at Provider (create-context.tsx:59:15)
+    at TooltipProvider (tooltip.tsx:68:5)
+    at QueryClientProvider (QueryClientProvider.tsx:30:3)
+    at App (<anonymous>)
+overrideMethod @ hook.js:608
+  error occurred Object
+(anonymous) @ content.js:3
+content.js:3  error occurred Object
+(anonymous) @ content.js:3
+content.js:3  error occurred Object
+(anonymous) @ content.js:3
+[NEW] Explain Console errors by using Copilot in Edge: click
+         
+         to explain an error. 
+        Learn more
+        Don't show again
+
+                
+          
+          
+          
+         Microsoft Edge is moving towards a new experience that allows users to choose to browse without third-party cookies.
