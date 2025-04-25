@@ -1,0 +1,1268 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Army Dashboard{% endblock %}
+
+{% block head %}
+{{ super() }}
+<style>
+  .agent-card {
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+    transition: all 0.2s ease-in-out;
+    cursor: pointer;
+    position: relative;
+  }
+  
+  .agent-card:hover {
+    transform: translateY(-5px);
+    box-shadow: 0 5px 15px rgba(0,0,0,0.2);
+    border-color: #3DA5BD;
+  }
+  
+  .agent-card:after {
+    content: "View Details";
+    position: absolute;
+    bottom: 10px;
+    right: 10px;
+    background-color: rgba(61, 165, 189, 0.1);
+    padding: 3px 8px;
+    border-radius: 4px;
+    font-size: 12px;
+    opacity: 0;
+    transition: opacity 0.2s ease-in-out;
+  }
+  
+  .agent-card:hover:after {
+    opacity: 1;
+  }
+  
+  .agent-card .card-header {
+    border-bottom: 1px solid rgba(0,0,0,0.1);
+    font-weight: bold;
+  }
+  
+  .status-initialized { color: #17a2b8; }
+  .status-active { color: #28a745; }
+  .status-idle { color: #6c757d; }
+  .status-error { color: #dc3545; }
+  
+  .performance-indicator {
+    width: 100%;
+    height: 10px;
+    background: #e9ecef;
+    border-radius: 5px;
+    overflow: hidden;
+  }
+  
+  .performance-bar {
+    height: 100%;
+    background: linear-gradient(90deg, #dc3545 0%, #ffc107 50%, #28a745 100%);
+  }
+  
+  .metrics-card {
+    border-radius: 8px;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+    margin-bottom: 20px;
+  }
+  
+  .experiences-table th, .experiences-table td {
+    padding: 0.5rem;
+    font-size: 0.875rem;
+  }
+  
+  .help-badge {
+    position: absolute;
+    top: -5px;
+    right: -5px;
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #dc3545;
+    color: white;
+    font-size: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  
+  #communication-graph {
+    width: 100%;
+    height: 400px;
+    border: 1px solid #ddd;
+    border-radius: 8px;
+    margin-top: 20px;
+  }
+  
+  /* Notification system styles */
+  .notification-card {
+    border-left: 4px solid #007bff;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.1);
+    transition: all 0.2s ease;
+    margin-bottom: 10px;
+  }
+  
+  .notification-card:hover {
+    box-shadow: 0 2px 5px rgba(0,0,0,0.2);
+  }
+  
+  .notification-card .badge.bg-success {
+    background-color: #28a745 !important;
+  }
+  
+  .notification-card .badge.bg-info {
+    background-color: #17a2b8 !important;
+  }
+  
+  .notification-card .badge.bg-warning {
+    background-color: #ffc107 !important;
+    color: #212529;
+  }
+  
+  .notification-card .badge.bg-primary {
+    background-color: #007bff !important;
+  }
+  
+  .notification-card .badge.bg-secondary {
+    background-color: #6c757d !important;
+  }
+  
+  /* Activity feed scrollable area */
+  #activity-feed {
+    max-height: 400px;
+    overflow-y: auto;
+    padding-right: 5px;
+  }
+
+  /* Workflow list styling */
+  .workflow-list .list-group-item {
+    transition: all 0.2s ease;
+    margin-bottom: 0.5rem;
+    border-radius: 0.5rem;
+    border-left: 4px solid transparent;
+  }
+  
+  .workflow-list .list-group-item:hover {
+    border-left-color: #007bff;
+    box-shadow: 0 2px 8px rgba(0,0,0,0.15);
+    transform: translateX(3px);
+  }
+  
+  /* Toast notification styles */
+  .toast {
+    background-color: #fff;
+    border-radius: 0.5rem;
+    box-shadow: 0 0.5rem 1rem rgba(0, 0, 0, 0.15);
+    opacity: 0;
+    transition: opacity 0.3s ease-in-out;
+  }
+  
+  .toast.show {
+    opacity: 1;
+  }
+  
+  .toast-header {
+    border-bottom: 1px solid rgba(0, 0, 0, 0.05);
+  }
+  
+  .toast-success .toast-header {
+    background-color: rgba(40, 167, 69, 0.1);
+    color: #28a745;
+  }
+  
+  .toast-info .toast-header {
+    background-color: rgba(23, 162, 184, 0.1);
+    color: #17a2b8;
+  }
+  
+  .toast-warning .toast-header {
+    background-color: rgba(255, 193, 7, 0.1);
+    color: #856404;
+  }
+  
+  .toast-error .toast-header {
+    background-color: rgba(220, 53, 69, 0.1);
+    color: #dc3545;
+  }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+  <div class="row mb-4">
+    <div class="col-12">
+      <h1 class="display-4">MCP Army Dashboard</h1>
+      <p class="lead">Monitoring and managing the Agent Army</p>
+    </div>
+  </div>
+  
+  <div class="row mb-4">
+    <div class="col-md-4">
+      <div class="card bg-primary text-white">
+        <div class="card-body">
+          <h5 class="card-title">Total Agents</h5>
+          <h2 class="display-4">{{ agents|length }}</h2>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card bg-success text-white">
+        <div class="card-body">
+          <h5 class="card-title">Active Agents</h5>
+          <h2 class="display-4">{{ agents|selectattr('status', 'equalto', 'active')|list|length }}</h2>
+        </div>
+      </div>
+    </div>
+    <div class="col-md-4">
+      <div class="card bg-info text-white">
+        <div class="card-body">
+          <h5 class="card-title">Help Requests</h5>
+          <h2 class="display-4" id="help-request-count">0</h2>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+  <div class="row">
+    <div class="col-md-8">
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Agent Status</h5>
+        </div>
+        <div class="card-body">
+          <div class="row">
+            {% for agent in agents %}
+            <div class="col-md-6">
+              <div class="card agent-card" data-agent-id="{{ agent.id }}">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                  <span>{{ agent.id }}</span>
+                  <span class="badge status-{{ agent.status|lower }} agent-status">{{ agent.status }}</span>
+                </div>
+                <div class="card-body">
+                  <p><strong>Type:</strong> {{ agent.type }}</p>
+                  <div class="d-flex justify-content-between mb-1">
+                    <span>Performance:</span>
+                    <span>{{ "%.2f"|format(agent.performance.overall * 100) }}%</span>
+                  </div>
+                  <div class="performance-indicator">
+                    <div class="performance-bar" style="width: {{ agent.performance.overall * 100 }}%;"></div>
+                  </div>
+                  <div class="mt-3">
+                    <button class="btn btn-sm btn-outline-secondary request-help-btn" data-agent-id="{{ agent.id }}">Request Help</button>
+                  </div>
+                </div>
+              </div>
+            </div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+      
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Agent Command Structure</h5>
+        </div>
+        <div class="card-body">
+          <div class="mb-3">
+            <h6>Hierarchical Command Structure</h6>
+            <p class="text-muted">Based on the Strategic Orchestration Guide for BCBS GeoAssessment System</p>
+          </div>
+          <div id="command-structure-diagram" class="mermaid">
+            {{ mermaid_diagram | safe }}
+          </div>
+        </div>
+      </div>
+      
+      <div class="card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Agent Collaboration Network</h5>
+        </div>
+        <div class="card-body">
+          <div id="communication-graph"></div>
+        </div>
+      </div>
+    </div>
+    
+    <div class="col-md-4">
+      <div class="card metrics-card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Activity Notifications</h5>
+        </div>
+        <div class="card-body">
+          <div id="activity-feed" class="mb-3">
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-success">Initialization</span>
+                  <small class="text-muted">just now</small>
+                </div>
+                <p class="mb-0 mt-1">MCP Army system initialized with hierarchical command structure</p>
+              </div>
+            </div>
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-info">Registration</span>
+                  <small class="text-muted">1 min ago</small>
+                </div>
+                <p class="mb-0 mt-1">Architect Prime agent (workflow_coordinator) registered</p>
+              </div>
+            </div>
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-info">Registration</span>
+                  <small class="text-muted">1 min ago</small>
+                </div>
+                <p class="mb-0 mt-1">Integration Coordinator agent (MCP) registered</p>
+              </div>
+            </div>
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-warning">Broadcast</span>
+                  <small class="text-muted">2 mins ago</small>
+                </div>
+                <p class="mb-0 mt-1">Master prompt broadcast to all agents</p>
+              </div>
+            </div>
+          </div>
+          <button class="btn btn-sm btn-outline-primary w-100" id="clear-notifications-btn">Clear All Notifications</button>
+        </div>
+      </div>
+      
+      <div class="card metrics-card mb-4">
+        <div class="card-header">
+          <h5 class="mb-0">Experience Replay</h5>
+        </div>
+        <div class="card-body">
+          <div id="experience-stats">
+            <p><strong>Loading experience statistics...</strong></p>
+          </div>
+          
+          <hr>
+          
+          <h6>Recent Experiences</h6>
+          <div class="table-responsive">
+            <table class="table table-sm experiences-table">
+              <thead>
+                <tr>
+                  <th>Agent</th>
+                  <th>Event Type</th>
+                  <th>Time</th>
+                </tr>
+              </thead>
+              <tbody id="recent-experiences">
+                <tr>
+                  <td colspan="3" class="text-center">Loading experiences...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+          
+          <button class="btn btn-sm btn-primary" id="start-training-btn">Start Training Cycle</button>
+        </div>
+      </div>
+      
+      <div class="card metrics-card">
+        <div class="card-header">
+          <h5 class="mb-0">Collaborative Workflows</h5>
+        </div>
+        <div class="card-body">
+          <div class="list-group workflow-list">
+            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center workflow-btn" data-workflow="levy_compliance_audit">
+              <div>
+                <i class="bi bi-clipboard-check me-2"></i>
+                <strong>Levy Compliance Audit</strong>
+                <div class="small text-muted">Validates levy calculations against regulatory requirements</div>
+              </div>
+              <span class="badge bg-primary">Basic</span>
+            </button>
+            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center workflow-btn" data-workflow="cross_district_analysis">
+              <div>
+                <i class="bi bi-bar-chart me-2"></i>
+                <strong>Cross-District Analysis</strong>
+                <div class="small text-muted">Compares levy rates across multiple districts</div>
+              </div>
+              <span class="badge bg-success">Advanced</span>
+            </button>
+            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center workflow-btn" data-workflow="historical_trend_forecasting">
+              <div>
+                <i class="bi bi-graph-up me-2"></i>
+                <strong>Historical Trend Forecasting</strong>
+                <div class="small text-muted">Predicts future levy rates based on historical data</div>
+              </div>
+              <span class="badge bg-warning">Complex</span>
+            </button>
+            <button class="list-group-item list-group-item-action d-flex justify-content-between align-items-center workflow-btn" data-workflow="regulatory_compliance_check">
+              <div>
+                <i class="bi bi-shield-check me-2"></i>
+                <strong>Regulatory Compliance Check</strong>
+                <div class="small text-muted">Ensures levy calculations meet legal requirements</div>
+              </div>
+              <span class="badge bg-info">Standard</span>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Modal for Agent Details -->
+<div class="modal fade" id="agentDetailsModal" tabindex="-1" role="dialog" aria-labelledby="agentDetailsModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="agentDetailsModalLabel">Agent Details</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body" id="agentDetailsContent">
+        <p>Loading agent details...</p>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Toast Container -->
+<div class="toast-container position-fixed bottom-0 end-0 p-3" id="toastContainer" style="z-index: 1500;">
+  <!-- Toasts will be dynamically added here -->
+</div>
+
+<!-- Modal for Workflow Execution -->
+<div class="modal fade" id="workflowModal" tabindex="-1" role="dialog" aria-labelledby="workflowModalLabel" aria-hidden="true">
+  <div class="modal-dialog" role="document">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="workflowModalLabel">Execute Workflow</h5>
+        <button type="button" class="close" data-dismiss="modal" aria-label="Close">
+          <span aria-hidden="true">&times;</span>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="workflowForm">
+          <input type="hidden" id="workflowName" name="workflowName" value="">
+          
+          <div class="form-group">
+            <label for="taxDistrictId">Tax District</label>
+            <select class="form-control" id="taxDistrictId" name="taxDistrictId">
+              <option value="">Select a district...</option>
+              <!-- Districts will be loaded dynamically -->
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="year">Year</label>
+            <select class="form-control" id="year" name="year">
+              <option value="2025">2025</option>
+              <option value="2024">2024</option>
+              <option value="2023">2023</option>
+              <option value="2022">2022</option>
+              <option value="2021">2021</option>
+            </select>
+          </div>
+          
+          <div class="form-group">
+            <label for="additionalParams">Additional Parameters (JSON)</label>
+            <textarea class="form-control" id="additionalParams" name="additionalParams" rows="3"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-dismiss="modal">Cancel</button>
+        <button type="button" class="btn btn-primary" id="executeWorkflowBtn">Execute</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script src="https://cdn.jsdelivr.net/npm/mermaid@10.2.3/dist/mermaid.min.js"></script>
+<script>
+  mermaid.initialize({
+    startOnLoad: true,
+    theme: 'default',
+    securityLevel: 'loose',
+    flowchart: {
+      useMaxWidth: true,
+      htmlLabels: true,
+      curve: 'basis'
+    }
+  });
+</script>
+<!-- Include MCP Army Dashboard JavaScript -->
+<script>
+  console.log('Loading MCP Army Dashboard JavaScript...');
+</script>
+<script src="{{ url_for('static', filename='js/mcp_army_dashboard.js') }}"></script>
+<script>
+  console.log('MCP Army Dashboard JavaScript loaded');
+  // Check if the initDashboard function exists
+  if (typeof initDashboard === 'function') {
+    console.log('initDashboard function found');
+  } else {
+    console.error('initDashboard function not found');
+  }
+</script>
+<script>
+  /* Legacy code for backwards compatibility */
+  $(document).ready(function() {
+    // Toast notification function
+    function showToast(title, message, type = 'info', autohide = true, delay = 5000) {
+      const toastId = 'toast-' + Date.now();
+      const toastTypes = {
+        'success': {
+          icon: 'check-circle-fill',
+          bgClass: 'toast-success'
+        },
+        'info': {
+          icon: 'info-circle-fill',
+          bgClass: 'toast-info'
+        },
+        'warning': {
+          icon: 'exclamation-triangle-fill',
+          bgClass: 'toast-warning'
+        },
+        'error': {
+          icon: 'x-circle-fill',
+          bgClass: 'toast-error'
+        }
+      };
+      
+      const typeInfo = toastTypes[type] || toastTypes.info;
+      
+      const toastHtml = `
+        <div class="toast ${typeInfo.bgClass}" id="${toastId}" role="alert" aria-live="assertive" aria-atomic="true" data-bs-autohide="${autohide}" data-bs-delay="${delay}">
+          <div class="toast-header">
+            <svg class="bd-placeholder-img me-2" width="20" height="20" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid slice" focusable="false" role="img">
+              <rect width="100%" height="100%" fill="currentColor"></rect>
+              <text x="50%" y="50%" fill="#fff" text-anchor="middle" dominant-baseline="middle">i</text>
+            </svg>
+            <strong class="me-auto">${title}</strong>
+            <small class="text-muted">just now</small>
+            <button type="button" class="btn-close" data-bs-dismiss="toast" aria-label="Close"></button>
+          </div>
+          <div class="toast-body">
+            ${message}
+          </div>
+        </div>
+      `;
+      
+      // Add toast to container
+      $('#toastContainer').append(toastHtml);
+      
+      // Initialize and show the toast
+      const toastElement = document.getElementById(toastId);
+      const toast = new bootstrap.Toast(toastElement);
+      toast.show();
+      
+      // Remove toast from DOM after it's hidden
+      $(toastElement).on('hidden.bs.toast', function() {
+        $(this).remove();
+      });
+      
+      return toastId;
+    }
+    
+    // Load experience statistics
+    // Function to load command structure info for a specific agent
+    function loadAgentCommandInfo(agentId) {
+      $.ajax({
+        url: '/mcp-army/api/command-structure',
+        method: 'GET',
+        success: function(data) {
+          let role = "Unknown";
+          let reports_to = "None";
+          let supervises = [];
+          
+          // Find role in command structure
+          if (data.command_structure.architect_prime === agentId) {
+            role = "Architect Prime";
+          } else if (data.command_structure.integration_coordinator === agentId) {
+            role = "Integration Coordinator";
+          } else {
+            // Check component leads
+            for (const [component, leadId] of Object.entries(data.command_structure.component_leads)) {
+              if (leadId === agentId) {
+                role = `Component Lead (${component})`;
+                break;
+              }
+            }
+            
+            // Check specialist agents
+            if (role === "Unknown") {
+              for (const [domain, agents] of Object.entries(data.command_structure.specialist_agents)) {
+                if (agents.includes(agentId)) {
+                  role = `Specialist Agent (${domain})`;
+                  break;
+                }
+              }
+            }
+          }
+          
+          // Get relationship info
+          if (data.agent_relationships[agentId]) {
+            const relationship = data.agent_relationships[agentId];
+            if (relationship.reports_to) {
+              reports_to = relationship.reports_to;
+            }
+            supervises = relationship.supervises || [];
+          }
+          
+          // Build HTML
+          let commandHtml = `
+            <div class="card mb-3">
+              <div class="card-header bg-info text-white">
+                <h5 class="mb-0">Command Structure Role</h5>
+              </div>
+              <div class="card-body">
+                <p><strong>Role:</strong> ${role}</p>
+                <p><strong>Reports to:</strong> ${reports_to === "None" ? "None (Top Level)" : reports_to}</p>
+                <p><strong>Supervises:</strong> ${supervises.length === 0 ? "None" : supervises.join(", ")}</p>
+              </div>
+            </div>
+          `;
+          
+          $('#agent-command-info').html(commandHtml);
+        },
+        error: function(err) {
+          $('#agent-command-info').html('<p class="text-danger">Error loading command structure information</p>');
+          console.error('Error loading command info:', err);
+        }
+      });
+    }
+    
+    function loadExperienceStats() {
+      $.ajax({
+        url: '/mcp-army/api/experiences/stats',
+        method: 'GET',
+        timeout: 5000, // 5 second timeout to avoid hanging UI
+        success: function(data) {
+          let html = '';
+          if (!data || data.total_experiences === 0) {
+            html = `
+              <div class="alert alert-info">
+                <p class="mb-0">No experiences recorded yet.</p>
+                <small>Experiences will be collected as agents interact with the system.</small>
+              </div>
+            `;
+          } else {
+            html = `
+              <p><strong>Total Experiences:</strong> ${data.total_experiences}</p>
+              <p><strong>Utilization:</strong> ${(data.utilization * 100).toFixed(2)}%</p>
+              <p><strong>Most Recent:</strong> ${new Date(data.most_recent).toLocaleString()}</p>
+              
+              <h6>By Event Type</h6>
+              <ul>
+                ${Object.entries(data.by_event_type || {}).map(([type, count]) => 
+                  `<li>${type}: ${count}</li>`
+                ).join('')}
+              </ul>
+            `;
+          }
+          $('#experience-stats').html(html);
+        },
+        error: function(err) {
+          console.error('Error loading experience statistics:', err);
+          
+          // Generate placeholder content that gives useful information
+          const html = `
+            <div class="alert alert-warning">
+              <p class="mb-1"><strong>Experience statistics unavailable</strong></p>
+              <p class="mb-0 small">The experience replay system may still be initializing.</p>
+            </div>
+            <p><strong>What are experiences?</strong></p>
+            <p class="small">Experiences represent agent interactions and outcomes that are stored in a replay buffer for learning and improvement.</p>
+          `;
+          
+          $('#experience-stats').html(html);
+        }
+      });
+    }
+    
+    // Load recent experiences
+    function loadRecentExperiences() {
+      // For simplicity, we'll just get experiences from the first agent
+      const firstAgentId = '{{ agents[0].id if agents|length > 0 else "" }}';
+      if (!firstAgentId) {
+        $('#recent-experiences').html('<tr><td colspan="3" class="text-center">No agents available</td></tr>');
+        return;
+      }
+      
+      $.ajax({
+        url: `/mcp-army/api/agents/${firstAgentId}/experiences?limit=5`,
+        method: 'GET',
+        timeout: 5000, // 5 second timeout
+        success: function(data) {
+          if (!data || !data.experiences || data.experiences.length === 0) {
+            $('#recent-experiences').html('<tr><td colspan="3" class="text-center">No experiences recorded yet</td></tr>');
+            return;
+          }
+          
+          let html = '';
+          data.experiences.forEach(exp => {
+            html += `
+              <tr>
+                <td>${exp.agentId || firstAgentId}</td>
+                <td><span class="badge ${exp.eventType === 'error' ? 'bg-danger' : 'bg-info'}">${exp.eventType || 'interaction'}</span></td>
+                <td>${new Date(exp.timestamp || Date.now()).toLocaleTimeString()}</td>
+              </tr>
+            `;
+          });
+          
+          $('#recent-experiences').html(html);
+        },
+        error: function(err) {
+          console.error('Error loading recent experiences:', err);
+          
+          // Show example data while the API is being developed
+          const sampleData = `
+            <tr>
+              <td>${firstAgentId}</td>
+              <td><span class="badge bg-info">initialization</span></td>
+              <td>${new Date().toLocaleTimeString()}</td>
+            </tr>
+            <tr>
+              <td>MCP</td>
+              <td><span class="badge bg-success">coordination</span></td>
+              <td>${new Date().toLocaleTimeString()}</td>
+            </tr>
+          `;
+          
+          $('#recent-experiences').html(sampleData);
+        }
+      });
+    }
+    
+    // Make entire agent card clickable
+    $('.agent-card').click(function() {
+      const agentId = $(this).data('agent-id');
+      
+      // Don't trigger if the click was on the "Request Help" button
+      if ($(event.target).closest('.request-help-btn').length) {
+        return;
+      }
+      
+      $.ajax({
+        url: `/mcp-army/api/agents/${agentId}`,
+        method: 'GET',
+        success: function(data) {
+          let html = `
+            <h4>${data.agent_id}</h4>
+            <div class="row">
+              <div class="col-md-6">
+                <p><strong>Status:</strong> <span class="badge status-${data.status.status.toLowerCase()}">${data.status.status}</span></p>
+                <p><strong>Last Updated:</strong> ${new Date(data.status.last_updated).toLocaleString()}</p>
+              </div>
+              <div class="col-md-6">
+                <h5>Performance Metrics</h5>
+                <table class="table table-sm">
+                  <tr>
+                    <td>Overall Score</td>
+                    <td>${(data.status.performance.overall * 100).toFixed(2)}%</td>
+                  </tr>
+                  <tr>
+                    <td>Task Success Rate</td>
+                    <td>${(data.status.performance.task_success_rate * 100).toFixed(2)}%</td>
+                  </tr>
+                  <tr>
+                    <td>Average Response Time</td>
+                    <td>${data.status.performance.response_time.toFixed(2)}ms</td>
+                  </tr>
+                  <tr>
+                    <td>Error Rate</td>
+                    <td>${(data.status.performance.error_rate * 100).toFixed(2)}%</td>
+                  </tr>
+                </table>
+              </div>
+            </div>
+            
+            <div id="agent-command-info">
+              <p>Loading command structure information...</p>
+            </div>
+            
+            <h5 class="mt-3">Capabilities</h5>
+            <div id="agent-capabilities">
+              <p>Loading capabilities...</p>
+            </div>
+            
+            <h5 class="mt-3">Recent Activities</h5>
+            <div id="agent-activities">
+              <p>Loading activities...</p>
+            </div>
+          `;
+          
+          $('#agentDetailsContent').html(html);
+          $('#agentDetailsModal').modal('show');
+          
+          // Load command structure information for this agent
+          loadAgentCommandInfo(agentId);
+          
+          // In a full implementation, we would load capabilities and activities here
+        },
+        error: function(err) {
+          alert('Error loading agent details: ' + err.responseJSON?.error || 'Unknown error');
+          console.error('Error loading agent details:', err);
+        }
+      });
+    });
+    
+    // Request help
+    $('.request-help-btn').click(function() {
+      const agentId = $(this).data('agent-id');
+      
+      // Find a suitable agent to provide help (for demo, use workflow coordinator)
+      const helperAgent = 'workflow_coordinator';
+      
+      $.ajax({
+        url: `/mcp-army/api/agents/${helperAgent}/assistance/${agentId}`,
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          assistance_type: 'performance_improvement'
+        }),
+        success: function(data) {
+          // Add notification to activity feed
+          const notification = `
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-warning">Assistance</span>
+                  <small class="text-muted">just now</small>
+                </div>
+                <p class="mb-0 mt-1">Agent "${agentId}" requested assistance from "${helperAgent}"</p>
+                <small class="text-muted">Task ID: ${data.task_id}</small>
+              </div>
+            </div>
+          `;
+          
+          $('#activity-feed').prepend(notification);
+          $('#clear-notifications-btn').prop('disabled', false);
+          
+          // Show toast notification instead of alert
+          showToast(
+            'Help Requested', 
+            `Agent ${agentId} requested assistance from ${helperAgent}`,
+            'warning'
+          );
+        },
+        error: function(err) {
+          const errorMessage = err.responseJSON?.error || 'Unknown error';
+          // Show error toast notification
+          showToast(
+            'Help Request Failed', 
+            `Error requesting help: ${errorMessage}`,
+            'error',
+            true,
+            8000
+          );
+          console.error('Error requesting help:', err);
+        }
+      });
+    });
+    
+    // Clear notifications
+    $('#clear-notifications-btn').click(function() {
+      $('#activity-feed').html('<p class="text-center text-muted">No notifications</p>');
+      $(this).prop('disabled', true);
+      
+      // Show toast notification
+      showToast(
+        'Notifications Cleared', 
+        'All notifications have been cleared from the activity feed',
+        'secondary',
+        true,
+        3000
+      );
+      
+      // Add a sample notification about clearing
+      setTimeout(() => {
+        const notification = `
+          <div class="card notification-card mb-2">
+            <div class="card-body p-2">
+              <div class="d-flex justify-content-between align-items-start">
+                <span class="badge bg-secondary">System</span>
+                <small class="text-muted">just now</small>
+              </div>
+              <p class="mb-0 mt-1">Notifications cleared by user</p>
+            </div>
+          </div>
+        `;
+        $('#activity-feed').html(notification);
+        $(this).prop('disabled', false);
+      }, 500);
+    });
+    
+    // Start training cycle
+    $('#start-training-btn').click(function() {
+      $(this).prop('disabled', true).html('<span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span> Training...');
+      
+      $.ajax({
+        url: '/mcp-army/api/training/start',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ batch_size: 32 }),
+        success: function(data) {
+          // Add notification to activity feed for training
+          const notification = `
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-success">Training</span>
+                  <small class="text-muted">just now</small>
+                </div>
+                <p class="mb-0 mt-1">Training cycle completed successfully</p>
+                <small class="text-muted">Batch size: ${data.batch_size || 32}, Trained examples: ${data.processed_examples || 'N/A'}</small>
+              </div>
+            </div>
+          `;
+          
+          $('#activity-feed').prepend(notification);
+          $('#clear-notifications-btn').prop('disabled', false);
+          
+          // Show toast notification instead of alert
+          showToast(
+            'Training Complete', 
+            `Trained ${data.processed_examples || 'N/A'} examples successfully`,
+            'info'
+          );
+          loadExperienceStats();
+          loadRecentExperiences();
+        },
+        error: function(err) {
+          const errorMessage = err.responseJSON?.error || 'Unknown error';
+          // Show error toast notification
+          showToast(
+            'Training Error', 
+            `Error starting training cycle: ${errorMessage}`,
+            'error',
+            true,
+            8000
+          );
+          console.error('Error starting training:', err);
+        },
+        complete: function() {
+          $('#start-training-btn').prop('disabled', false).text('Start Training Cycle');
+        }
+      });
+    });
+    
+    // Execute workflow
+    $('.workflow-btn').click(function() {
+      const workflowName = $(this).data('workflow');
+      $('#workflowName').val(workflowName);
+      $('#workflowModalLabel').text(`Execute ${workflowName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase())}`);
+      $('#workflowModal').modal('show');
+      
+      // For a full implementation, we would load available tax districts here
+    });
+    
+    $('#executeWorkflowBtn').click(function() {
+      const workflowName = $('#workflowName').val();
+      const taxDistrictId = $('#taxDistrictId').val();
+      const year = $('#year').val();
+      const additionalParams = $('#additionalParams').val();
+      
+      if (!taxDistrictId) {
+        showToast('Form Error', 'Please select a tax district', 'warning');
+        return;
+      }
+      
+      const params = {
+        tax_district_id: taxDistrictId,
+        year: parseInt(year)
+      };
+      
+      // Parse additional parameters if provided
+      if (additionalParams) {
+        try {
+          const extraParams = JSON.parse(additionalParams);
+          Object.assign(params, extraParams);
+        } catch (e) {
+          showToast('JSON Error', 'Invalid JSON in additional parameters', 'error', true);
+          return;
+        }
+      }
+      
+      // Execute the workflow
+      $.ajax({
+        url: '/mcp-army/api/workflows/collaborative',
+        method: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({
+          workflow_name: workflowName,
+          parameters: params
+        }),
+        success: function(data) {
+          $('#workflowModal').modal('hide');
+          
+          // Add the notification to the activity feed
+          const notification = `
+            <div class="card notification-card mb-2">
+              <div class="card-body p-2">
+                <div class="d-flex justify-content-between align-items-start">
+                  <span class="badge bg-primary">Workflow</span>
+                  <small class="text-muted">just now</small>
+                </div>
+                <p class="mb-0 mt-1">Started workflow "${workflowName.replace(/_/g, ' ')}" for Tax District ID: ${taxDistrictId}</p>
+                <small class="text-muted">Task ID: ${data.task_id || 'N/A'}</small>
+              </div>
+            </div>
+          `;
+          
+          // Show toast notification
+          showToast(
+            'Workflow Started', 
+            `Started collaboration workflow: ${workflowName.replace(/_/g, ' ')}`,
+            'success'
+          );
+          
+          $('#activity-feed').prepend(notification);
+          $('#clear-notifications-btn').prop('disabled', false);
+        },
+        error: function(err) {
+          const errorMessage = err.responseJSON?.error || 'Unknown error';
+          // Show error toast notification
+          showToast(
+            'Workflow Error', 
+            `Error executing workflow: ${errorMessage}`,
+            'error',
+            true,
+            8000  // Show error for longer time
+          );
+          console.error('Error executing workflow:', err);
+        }
+      });
+    });
+    
+    // Function to load and initialize command structure visualization
+    function loadCommandStructure() {
+      $.ajax({
+        url: '/mcp-army/api/command-structure',
+        method: 'GET',
+        timeout: 5000, // 5 second timeout
+        success: function(data) {
+          if (data && data.command_structure) {
+            console.log("Command structure loaded successfully:", data);
+            
+            // Generate Mermaid diagram content based on command structure
+            const diagram = generateMermaidDiagram(data.command_structure, data.agent_relationships || {});
+            
+            // Update the diagram content
+            $('#command-structure-diagram').html(diagram);
+            
+            // Force Mermaid to parse and render the diagram
+            try {
+              // Clear existing diagram first
+              $('#command-structure-diagram').empty();
+              // Add the new diagram content
+              $('#command-structure-diagram').html(diagram);
+              
+              // Use a short timeout to ensure the DOM is updated before rendering
+              setTimeout(function() {
+                try {
+                  // Re-initialize mermaid to parse and render the new diagram
+                  mermaid.init(undefined, document.querySelector("#command-structure-diagram"));
+                } catch(innerErr) {
+                  console.error("Error in mermaid.init():", innerErr);
+                  $('#command-structure-diagram').html('<div class="alert alert-danger">Error rendering command structure diagram. See console for details.</div>');
+                }
+              }, 100);
+            } catch(e) {
+              console.error("Error initializing mermaid diagram:", e);
+              $('#command-structure-diagram').html('<div class="alert alert-danger">Error rendering command structure diagram. Please check console for details.</div>');
+            }
+            
+            // Update agent counts in the dashboard
+            updateAgentStatusCounts(data.command_structure);
+          } else {
+            console.error("Invalid command structure data received:", data);
+            $('#command-structure-diagram').html('<div class="alert alert-warning">Unable to load command structure data. The API may be unavailable.</div>');
+          }
+        },
+        error: function(err) {
+          console.error("Error fetching command structure:", err);
+          $('#command-structure-diagram').html('<div class="alert alert-danger">Error loading command structure data. See console for details.</div>');
+        }
+      });
+    }
+    
+    // Generate a Mermaid diagram from command structure data
+    function generateMermaidDiagram(commandStructure, agentRelationships) {
+      let diagram = "graph TD;\n";
+      
+      // Define node styles
+      diagram += "    classDef architect fill:#f9d71c,stroke:#333,stroke-width:2px;\n";
+      diagram += "    classDef coordinator fill:#66b2ff,stroke:#333,stroke-width:2px;\n";
+      diagram += "    classDef lead fill:#ff9966,stroke:#333,stroke-width:1px;\n";
+      diagram += "    classDef specialist fill:#99cc99,stroke:#333,stroke-width:1px;\n";
+      
+      // Add nodes for each role
+      const architectId = commandStructure.architect_prime;
+      if (architectId) {
+        diagram += `    ARCHITECT["${architectId}<br>Architect Prime"]:::architect;\n`;
+      }
+      
+      const coordinatorId = commandStructure.integration_coordinator;
+      if (coordinatorId) {
+        diagram += `    COORDINATOR["${coordinatorId}<br>Integration Coordinator"]:::coordinator;\n`;
+      }
+      
+      // Add component leads
+      const componentLeads = commandStructure.component_leads || {};
+      for (const component in componentLeads) {
+        const leadId = componentLeads[component];
+        diagram += `    LEAD_${leadId}["${leadId}<br>Component Lead: ${component}"]:::lead;\n`;
+      }
+      
+      // Add specialist agents
+      const specialistAgents = commandStructure.specialist_agents || {};
+      for (const domain in specialistAgents) {
+        const agents = specialistAgents[domain];
+        for (const agentId of agents) {
+          diagram += `    AGENT_${agentId}["${agentId}<br>Specialist: ${domain}"]:::specialist;\n`;
+        }
+      }
+      
+      // Add basic hierarchy connections
+      if (architectId && coordinatorId) {
+        diagram += `    COORDINATOR --> ARCHITECT;\n`;
+      }
+      
+      for (const component in componentLeads) {
+        const leadId = componentLeads[component];
+        if (coordinatorId) {
+          diagram += `    LEAD_${leadId} --> COORDINATOR;\n`;
+        }
+      }
+      
+      for (const domain in specialistAgents) {
+        const agents = specialistAgents[domain];
+        for (const agentId of agents) {
+          const component = Object.keys(componentLeads).find(comp => 
+            domain.toLowerCase().includes(comp.toLowerCase())
+          );
+          
+          if (component && componentLeads[component]) {
+            diagram += `    AGENT_${agentId} --> LEAD_${componentLeads[component]};\n`;
+          } else if (coordinatorId) {
+            diagram += `    AGENT_${agentId} --> COORDINATOR;\n`;
+          }
+        }
+      }
+      
+      return diagram;
+    }
+    
+    // Function to update agent status counts
+    function updateAgentStatusCounts(commandStructure) {
+      // Count agents by role
+      let totalAgents = 0;
+      let activeAgents = 0;
+      
+      // Count architect prime
+      if (commandStructure.architect_prime) {
+        totalAgents++;
+        activeAgents++;
+      }
+      
+      // Count integration coordinator
+      if (commandStructure.integration_coordinator) {
+        totalAgents++;
+        activeAgents++;
+      }
+      
+      // Count component leads
+      if (commandStructure.component_leads) {
+        for (const component in commandStructure.component_leads) {
+          totalAgents++;
+          activeAgents++;
+        }
+      }
+      
+      // Count specialist agents
+      if (commandStructure.specialist_agents) {
+        for (const domain in commandStructure.specialist_agents) {
+          const agents = commandStructure.specialist_agents[domain];
+          totalAgents += agents.length;
+          activeAgents += agents.length;
+        }
+      }
+      
+      // Update the display
+      $('.card-title:contains("Total Agents") + h2').text(totalAgents);
+      $('.card-title:contains("Active Agents") + h2').text(activeAgents);
+    }
+    
+    // Function to load agent status overview
+    function loadAgentStatusOverview() {
+      $.ajax({
+        url: '/mcp-army/api/agents',
+        method: 'GET',
+        timeout: 5000, // 5 second timeout
+        success: function(data) {
+          if (data && data.agents) {
+            // Update Help Request Count
+            const helpRequests = data.agents.filter(agent => 
+              agent.status && agent.status.assistance_needed
+            ).length;
+            
+            $('#help-request-count').text(helpRequests);
+            
+            // Update agent cards in the dashboard if they exist
+            data.agents.forEach(agent => {
+              const statusClass = getStatusClass(agent.status ? agent.status.status : 'unknown');
+              $(`.agent-card[data-agent-id="${agent.agent_id}"] .agent-status`)
+                .removeClass('status-active status-inactive status-error status-unknown')
+                .addClass(`status-${agent.status ? agent.status.status.toLowerCase() : 'unknown'}`)
+                .text(agent.status ? agent.status.status : 'Unknown');
+            });
+          }
+        },
+        error: function(err) {
+          console.error("Error fetching agent status overview:", err);
+        }
+      });
+    }
+    
+    // Helper function to get status class for an agent
+    function getStatusClass(status) {
+      switch(status.toLowerCase()) {
+        case 'active':
+          return 'status-active';
+        case 'inactive':
+          return 'status-inactive';
+        case 'error':
+          return 'status-error';
+        default:
+          return 'status-unknown';
+      }
+    }
+    
+    // Initialize all data loading
+    loadExperienceStats();
+    loadRecentExperiences();
+    loadCommandStructure();
+    loadAgentStatusOverview();
+    
+    // Set up periodic refresh (every 30 seconds)
+    setInterval(function() {
+      loadExperienceStats();
+      loadRecentExperiences();
+      loadCommandStructure();
+      loadAgentStatusOverview();
+    }, 30000);
+    
+    // For demo purposes, we'll load a simple communication graph visualization
+    // In a full implementation, this would be a more sophisticated D3.js visualization
+    $('#communication-graph').html('<div class="text-center p-5"><p>Communication graph visualization would appear here</p><p>This would show interactions between agents over time</p></div>');
+  });
+</script>
+{% endblock %}

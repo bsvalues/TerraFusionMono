@@ -1,0 +1,988 @@
+{% extends "base.html" %}
+
+{% block title %}MCP Assessor Agent API - Query Builder{% endblock %}
+
+{% block extra_css %}
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.css">
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/theme/darcula.min.css">
+<style>
+    .CodeMirror {
+        height: auto;
+        min-height: 200px;
+        border: 1px solid #666;
+        border-radius: 4px;
+    }
+    .param-field {
+        margin-bottom: 10px;
+        position: relative;
+    }
+    .param-field .btn-close {
+        position: absolute;
+        right: 10px;
+        top: 10px;
+    }
+    .results-container {
+        max-height: 400px;
+        overflow: auto;
+    }
+    .results-table {
+        font-size: 0.9rem;
+    }
+    .results-table th {
+        position: sticky;
+        top: 0;
+        background-color: var(--bs-dark);
+        z-index: 10;
+    }
+    .schema-section {
+        max-height: 600px;
+        overflow-y: auto;
+    }
+    .schema-table {
+        cursor: pointer;
+    }
+    .schema-table-columns {
+        padding-left: 20px;
+    }
+    .schema-column {
+        cursor: pointer;
+        padding: 5px 0;
+    }
+    .badge {
+        font-size: 0.7rem;
+    }
+    .table-name {
+        font-weight: bold;
+    }
+    .parameter-badge {
+        cursor: pointer;
+    }
+    .nav-tabs .nav-link {
+        color: var(--bs-light);
+    }
+    .nav-tabs .nav-link.active {
+        color: var(--bs-dark);
+    }
+    .example-query {
+        cursor: pointer;
+        transition: background-color 0.3s;
+    }
+    .example-query:hover {
+        background-color: rgba(255, 255, 255, 0.1);
+    }
+    .pagination-info {
+        font-size: 0.85rem;
+    }
+    .stats-info {
+        font-size: 0.85rem;
+    }
+    .highlighted {
+        background-color: rgba(var(--bs-warning-rgb), 0.3);
+    }
+    #detection-placeholder {
+        font-style: italic;
+        color: var(--bs-gray-500);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container py-4">
+    <h1 class="mb-4">Interactive Query Builder</h1>
+    
+    <div class="row mb-4">
+        <div class="col-md-12">
+            <div class="card bg-dark">
+                <div class="card-header">
+                    <ul class="nav nav-tabs card-header-tabs" id="query-tabs" role="tablist">
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link active" id="sql-tab" data-bs-toggle="tab" data-bs-target="#sql-panel" type="button" role="tab" aria-controls="sql-panel" aria-selected="true">SQL Query Builder</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="natural-tab" data-bs-toggle="tab" data-bs-target="#natural-panel" type="button" role="tab" aria-controls="natural-panel" aria-selected="false">Natural Language</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="schema-tab" data-bs-toggle="tab" data-bs-target="#schema-panel" type="button" role="tab" aria-controls="schema-panel" aria-selected="false">Database Schema</button>
+                        </li>
+                        <li class="nav-item" role="presentation">
+                            <button class="nav-link" id="examples-tab" data-bs-toggle="tab" data-bs-target="#examples-panel" type="button" role="tab" aria-controls="examples-panel" aria-selected="false">Example Queries</button>
+                        </li>
+                    </ul>
+                </div>
+                <div class="card-body">
+                    <div class="tab-content" id="query-tab-content">
+                        <!-- SQL Query Builder Panel -->
+                        <div class="tab-pane fade show active" id="sql-panel" role="tabpanel" aria-labelledby="sql-tab">
+                            <form id="sql-query-form">
+                                <div class="mb-3">
+                                    <label for="sqlQuery" class="form-label">SQL Query:</label>
+                                    <textarea id="sqlQuery" class="form-control"></textarea>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <div class="d-flex justify-content-between align-items-center mb-2">
+                                        <label class="form-label mb-0">Query Parameters:</label>
+                                        <button type="button" id="add-param-btn" class="btn btn-sm btn-outline-info">
+                                            <i class="bi bi-plus"></i> Add Parameter
+                                        </button>
+                                    </div>
+                                    <div id="parameter-detection" class="mb-2">
+                                        <span id="detection-placeholder">Parameters will be detected from your query...</span>
+                                    </div>
+                                    <div id="parameters-container">
+                                        <!-- Dynamic parameters will be added here -->
+                                    </div>
+                                </div>
+                                
+                                <div class="row mb-3">
+                                    <div class="col-md-6">
+                                        <label for="dbType" class="form-label">Database Type:</label>
+                                        <select id="dbType" class="form-select">
+                                            <option value="postgres">PostgreSQL</option>
+                                            <option value="mssql" disabled>Microsoft SQL Server (Coming Soon)</option>
+                                        </select>
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="pageNumber" class="form-label">Page Number:</label>
+                                        <input type="number" id="pageNumber" class="form-control" value="1" min="1">
+                                    </div>
+                                    <div class="col-md-3">
+                                        <label for="pageSize" class="form-label">Page Size:</label>
+                                        <input type="number" id="pageSize" class="form-control" value="25" min="1" max="100">
+                                    </div>
+                                </div>
+                                
+                                <div class="d-flex justify-content-between">
+                                    <button type="submit" class="btn btn-primary">Run Query</button>
+                                    <div>
+                                        <button type="button" id="clear-params-btn" class="btn btn-outline-secondary me-2">Clear Parameters</button>
+                                        <button type="button" id="clear-query-btn" class="btn btn-outline-secondary">Clear Query</button>
+                                    </div>
+                                </div>
+                            </form>
+                        </div>
+                        
+                        <!-- Natural Language Panel -->
+                        <div class="tab-pane fade" id="natural-panel" role="tabpanel" aria-labelledby="natural-tab">
+                            <form id="nl-query-form">
+                                <div class="mb-3">
+                                    <label for="nlPrompt" class="form-label">Enter your query in plain English:</label>
+                                    <textarea id="nlPrompt" class="form-control" rows="5" placeholder="Example: Find all properties with a total value greater than $500,000 in Seattle"></textarea>
+                                </div>
+                                <div class="mb-3">
+                                    <label for="nlDbType" class="form-label">Database Type:</label>
+                                    <select id="nlDbType" class="form-select">
+                                        <option value="postgres">PostgreSQL</option>
+                                        <option value="mssql" disabled>Microsoft SQL Server (Coming Soon)</option>
+                                    </select>
+                                </div>
+                                <div class="mb-3 form-check">
+                                    <input type="checkbox" class="form-check-input" id="includeSchema" checked>
+                                    <label class="form-check-label" for="includeSchema">Include database schema in request</label>
+                                </div>
+                                <div class="d-flex justify-content-between">
+                                    <button type="submit" class="btn btn-primary">Translate to SQL</button>
+                                    <button type="button" id="clear-nl-btn" class="btn btn-outline-secondary">Clear</button>
+                                </div>
+                            </form>
+                            
+                            <div id="nl-result" class="mt-4" style="display: none;">
+                                <div class="card bg-dark">
+                                    <div class="card-header d-flex justify-content-between">
+                                        <span>Generated SQL Query</span>
+                                        <div>
+                                            <button type="button" id="use-sql-btn" class="btn btn-sm btn-outline-success">Use This SQL</button>
+                                        </div>
+                                    </div>
+                                    <div class="card-body">
+                                        <pre id="generated-sql" class="bg-dark text-light p-3 border border-secondary rounded"></pre>
+                                        <div id="sql-explanation" class="mt-3 p-3 border border-secondary rounded"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Schema Panel -->
+                        <div class="tab-pane fade" id="schema-panel" role="tabpanel" aria-labelledby="schema-tab">
+                            <div class="d-flex justify-content-between mb-3">
+                                <label class="form-label">Database Schema:</label>
+                                <div>
+                                    <select id="schemaDbType" class="form-select form-select-sm">
+                                        <option value="postgres">PostgreSQL</option>
+                                        <option value="mssql" disabled>Microsoft SQL Server (Coming Soon)</option>
+                                    </select>
+                                </div>
+                            </div>
+                            
+                            <div class="schema-section" id="schema-container">
+                                <div class="d-flex justify-content-center">
+                                    <div class="spinner-border text-light" role="status">
+                                        <span class="visually-hidden">Loading...</span>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <!-- Examples Panel -->
+                        <div class="tab-pane fade" id="examples-panel" role="tabpanel" aria-labelledby="examples-tab">
+                            <div class="list-group">
+                                <div class="list-group-item list-group-item-dark d-flex justify-content-between align-items-center">
+                                    <strong>Example Queries</strong>
+                                    <span class="badge bg-info rounded-pill">Click to use</span>
+                                </div>
+                                
+                                <a href="#" class="list-group-item list-group-item-action example-query">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">Basic Property Search</h6>
+                                        <small>Postgres</small>
+                                    </div>
+                                    <p class="mb-1"><code>SELECT p.parcel_id, p.address, p.city, p.total_value FROM parcels p WHERE p.city = :city ORDER BY p.total_value DESC LIMIT 10</code></p>
+                                    <small>Shows top 10 most valuable properties in a specific city</small>
+                                </a>
+                                
+                                <a href="#" class="list-group-item list-group-item-action example-query">
+                                    <div class="d-flex w-100 justify-content-between">
+                                        <h6 class="mb-1">Property Value Range</h6>
+                                        <small>Postgres</small>
+                                    </div>
+                                    <p class="mb-1"><code>SELECT p.parcel_id, p.address, p.total_value FROM parcels p WHERE p.total_value BETWEEN :min_value AND :max_value ORDER BY p.total_value</code></p>
+                                    <small>Finds properties with values in a specific range</small>
+                                </a>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Results Panel -->
+    <div id="results-panel" class="row mb-4" style="display: none;">
+        <div class="col-md-12">
+            <div class="card bg-dark">
+                <div class="card-header d-flex justify-content-between align-items-center">
+                    <span>Query Results</span>
+                    <div class="d-flex">
+                        <button type="button" id="download-csv-btn" class="btn btn-sm btn-outline-success me-2">
+                            <i class="bi bi-download"></i> Download CSV
+                        </button>
+                        <button type="button" id="download-json-btn" class="btn btn-sm btn-outline-info">
+                            <i class="bi bi-download"></i> Download JSON
+                        </button>
+                    </div>
+                </div>
+                <div class="card-body">
+                    <div class="d-flex justify-content-between mb-3">
+                        <div class="stats-info">
+                            <span id="execution-time"></span>
+                        </div>
+                        <div class="pagination-info">
+                            <span id="pagination-summary"></span>
+                            <div class="btn-group ms-2" role="group" aria-label="Pagination">
+                                <button type="button" id="prev-page-btn" class="btn btn-sm btn-outline-secondary" disabled>Previous</button>
+                                <button type="button" id="next-page-btn" class="btn btn-sm btn-outline-secondary" disabled>Next</button>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div class="results-container">
+                        <table class="table table-dark table-striped table-hover results-table">
+                            <thead id="results-thead">
+                                <!-- Table headers will be added dynamically -->
+                            </thead>
+                            <tbody id="results-tbody">
+                                <!-- Table rows will be added dynamically -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Include visualization component -->
+    {% include "query_visualization.html" %}
+</div>
+{% endblock %}
+
+{% block extra_js %}
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/codemirror.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/mode/sql/sql.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/matchbrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/edit/closebrackets.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/show-hint.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.65.2/addon/hint/sql-hint.min.js"></script>
+<script src="{{ url_for('static', filename='js/enhanced_visualizations.js') }}"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize CodeMirror for SQL editor
+        const sqlEditor = CodeMirror.fromTextArea(document.getElementById('sqlQuery'), {
+            mode: 'text/x-sql',
+            theme: 'darcula',
+            lineNumbers: true,
+            lineWrapping: true,
+            indentWithTabs: true,
+            indentUnit: 4,
+            matchBrackets: true,
+            autoCloseBrackets: true,
+            extraKeys: {"Ctrl-Space": "autocomplete"}
+        });
+        
+        // Initialize state
+        let currentPage = 1;
+        let currentPageSize = 25;
+        let totalPages = 0;
+        let totalRecords = 0;
+        let currentQuery = '';
+        let queryParams = {};
+        let paramIdCounter = 0;
+        let schemaData = null;
+        
+        // Event handler for SQL Query form submission
+        document.getElementById('sql-query-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            runSqlQuery();
+        });
+        
+        // Event handler for Natural Language form submission
+        document.getElementById('nl-query-form').addEventListener('submit', function(e) {
+            e.preventDefault();
+            translateNaturalLanguage();
+        });
+        
+        // Clear buttons event handlers
+        document.getElementById('clear-query-btn').addEventListener('click', function() {
+            sqlEditor.setValue('');
+            clearParameters();
+        });
+        
+        document.getElementById('clear-params-btn').addEventListener('click', function() {
+            clearParameters();
+        });
+        
+        document.getElementById('clear-nl-btn').addEventListener('click', function() {
+            document.getElementById('nlPrompt').value = '';
+            document.getElementById('nl-result').style.display = 'none';
+        });
+        
+        // Schema tab event handler
+        document.getElementById('schema-tab').addEventListener('shown.bs.tab', function() {
+            loadDatabaseSchema();
+        });
+        
+        // Schema database type change handler
+        document.getElementById('schemaDbType').addEventListener('change', function() {
+            loadDatabaseSchema();
+        });
+        
+        // Parameter detection and handling
+        sqlEditor.on('change', function() {
+            detectParameters(sqlEditor.getValue());
+        });
+        
+        // Add parameter button handler
+        document.getElementById('add-param-btn').addEventListener('click', function() {
+            addParameter();
+        });
+        
+        // Use SQL button handler
+        document.getElementById('use-sql-btn').addEventListener('click', function() {
+            const generatedSql = document.getElementById('generated-sql').textContent;
+            sqlEditor.setValue(generatedSql);
+            
+            // Switch to SQL tab
+            document.getElementById('sql-tab').click();
+        });
+        
+        // Example query handler
+        document.querySelectorAll('.example-query').forEach(function(element) {
+            element.addEventListener('click', function(e) {
+                e.preventDefault();
+                const queryCode = this.querySelector('code').textContent;
+                sqlEditor.setValue(queryCode);
+                
+                // Switch to SQL tab
+                document.getElementById('sql-tab').click();
+                
+                // Detect parameters
+                detectParameters(queryCode);
+            });
+        });
+        
+        // Pagination button event handlers
+        document.getElementById('prev-page-btn').addEventListener('click', function() {
+            if (currentPage > 1) {
+                currentPage--;
+                document.getElementById('pageNumber').value = currentPage;
+                runSqlQuery();
+            }
+        });
+        
+        document.getElementById('next-page-btn').addEventListener('click', function() {
+            if (currentPage < totalPages) {
+                currentPage++;
+                document.getElementById('pageNumber').value = currentPage;
+                runSqlQuery();
+            }
+        });
+        
+        // Download buttons event handlers
+        document.getElementById('download-csv-btn').addEventListener('click', function() {
+            downloadResultsAs('csv');
+        });
+        
+        document.getElementById('download-json-btn').addEventListener('click', function() {
+            downloadResultsAs('json');
+        });
+        
+        // Function to detect parameters in SQL query
+        function detectParameters(query) {
+            // Reset parameter detection area
+            document.getElementById('detection-placeholder').style.display = 'block';
+            document.getElementById('parameter-detection').querySelectorAll('.parameter-badge').forEach(badge => {
+                badge.remove();
+            });
+            
+            if (!query) return;
+            
+            // Regular expressions for different parameter styles
+            const namedParams = query.match(/(?::|@)([a-zA-Z0-9_]+)/g);
+            
+            if (namedParams && namedParams.length > 0) {
+                document.getElementById('detection-placeholder').style.display = 'none';
+                
+                // Extract parameter names without the prefix
+                const uniqueParams = [...new Set(namedParams.map(param => param.substring(1)))];
+                
+                uniqueParams.forEach(param => {
+                    const badge = document.createElement('span');
+                    badge.className = 'badge bg-info me-2 mb-2 parameter-badge';
+                    badge.textContent = param;
+                    badge.addEventListener('click', function() {
+                        addParameterWithName(param);
+                    });
+                    
+                    document.getElementById('parameter-detection').appendChild(badge);
+                });
+            }
+        }
+        
+        // Function to add a parameter
+        function addParameter(name = '', value = '') {
+            const paramField = document.createElement('div');
+            paramField.className = 'param-field row g-2';
+            paramField.innerHTML = `
+                <div class="col-md-5">
+                    <input type="text" class="form-control param-name-input" placeholder="Parameter Name" value="${name}">
+                </div>
+                <div class="col-md-6">
+                    <input type="text" class="form-control param-input" placeholder="Parameter Value" value="${value}">
+                </div>
+                <div class="col-md-1 d-flex align-items-center">
+                    <button type="button" class="btn-close param-remove" aria-label="Remove"></button>
+                </div>
+            `;
+            
+            // Add event listener to the remove button
+            paramField.querySelector('.param-remove').addEventListener('click', function() {
+                paramField.remove();
+            });
+            
+            document.getElementById('parameters-container').appendChild(paramField);
+        }
+        
+        // Function to add a parameter with a specific name
+        function addParameterWithName(name) {
+            // Check if parameter already exists
+            const existingParams = document.querySelectorAll('.param-name-input');
+            for (let i = 0; i < existingParams.length; i++) {
+                if (existingParams[i].value === name) {
+                    // Parameter already exists, focus on its value input
+                    existingParams[i].closest('.param-field').querySelector('.param-input').focus();
+                    return;
+                }
+            }
+            
+            // Add new parameter
+            addParameter(name);
+        }
+        
+        // Function to clear all parameters
+        function clearParameters() {
+            document.getElementById('parameters-container').innerHTML = '';
+            queryParams = {};
+        }
+        
+        // Function to run SQL query
+        function runSqlQuery() {
+            const query = sqlEditor.getValue().trim();
+            if (!query) {
+                showAlert('Please enter a SQL query', 'danger');
+                return;
+            }
+            
+            // Update state
+            currentQuery = query;
+            currentPage = parseInt(document.getElementById('pageNumber').value) || 1;
+            currentPageSize = parseInt(document.getElementById('pageSize').value) || 25;
+            
+            // Collect parameters
+            const paramFields = document.querySelectorAll('.param-field');
+            queryParams = {};
+            
+            for (let i = 0; i < paramFields.length; i++) {
+                const name = paramFields[i].querySelector('.param-name-input').value;
+                const value = paramFields[i].querySelector('.param-input').value;
+                
+                if (name && value) {
+                    queryParams[name] = value;
+                }
+            }
+            
+            // Show loading indicator
+            showAlert('Executing query...', 'info');
+            
+            // Prepare request payload
+            const payload = {
+                db: document.getElementById('dbType').value,
+                query: query,
+                params: queryParams,
+                param_style: 'named', // Using named parameters style
+                page: currentPage,
+                page_size: currentPageSize
+            };
+            
+            // Send request
+            fetch('/api/parameterized-query', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': 'demo-key' // Normally would be a secure API key
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(error => {
+                        throw new Error(error.detail || 'Query execution failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                clearAlerts();
+                displayResults(data);
+                // Save results for download
+                window.lastResults = data;
+            })
+            .catch(error => {
+                clearAlerts();
+                showAlert(error.message, 'danger');
+                console.error(error);
+            });
+        }
+        
+        // Function to translate natural language to SQL
+        function translateNaturalLanguage() {
+            const prompt = document.getElementById('nlPrompt').value.trim();
+            if (!prompt) {
+                showAlert('Please enter a natural language query', 'danger');
+                return;
+            }
+            
+            // Show loading indicator
+            showAlert('Translating your query...', 'info');
+            
+            // Prepare request payload
+            const payload = {
+                db: document.getElementById('nlDbType').value,
+                prompt: prompt,
+                include_schema: document.getElementById('includeSchema').checked
+            };
+            
+            // Send request
+            fetch('/api/nl-to-sql', {
+                method: 'POST',
+                headers: {
+                    'Content-Type': 'application/json',
+                    'X-API-Key': 'demo-key' // Normally would be a secure API key
+                },
+                body: JSON.stringify(payload)
+            })
+            .then(response => {
+                if (!response.ok) {
+                    return response.json().then(error => {
+                        throw new Error(error.detail || 'Translation failed');
+                    });
+                }
+                return response.json();
+            })
+            .then(data => {
+                clearAlerts();
+                displayTranslation(data);
+            })
+            .catch(error => {
+                clearAlerts();
+                showAlert(error.message, 'danger');
+                console.error(error);
+            });
+        }
+        
+        // Function to load database schema
+        function loadDatabaseSchema() {
+            const schemaContainer = document.getElementById('schema-container');
+            schemaContainer.innerHTML = `
+                <div class="d-flex justify-content-center">
+                    <div class="spinner-border text-light" role="status">
+                        <span class="visually-hidden">Loading...</span>
+                    </div>
+                </div>
+            `;
+            
+            const dbType = document.getElementById('schemaDbType').value;
+            
+            fetch(`/api/schema-summary?db=${dbType}`, {
+                headers: {
+                    'X-API-Key': 'demo-key' // Normally would be a secure API key
+                }
+            })
+            .then(response => {
+                if (!response.ok) {
+                    throw new Error('Failed to load schema');
+                }
+                return response.json();
+            })
+            .then(data => {
+                if (data.status === 'success') {
+                    schemaData = data.schema;
+                    displaySchema(data.schema);
+                } else {
+                    throw new Error(data.message || 'Failed to load schema');
+                }
+            })
+            .catch(error => {
+                schemaContainer.innerHTML = `
+                    <div class="alert alert-danger">
+                        ${error.message}
+                    </div>
+                `;
+                console.error(error);
+            });
+        }
+        
+        // Function to display database schema
+        function displaySchema(schema) {
+            const schemaContainer = document.getElementById('schema-container');
+            
+            if (!schema || Object.keys(schema).length === 0) {
+                schemaContainer.innerHTML = `
+                    <div class="alert alert-warning">
+                        No schema information available.
+                    </div>
+                `;
+                return;
+            }
+            
+            let html = '';
+            
+            // Create accordion for tables
+            html += '<div class="accordion" id="schemaAccordion">';
+            
+            Object.keys(schema).forEach((tableName, index) => {
+                const table = schema[tableName];
+                const tableId = `table-${index}`;
+                const headingId = `heading-${index}`;
+                const collapseId = `collapse-${index}`;
+                
+                html += `
+                    <div class="accordion-item bg-dark">
+                        <h2 class="accordion-header" id="${headingId}">
+                            <button class="accordion-button collapsed bg-dark text-light" type="button" data-bs-toggle="collapse" data-bs-target="#${collapseId}" aria-expanded="false" aria-controls="${collapseId}">
+                                <span class="table-name">${tableName}</span>
+                                <span class="ms-2 badge bg-secondary">${Object.keys(table.columns).length} columns</span>
+                            </button>
+                        </h2>
+                        <div id="${collapseId}" class="accordion-collapse collapse" aria-labelledby="${headingId}" data-bs-parent="#schemaAccordion">
+                            <div class="accordion-body">
+                                <div class="schema-table-info mb-2">
+                                    ${table.description ? `<p>${table.description}</p>` : ''}
+                                </div>
+                                <div class="schema-table-columns">
+                                    <table class="table table-sm table-dark">
+                                        <thead>
+                                            <tr>
+                                                <th>Column</th>
+                                                <th>Type</th>
+                                                <th>Constraints</th>
+                                            </tr>
+                                        </thead>
+                                        <tbody>
+                `;
+                
+                Object.keys(table.columns).forEach(columnName => {
+                    const column = table.columns[columnName];
+                    const isPrimaryKey = column.is_primary_key;
+                    const isNullable = column.is_nullable;
+                    const isForeignKey = column.is_foreign_key;
+                    
+                    let constraints = [];
+                    if (isPrimaryKey) constraints.push('<span class="badge bg-warning">PK</span>');
+                    if (!isNullable) constraints.push('<span class="badge bg-danger">NOT NULL</span>');
+                    if (isForeignKey) constraints.push(`<span class="badge bg-info">FK: ${column.foreign_key.referenced_table}.${column.foreign_key.referenced_column}</span>`);
+                    
+                    html += `
+                                            <tr class="schema-column" data-table="${tableName}" data-column="${columnName}">
+                                                <td>${columnName}</td>
+                                                <td><span class="badge bg-secondary">${column.type}</span></td>
+                                                <td>${constraints.join(' ')}</td>
+                                            </tr>
+                    `;
+                });
+                
+                html += `
+                                        </tbody>
+                                    </table>
+                                </div>
+                                <div class="mt-2">
+                                    <button class="btn btn-sm btn-outline-success schema-table-insert" data-table="${tableName}">
+                                        Insert into SQL Editor
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                `;
+            });
+            
+            html += '</div>';
+            
+            schemaContainer.innerHTML = html;
+            
+            // Add event listeners for inserting table/column names
+            document.querySelectorAll('.schema-column').forEach(element => {
+                element.addEventListener('click', function() {
+                    const tableName = this.dataset.table;
+                    const columnName = this.dataset.column;
+                    
+                    insertTextToEditor(`${tableName}.${columnName}`);
+                });
+            });
+            
+            document.querySelectorAll('.schema-table-insert').forEach(button => {
+                button.addEventListener('click', function() {
+                    const tableName = this.dataset.table;
+                    const tableData = schema[tableName];
+                    
+                    // Create a SELECT statement with all columns
+                    const columns = Object.keys(tableData.columns).map(col => `${tableName}.${col}`).join(', ');
+                    const query = `SELECT ${columns} FROM ${tableName}`;
+                    
+                    // Insert query to editor
+                    sqlEditor.setValue(query);
+                    
+                    // Switch to SQL tab
+                    document.getElementById('sql-tab').click();
+                });
+            });
+        }
+        
+        // Function to insert text to SQL editor
+        function insertTextToEditor(text) {
+            const doc = sqlEditor.getDoc();
+            const cursor = doc.getCursor();
+            doc.replaceRange(text, cursor);
+            sqlEditor.focus();
+        }
+        
+        // Function to display results
+        function displayResults(data) {
+            // Store results globally for visualization and export
+            window.lastResults = data;
+            
+            // Update pagination state
+            currentPage = data.pagination.page;
+            totalPages = data.pagination.total_pages || data.pagination.pages;
+            totalRecords = data.pagination.total_records || data.pagination.total;
+            
+            // Show results panel
+            document.getElementById('results-panel').style.display = 'block';
+            
+            // Update execution time
+            document.getElementById('execution-time').textContent = `Execution time: ${data.execution_time.toFixed(3)}s`;
+            
+            // Update pagination summary
+            const paginationSummary = `
+                Showing ${data.data.length} of ${totalRecords} records 
+                (Page ${currentPage} of ${totalPages})
+            `;
+            document.getElementById('pagination-summary').textContent = paginationSummary;
+            
+            // Update pagination buttons
+            document.getElementById('prev-page-btn').disabled = currentPage <= 1;
+            document.getElementById('next-page-btn').disabled = currentPage >= totalPages;
+            
+            // Get table elements
+            const thead = document.getElementById('results-thead');
+            const tbody = document.getElementById('results-tbody');
+            
+            // Clear existing content
+            thead.innerHTML = '';
+            tbody.innerHTML = '';
+            
+            if (data.data.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="100%" class="text-center">No results found</td>
+                    </tr>
+                `;
+                return;
+            }
+            
+            // Get column names from first row
+            const columns = Object.keys(data.data[0]);
+            
+            // Create header row
+            const headerRow = document.createElement('tr');
+            columns.forEach(column => {
+                const th = document.createElement('th');
+                th.textContent = column;
+                headerRow.appendChild(th);
+            });
+            thead.appendChild(headerRow);
+            
+            // Create data rows
+            data.data.forEach(row => {
+                const tr = document.createElement('tr');
+                
+                columns.forEach(column => {
+                    const td = document.createElement('td');
+                    
+                    // Handle null values
+                    if (row[column] === null) {
+                        td.innerHTML = '<em class="text-muted">NULL</em>';
+                    } else {
+                        // Format date values
+                        if (typeof row[column] === 'string' && row[column].match(/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}/)) {
+                            td.textContent = new Date(row[column]).toLocaleString();
+                        } else {
+                            td.textContent = row[column];
+                        }
+                    }
+                    
+                    tr.appendChild(td);
+                });
+                
+                tbody.appendChild(tr);
+            });
+            
+            // Visualize data if possible
+            if (window.enhancedVisualize) {
+                window.enhancedVisualize(data.data, columns);
+            }
+            
+            // Scroll to results
+            document.getElementById('results-panel').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Function to display natural language translation
+        function displayTranslation(data) {
+            document.getElementById('nl-result').style.display = 'block';
+            document.getElementById('generated-sql').textContent = data.sql;
+            document.getElementById('sql-explanation').innerHTML = data.explanation;
+            
+            // Clear any previous alerts
+            clearAlerts();
+            
+            // Scroll to result
+            document.getElementById('nl-result').scrollIntoView({ behavior: 'smooth' });
+        }
+        
+        // Function to download results
+        function downloadResultsAs(format) {
+            const results = window.lastResults;
+            
+            if (!results || !results.data || results.data.length === 0) {
+                showAlert('No results to download', 'warning');
+                return;
+            }
+            
+            let content = '';
+            let filename = `query_results_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.${format}`;
+            
+            if (format === 'csv') {
+                // Get headers
+                const headers = Object.keys(results.data[0]);
+                content = headers.join(',') + '\n';
+                
+                // Add data rows
+                results.data.forEach(row => {
+                    const csvRow = headers.map(header => {
+                        const value = row[header];
+                        
+                        // Format value for CSV
+                        if (value === null) return '';
+                        
+                        // Escape quotes and wrap in quotes if necessary
+                        if (typeof value === 'string' && (value.includes(',') || value.includes('"') || value.includes('\n'))) {
+                            return '"' + value.replace(/"/g, '""') + '"';
+                        }
+                        
+                        return value;
+                    });
+                    
+                    content += csvRow.join(',') + '\n';
+                });
+            } else if (format === 'json') {
+                content = JSON.stringify(results.data, null, 2);
+            }
+            
+            // Create download link
+            const blob = new Blob([content], { type: format === 'csv' ? 'text/csv' : 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = filename;
+            document.body.appendChild(a);
+            a.click();
+            
+            // Clean up
+            setTimeout(() => {
+                document.body.removeChild(a);
+                URL.revokeObjectURL(url);
+            }, 100);
+        }
+        
+        // Function to show alert message
+        function showAlert(message, type) {
+            clearAlerts();
+            
+            const alertContainer = document.createElement('div');
+            alertContainer.className = `alert alert-${type} alert-dismissible fade show mt-3`;
+            alertContainer.role = 'alert';
+            alertContainer.innerHTML = `
+                ${message}
+                <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+            `;
+            
+            document.querySelector('.container').insertBefore(alertContainer, document.querySelector('.row'));
+            
+            // Auto-dismiss after 5 seconds for success and info messages
+            if (type === 'success' || type === 'info') {
+                setTimeout(() => {
+                    if (alertContainer.parentNode) {
+                        alertContainer.parentNode.removeChild(alertContainer);
+                    }
+                }, 5000);
+            }
+        }
+        
+        // Function to clear all alerts
+        function clearAlerts() {
+            document.querySelectorAll('.alert').forEach(alert => {
+                alert.remove();
+            });
+        }
+    });
+</script>
+{% endblock %}

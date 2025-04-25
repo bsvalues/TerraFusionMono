@@ -20,6 +20,13 @@
     "terrafusionpro": "apps/terrafusionpro",
     "terrafusionsync": "apps/terrafusionsync",
     "terralegislativepulsepub": "apps/terralegislativepulsepub",
-    "terraminer": "apps/terraminer"
+    "terraminer": "apps/terraminer",
+    "bcbscostapp": "apps/bcbscostapp",
+    "bcbsgispro": "apps/bcbsgispro",
+    "bcbslevy": "apps/bcbslevy",
+    "bcbswebhub": "apps/bcbswebhub",
+    "bsbcmaster": "apps/bsbcmaster"
+    "bsincomevaluation": "apps/bsincomevaluation",
   }
+    "bsincomevaluation": "apps/bsincomevaluation",
 }

@@ -1,0 +1,591 @@
+import React, { useState, useRef, useEffect } from 'react';
+// Use simplified ArcGIS components without direct dependency on ArcGIS JS API
+import ArcGISProviderSimplified from '../components/maps/arcgis/arcgis-provider-simplified';
+import ArcGISSketchSimplified from '../components/maps/arcgis/arcgis-sketch-simplified';
+import ArcGISRestMap from '../components/maps/arcgis/arcgis-rest-map';
+import SimplifiedImageMap from '../components/maps/arcgis/simplified-image-map';
+import ArcGISRestLayer from '../components/maps/arcgis/arcgis-rest-layer';
+import { fetchServiceList, fetchServiceInfo } from '../services/arcgis-rest-service';
+import { Button } from '../components/ui/button';
+import { Card } from '../components/ui/card';
+import { Slider } from '../components/ui/slider';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '../components/ui/tabs';
+import { 
+  Layers, Map, MapPin, PenTool, FileSearch, 
+  ZoomIn, ZoomOut, Home, ChevronLeft, ChevronRight,
+  Globe, Database, Loader2, Image as ImageIcon, AlertCircle
+} from 'lucide-react';
+import { DEFAULT_PARCELS_LAYER, STATIC_MAP_IMAGES } from '../constants/layer-constants';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+
+/**
+ * ArcGIS Map Page Component
+ * 
+ * This page displays a map using ArcGIS with sketch capabilities 
+ * and additional map tools.
+ */
+const ArcGISMapPage: React.FC = () => {
+  const [selectedFeature, setSelectedFeature] = useState<any | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [activeTab, setActiveTab] = useState('layers');
+  const [isSketchActive, setIsSketchActive] = useState(false);
+  const [mapMode, setMapMode] = useState<'simulated' | 'rest' | 'static'>('static');
+  
+  // ArcGIS REST specific state
+  const [services, setServices] = useState<any[]>([]);
+  const [filteredServices, setFilteredServices] = useState<any[]>([]);
+  const [showServicesDropdown, setShowServicesDropdown] = useState(false);
+  const [selectedService, setSelectedService] = useState<string | null>(null);
+  const [selectedServiceType, setSelectedServiceType] = useState<'FeatureServer' | 'MapServer'>('MapServer');
+  const [activeLayers, setActiveLayers] = useState<any[]>([DEFAULT_PARCELS_LAYER]); // Initialize with DEFAULT_PARCELS_LAYER
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  
+  // References to map components
+  const arcgisRestMapRef = useRef<any>(null);
+  const simplifiedMapRef = useRef<any>(null);
+  
+  // Handle map clicks
+  const handleMapClick = (e: any) => {
+    console.log('Map clicked:', e);
+    
+    // Simulate a feature selection
+    if (Math.random() > 0.5) {
+      setSelectedFeature({
+        id: `feature-${Math.floor(Math.random() * 1000)}`,
+        type: 'parcel',
+        attributes: {
+          parcelNumber: `23-11-${Math.floor(Math.random() * 10)}-${Math.floor(Math.random() * 100)}-${Math.floor(Math.random() * 1000)}`,
+          owner: 'Sample Owner',
+          address: `${Math.floor(Math.random() * 1000)} Main Street`,
+          acres: (Math.random() * 10).toFixed(2),
+          zoning: 'Residential'
+        },
+        geometry: e.mapPoint
+      });
+    } else {
+      setSelectedFeature(null);
+    }
+  };
+  
+  // Handle sketch completion
+  const handleSketchComplete = (geometry: any) => {
+    console.log('Sketch completed:', geometry);
+    
+    // Create a simulated selection from the sketch
+    setSelectedFeature({
+      id: `sketch-${Date.now()}`,
+      type: 'selection',
+      attributes: {
+        area: `${(Math.random() * 5).toFixed(2)} acres`,
+        perimeter: `${(Math.random() * 1000).toFixed(2)} ft`,
+        created: new Date().toLocaleString()
+      },
+      geometry: geometry
+    });
+  };
+  
+  // Toggle sidebar
+  const toggleSidebar = () => {
+    setSidebarCollapsed(!sidebarCollapsed);
+  };
+  
+  // Toggle sketch mode
+  const toggleSketch = () => {
+    setIsSketchActive(!isSketchActive);
+  };
+  
+  // Handle document click to close services dropdown when clicking outside
+  useEffect(() => {
+    const handleDocumentClick = (e: MouseEvent) => {
+      if (showServicesDropdown) {
+        setShowServicesDropdown(false);
+      }
+    };
+    
+    document.addEventListener('click', handleDocumentClick);
+    return () => {
+      document.removeEventListener('click', handleDocumentClick);
+    };
+  }, [showServicesDropdown]);
+  
+  // Fetch services when switching to REST mode
+  useEffect(() => {
+    if (mapMode === 'rest') {
+      setLoading(true);
+      console.log('Fetching ArcGIS services...');
+      
+      // Use direct fetch for debugging
+      fetch('https://services7.arcgis.com/NURlY7V8UHl6XumF/ArcGIS/rest/services?f=json')
+        .then(response => response.json())
+        .then(data => {
+          console.log('Service list fetch result:', data);
+          
+          if (data && data.services && Array.isArray(data.services)) {
+            console.log(`Found ${data.services.length} services for sidebar`);
+            setServices(data.services.map((service: any) => ({
+              name: service.name,
+              type: service.type,
+              url: service.url
+            })));
+          } else {
+            console.warn('Invalid service list format:', data);
+            setError('Failed to load service list');
+            
+            // Provide a small set of hardcoded services for testing
+            setServices([
+              { name: 'Parcels_and_Assess', type: 'MapServer' },
+              { name: 'Zoning', type: 'MapServer' },
+              { name: 'Roads', type: 'MapServer' },
+              { name: 'Aerials_2020', type: 'MapServer' },
+              { name: 'Fire_Districts', type: 'MapServer' }
+            ]);
+          }
+        })
+        .catch(err => {
+          console.error('Error loading services:', err);
+          setError('Failed to load ArcGIS services');
+          
+          // Provide a small set of hardcoded services for testing
+          setServices([
+            { name: 'Parcels_and_Assess', type: 'MapServer' },
+            { name: 'Zoning', type: 'MapServer' },
+            { name: 'Roads', type: 'MapServer' },
+            { name: 'Aerials_2020', type: 'MapServer' },
+            { name: 'Fire_Districts', type: 'MapServer' }
+          ]);
+        })
+        .finally(() => {
+          setLoading(false);
+        });
+    }
+  }, [mapMode]);
+  
+  // Add a layer from the selected service
+  const addSelectedLayer = () => {
+    if (!selectedService) return;
+    
+    setLoading(true);
+    setError(null);
+    console.log(`Adding layer from service: ${selectedService} (${selectedServiceType})`);
+    
+    // Check if we're adding the Parcels layer and handle it as a base layer
+    const isParcelsLayer = selectedService === 'Parcels_and_Assess' && selectedServiceType === 'MapServer';
+    
+    // Check if this layer already exists to prevent duplicates
+    const layerExists = activeLayers.some(
+      layer => layer.serviceName === selectedService && layer.serviceType === selectedServiceType
+    );
+    
+    if (layerExists) {
+      console.log(`Layer ${selectedService} already exists, skipping`);
+      setError(`Layer "${selectedService}" is already added`);
+      setLoading(false);
+      setSelectedService(null);
+      return;
+    }
+    
+    // If this is the parcels layer and we're using the DEFAULT_PARCELS_LAYER constant
+    if (isParcelsLayer) {
+      // Check if we already have a base parcels layer
+      const baseLayerExists = activeLayers.some(
+        layer => layer.id === DEFAULT_PARCELS_LAYER.id || 
+                (layer.serviceName === DEFAULT_PARCELS_LAYER.serviceName && 
+                 layer.serviceType === DEFAULT_PARCELS_LAYER.serviceType)
+      );
+      
+      if (baseLayerExists) {
+        console.log('Parcels layer already exists as a base layer');
+        setError('Parcels layer is already added as a base layer');
+        setLoading(false);
+        setSelectedService(null);
+        return;
+      }
+    }
+    
+    fetchServiceInfo(selectedService, selectedServiceType)
+      .then(serviceInfo => {
+        console.log('Service info:', serviceInfo);
+        
+        // Use the default layer constant if this is the parcels layer
+        if (isParcelsLayer) {
+          console.log('Adding parcels as base layer using DEFAULT_PARCELS_LAYER constant');
+          setActiveLayers(prev => [...prev, DEFAULT_PARCELS_LAYER]);
+        } else {
+          const newLayer = {
+            id: `${selectedService}-${Date.now()}`,
+            name: serviceInfo.documentInfo?.Title || serviceInfo.name || selectedService,
+            serviceType: selectedServiceType,
+            serviceName: selectedService,
+            visible: true,
+            opacity: 1,
+            isBaseLayer: false // Not a base layer
+          };
+          
+          console.log('Adding new layer:', newLayer);
+          setActiveLayers(prev => [...prev, newLayer]);
+        }
+        
+        setLoading(false);
+        setSelectedService(null); // Clear selection after adding
+      })
+      .catch(err => {
+        console.error('Error adding layer:', err);
+        setError(`Failed to add layer from ${selectedService}`);
+        setLoading(false);
+        
+        // Add a fallback layer for testing when error occurs
+        const fallbackLayer = {
+          id: `${selectedService}-fallback-${Date.now()}`,
+          name: selectedService,
+          serviceType: selectedServiceType,
+          serviceName: selectedService,
+          visible: true,
+          opacity: 1,
+          isBaseLayer: isParcelsLayer // Mark as base layer if it's the parcels layer
+        };
+        
+        console.log('Adding fallback layer:', fallbackLayer);
+        setActiveLayers(prev => [...prev, fallbackLayer]);
+      })
+      .finally(() => {
+        setLoading(false);
+        setSelectedService(null);
+      });
+  };
+  
+  // Remove a layer (but protect base layers)
+  const removeLayer = (layerId: string) => {
+    setActiveLayers(prev => 
+      prev.filter(layer => 
+        // Keep the layer if it's not the one to remove OR if it's a base layer
+        layer.id !== layerId || layer.isBaseLayer === true
+      )
+    );
+  };
+  
+  // Toggle layer visibility
+  const toggleLayerVisibility = (layerId: string) => {
+    setActiveLayers(prev => 
+      prev.map(layer => 
+        layer.id === layerId 
+          ? { ...layer, visible: !layer.visible } 
+          : layer
+      )
+    );
+  };
+
+  // Toggle a layer in the simplified image map
+  const toggleImageMapLayer = (layerKey: string) => {
+    if (simplifiedMapRef.current) {
+      simplifiedMapRef.current.toggleLayer(layerKey);
+    }
+  };
+  
+  // Set opacity for a layer in the simplified image map
+  const setImageMapLayerOpacity = (layerKey: string, opacity: number[]) => {
+    if (simplifiedMapRef.current) {
+      simplifiedMapRef.current.setLayerOpacity(layerKey, opacity[0] / 100);
+    }
+  };
+
+  return (
+    <div className="flex h-screen w-full bg-gray-100">
+      {/* Map container */}
+      <div className="relative flex-grow h-full">
+        {/* Map content - render based on selected mode */}
+        {mapMode === 'simulated' ? (
+          <ArcGISProviderSimplified
+            initialViewState={{
+              longitude: -123.3617,
+              latitude: 44.5646,
+              zoom: 12
+            }}
+            style={{ width: '100%', height: '100%' }}
+          >
+            {isSketchActive && (
+              <ArcGISSketchSimplified
+                view={undefined}
+                onSketchComplete={handleSketchComplete}
+                position="top-right"
+              />
+            )}
+          </ArcGISProviderSimplified>
+        ) : mapMode === 'rest' ? (
+          <ArcGISRestMap
+            ref={arcgisRestMapRef}
+            initialCenter={[-123.3617, 44.5646]}
+            initialZoom={12}
+            height="100%"
+            showControls={true}
+            layers={activeLayers}
+          />
+        ) : (
+          // Static image-based map
+          <SimplifiedImageMap
+            ref={simplifiedMapRef}
+            width="100%"
+            height="100%"
+            showControls={false}
+          />
+        )}
+        
+        {/* Map controls */}
+        <div className="absolute top-6 right-6 z-50">
+          <Card className="p-2 bg-white/90 backdrop-blur shadow-lg">
+            <div className="flex items-center gap-1">
+              <Button 
+                size="sm"
+                variant={mapMode === 'simulated' ? "default" : "outline"}
+                onClick={() => setMapMode('simulated')}
+                title="Simulated Map"
+              >
+                <Globe size={18} className="mr-1" />
+                Simulated
+              </Button>
+              <Button 
+                size="sm"
+                variant={mapMode === 'rest' ? "default" : "outline"}
+                onClick={() => setMapMode('rest')}
+                title="REST Services"
+              >
+                <Database size={18} className="mr-1" />
+                REST API
+              </Button>
+              <Button 
+                size="sm"
+                variant={mapMode === 'static' ? "default" : "outline"}
+                onClick={() => setMapMode('static')}
+                title="Map Images"
+              >
+                <ImageIcon size={18} className="mr-1" />
+                Images
+              </Button>
+            </div>
+          </Card>
+        </div>
+        
+        {/* Sidebar toggle button */}
+        <Button
+          className="absolute top-1/2 left-0 transform -translate-y-1/2 bg-white rounded-r-md rounded-l-none shadow z-10"
+          size="sm"
+          variant="ghost"
+          onClick={toggleSidebar}
+        >
+          {sidebarCollapsed ? <ChevronRight /> : <ChevronLeft />}
+        </Button>
+      </div>
+      
+      {/* Sidebar */}
+      <div 
+        className={`h-full bg-white shadow-lg transition-all duration-300 ${
+          sidebarCollapsed ? 'w-0 overflow-hidden' : 'w-96'
+        }`}
+      >
+        {!sidebarCollapsed && (
+          <div className="h-full flex flex-col">
+            <div className="p-4 border-b">
+              <h2 className="text-lg font-semibold">Map Explorer</h2>
+              <p className="text-sm text-gray-500">Benton County GIS</p>
+              <p className="text-xs text-blue-500 mt-1">
+                {mapMode === 'simulated' 
+                  ? "Using simulated map data" 
+                  : mapMode === 'rest'
+                    ? "Using ArcGIS REST services"
+                    : "Using direct map images"
+                }
+              </p>
+            </div>
+            
+            <Tabs defaultValue="layers" className="flex-grow flex flex-col">
+              <TabsList className="w-full justify-start px-4 pt-2">
+                <TabsTrigger value="layers" onClick={() => setActiveTab('layers')}>
+                  <Layers size={16} className="mr-2" />
+                  Layers
+                </TabsTrigger>
+                <TabsTrigger value="selection" onClick={() => setActiveTab('selection')}>
+                  <Map size={16} className="mr-2" />
+                  Selection
+                </TabsTrigger>
+              </TabsList>
+              
+              <TabsContent value="layers" className="flex-grow p-4 overflow-auto">
+                <div className="space-y-4">
+                  {/* Standard layers component - shown in all modes */}
+                  <Card className="p-4">
+                    <h3 className="font-medium mb-2">Base Map Layers</h3>
+                    <div className="space-y-2">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="parcels-layer"
+                            className="mr-2"
+                            defaultChecked={true}
+                            onChange={() => mapMode === 'static' && toggleImageMapLayer('PARCELS')}
+                          />
+                          <label htmlFor="parcels-layer" className="text-sm">Parcels</label>
+                        </div>
+                        <span className="text-xs text-gray-500">Base layer</span>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="roads-layer"
+                            className="mr-2"
+                            onChange={() => mapMode === 'static' && toggleImageMapLayer('ROADS')}
+                          />
+                          <label htmlFor="roads-layer" className="text-sm">Roads</label>
+                        </div>
+                        <div className="w-24">
+                          <Slider
+                            defaultValue={[100]}
+                            max={100}
+                            step={10}
+                            className="w-full"
+                            onValueChange={(v) => mapMode === 'static' && setImageMapLayerOpacity('ROADS', v)}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="zoning-layer"
+                            className="mr-2"
+                            onChange={() => mapMode === 'static' && toggleImageMapLayer('ZONING')}
+                          />
+                          <label htmlFor="zoning-layer" className="text-sm">Zoning</label>
+                        </div>
+                        <div className="w-24">
+                          <Slider
+                            defaultValue={[70]}
+                            max={100}
+                            step={10}
+                            className="w-full"
+                            onValueChange={(v) => mapMode === 'static' && setImageMapLayerOpacity('ZONING', v)}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="aerial-layer"
+                            className="mr-2"
+                            onChange={() => mapMode === 'static' && toggleImageMapLayer('AERIAL')}
+                          />
+                          <label htmlFor="aerial-layer" className="text-sm">Aerial Imagery</label>
+                        </div>
+                        <div className="w-24">
+                          <Slider
+                            defaultValue={[80]}
+                            max={100}
+                            step={10}
+                            className="w-full"
+                            onValueChange={(v) => mapMode === 'static' && setImageMapLayerOpacity('AERIAL', v)}
+                          />
+                        </div>
+                      </div>
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center">
+                          <input
+                            type="checkbox"
+                            id="fire-districts-layer"
+                            className="mr-2"
+                            onChange={() => mapMode === 'static' && toggleImageMapLayer('FIRE_DISTRICTS')}
+                          />
+                          <label htmlFor="fire-districts-layer" className="text-sm">Fire Districts</label>
+                        </div>
+                        <div className="w-24">
+                          <Slider
+                            defaultValue={[70]}
+                            max={100}
+                            step={10}
+                            className="w-full"
+                            onValueChange={(v) => mapMode === 'static' && setImageMapLayerOpacity('FIRE_DISTRICTS', v)}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                  </Card>
+                  
+                  {/* Static image layer information */}
+                  {mapMode === 'static' && (
+                    <Alert className="bg-blue-50 border-blue-200">
+                      <p className="text-sm text-blue-700">
+                        <span className="font-semibold">Map Image Mode:</span> Using pre-loaded map data from Benton County ArcGIS services. Toggle layers above to show/hide map features.
+                      </p>
+                    </Alert>
+                  )}
+                  
+                  {/* Selected feature information */}
+                  {selectedFeature && (
+                    <Card className="p-4">
+                      <h3 className="font-medium mb-2">Selected Feature</h3>
+                      <div className="text-sm">
+                        <div className="flex justify-between">
+                          <span className="font-medium">Type:</span>
+                          <span>{selectedFeature.type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span className="font-medium">ID:</span>
+                          <span>{selectedFeature.id}</span>
+                        </div>
+                        
+                        {selectedFeature.attributes && Object.entries(selectedFeature.attributes).map(([key, value]) => (
+                          <div key={key} className="flex justify-between">
+                            <span className="font-medium">{key}:</span>
+                            <span>{String(value)}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </Card>
+                  )}
+                  
+                  {/* Error messages */}
+                  {error && (
+                    <Alert variant="destructive">
+                      <AlertCircle className="h-4 w-4" />
+                      <AlertDescription>{error}</AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </TabsContent>
+              
+              <TabsContent value="selection" className="flex-grow p-4 overflow-auto">
+                <Card className="p-4">
+                  <h3 className="font-medium mb-2">Selected Features</h3>
+                  {selectedFeature ? (
+                    <div className="text-sm">
+                      <div className="flex justify-between">
+                        <span className="font-medium">Type:</span>
+                        <span>{selectedFeature.type}</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span className="font-medium">ID:</span>
+                        <span>{selectedFeature.id}</span>
+                      </div>
+                      
+                      {selectedFeature.attributes && Object.entries(selectedFeature.attributes).map(([key, value]) => (
+                        <div key={key} className="flex justify-between">
+                          <span className="font-medium">{key}:</span>
+                          <span>{String(value)}</span>
+                        </div>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="text-sm text-gray-500">No features selected</p>
+                  )}
+                </Card>
+              </TabsContent>
+            </Tabs>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+};
+
+export default ArcGISMapPage;

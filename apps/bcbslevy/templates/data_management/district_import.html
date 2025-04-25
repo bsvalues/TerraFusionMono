@@ -1,0 +1,179 @@
+{% extends "base.html" %}
+
+{% block title %}Import Tax District Data{% endblock %}
+
+{% block head_extras %}
+<link rel="stylesheet" href="{{ url_for('static', filename='css/data_management.css') }}">
+{% endblock %}
+
+{% block content %}
+<div class="container mt-5">
+    <div class="card shadow-sm border-0">
+        <div class="card-header bg-gradient text-white">
+            <h2 class="h4 mb-0">Import Tax District Data</h2>
+        </div>
+        <div class="card-body">
+            <div class="row">
+                <div class="col-md-6">
+                    <div class="card mb-4 h-100 border-primary-light">
+                        <div class="card-header district-header text-white">
+                            <h3 class="h5 mb-0">Preview Import</h3>
+                        </div>
+                        <div class="card-body">
+                            <p>
+                                Upload your tax district data file to preview the data before importing.
+                                This helps ensure your data is correctly formatted before committing it to the database.
+                            </p>
+                            
+                            <form id="district-preview-form" enctype="multipart/form-data" class="needs-validation" novalidate>
+                                <div class="mb-3 form-floating">
+                                    <div class="custom-file-container">
+                                        <label for="preview-file" class="form-label">District Data File</label>
+                                        <input type="file" class="form-control" id="preview-file" name="file" required>
+                                        <div class="file-upload-indicator">
+                                            <i class="bi bi-check-circle-fill text-success"></i>
+                                            <span class="file-name"></span>
+                                        </div>
+                                        <div class="invalid-feedback">
+                                            Please select a district data file
+                                        </div>
+                                        <div class="form-text">
+                                            Supported formats: CSV, TXT, Excel, XML
+                                        </div>
+                                    </div>
+                                </div>
+                                
+                                <div class="mb-3">
+                                    <label for="preview-year" class="form-label">Year (Optional Override)</label>
+                                    <select class="form-select" id="preview-year" name="year" aria-describedby="yearHelpText">
+                                        <option value="">Use year from file</option>
+                                        {% for year in years %}
+                                        <option value="{{ year }}" {% if year == current_year %}selected{% endif %}>{{ year }}</option>
+                                        {% endfor %}
+                                    </select>
+                                    <div class="form-text" id="yearHelpText">
+                                        If selected, this will override any year data in the file
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary loading-button">
+                                    <span class="btn-label"><i class="bi bi-eye me-1"></i> Preview Data</span>
+                                </button>
+                                    <div class="form-text" id="yearHelpText">
+                                        If selected, this will override any year data in the file
+                                    </div>
+                                </div>
+                                
+                                <button type="submit" class="btn btn-primary loading-button">
+                                    <span class="btn-label"><i class="bi bi-eye me-1"></i> Preview Data</span>
+                                </button>
+                            </form>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="col-md-6">
+                    <div class="card mb-4 h-100 border-success-light">
+                        <div class="card-header levy-header text-white">
+                            <h3 class="h5 mb-0">Import Information</h3>
+                        </div>
+                        <div class="card-body">
+                            <h4 class="h6">Required Columns</h4>
+                            <ul>
+                                <li><strong>tax_district_id</strong> - Unique identifier for the district</li>
+                                <li><strong>year</strong> - Tax year (e.g., 2025)</li>
+                                <li><strong>levy_code</strong> - The district's levy code</li>
+                                <li><strong>linked_levy_code</strong> - The linked levy code (if applicable)</li>
+                            </ul>
+                            
+                            <h4 class="h6">Optional Columns</h4>
+                            <ul>
+                                <li><strong>name</strong> - District name</li>
+                                <li><strong>code</strong> - District code (if different from levy_code)</li>
+                                <li><strong>district_type</strong> - Type of district (e.g., School, Fire)</li>
+                                <li><strong>county</strong> - County name</li>
+                                <li><strong>state</strong> - State abbreviation</li>
+                                <li><strong>levy_rate</strong> - District levy rate</li>
+                                <li><strong>levy_amount</strong> - Total district levy amount</li>
+                            </ul>
+                            
+                            <div class="alert alert-info">
+                                <i class="fas fa-info-circle me-1"></i>
+                                Preview functionality helps identify potential data issues before import.
+                                Only data that passes validation will be imported.
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Preview Container -->
+            <div id="preview-container" class="mt-4 d-none">
+                <div class="card shadow-sm">
+                    <div class="card-header bg-gradient-info text-white">
+                        <h3 class="h5 mb-0">Data Preview</h3>
+                    </div>
+                    <div class="card-body">
+                        <!-- Loading Spinner -->
+                        <div id="preview-loader" class="text-center py-5">
+                            <div class="spinner-border text-primary" role="status">
+                                <span class="visually-hidden">Loading...</span>
+                            </div>
+                            <p class="mt-2">Analyzing your data...</p>
+                        </div>
+                        
+                        <!-- Error Message -->
+                        <div id="preview-error" class="alert alert-danger d-none" role="alert">
+                            Error message will appear here
+                        </div>
+                        
+                        <!-- Preview Results -->
+                        <div id="preview-results" class="d-none">
+                            <div class="alert alert-info mb-3">
+                            <div class="d-flex justify-content-end mt-3">
+                                <button id="cancel-preview" class="btn btn-secondary me-2 d-none">
+                                    <i class="bi bi-x-circle me-1"></i> Cancel
+                                </button>
+                                <div class="loading-button">
+                                    <button id="confirm-import" class="btn btn-success d-none">
+                                        <span class="btn-label"><i class="bi bi-check-circle me-1"></i> Confirm Import</span>
+                                    </button>
+                                </div>
+                            </div>
+                                            <!-- Headers will be dynamically populated -->
+                                        </tr>
+                                    </thead>
+                                    <tbody>
+                                        <!-- Rows will be dynamically populated -->
+                                    </tbody>
+                                </table>
+                            </div>
+                            
+                            <div class="d-flex justify-content-end mt-3">
+                                <button id="cancel-preview" class="btn btn-secondary me-2 d-none">
+                                    <i class="fas fa-times me-1"></i> Cancel
+                                </button>
+                                <button id="confirm-import" class="btn btn-success d-none">
+                                    <i class="fas fa-check me-1"></i> Confirm Import
+                                </button>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Hidden Import Form - Will be submitted after preview confirmation -->
+            <form id="district-import-form" action="{{ url_for('data_management.import_district') }}" method="post" enctype="multipart/form-data" class="d-none">
+                <input type="file" id="import-file" name="file">
+                <input type="hidden" id="import-year" name="year">
+                <input type="hidden" id="import-file-data" name="file_data">
+            </form>
+            
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script src="{{ url_for('static', filename='js/district_import_preview.js') }}"></script>
+{% endblock %}

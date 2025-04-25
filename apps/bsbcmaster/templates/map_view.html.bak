@@ -1,0 +1,735 @@
+{% extends "base.html" %}
+
+{% block title %}{{ title }} - MCP Assessor Agent API{% endblock %}
+
+{% block head %}
+<!-- Leaflet.js CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.3/dist/leaflet.css" integrity="sha256-kLaT2GOSpHechhsozzB+flnD+zUyjE2LlfWPgU04xyI=" crossorigin=""/>
+<!-- Leaflet Markercluster CSS -->
+<link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.4.1/dist/MarkerCluster.css" />
+<!-- Custom Marker Cluster Styling -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/custom_marker_cluster.css') }}" />
+<!-- Enhanced Marker Cluster Styling -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/enhanced_marker_cluster.css') }}" />
+<!-- Value Trends Styling -->
+<link rel="stylesheet" href="{{ url_for('static', filename='css/value_trends.css') }}" />
+<!-- Font Awesome for icons -->
+<link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css" />
+<style>
+    #map-container {
+        position: relative;
+        height: calc(100vh - 180px);
+        min-height: 500px;
+    }
+    #property-map {
+        height: 100%;
+        width: 100%;
+        border-radius: 4px;
+    }
+    .map-sidebar {
+        padding: 15px;
+        border-radius: 4px;
+    }
+    .map-control-section {
+        margin-bottom: 20px;
+    }
+    .property-popup {
+        min-width: 250px;
+    }
+    .loading-indicator {
+        position: absolute;
+        top: 50%;
+        left: 50%;
+        transform: translate(-50%, -50%);
+        z-index: 1000;
+        padding: 10px 20px;
+        background-color: rgba(0, 0, 0, 0.7);
+        color: white;
+        border-radius: 4px;
+        display: none;
+    }
+    .property-legend {
+        background-color: white;
+        padding: 10px;
+        border-radius: 4px;
+        box-shadow: 0 0 10px rgba(0, 0, 0, 0.1);
+    }
+    .legend-item {
+        display: flex;
+        align-items: center;
+        margin-bottom: 5px;
+    }
+    .legend-marker {
+        width: 15px;
+        height: 15px;
+        border-radius: 50%;
+        margin-right: 8px;
+    }
+    .stats-panel {
+        background-color: var(--bs-dark);
+        border-radius: 4px;
+        padding: 12px;
+        margin-bottom: 15px;
+    }
+    .stats-header {
+        border-bottom: 1px solid var(--bs-border-color);
+        padding-bottom: 8px;
+        margin-bottom: 10px;
+    }
+    .stats-item {
+        display: flex;
+        justify-content: space-between;
+        margin-bottom: 5px;
+    }
+    .visualization-selector {
+        margin-bottom: 15px;
+        padding: 10px;
+        background-color: rgba(0, 0, 0, 0.05);
+        border-radius: 4px;
+    }
+    .visualization-btn {
+        margin-right: 5px;
+        margin-bottom: 5px;
+        padding: 5px 12px;
+        border-radius: 4px;
+        font-size: 0.9rem;
+        border: 1px solid rgba(0, 0, 0, 0.1);
+        transition: all 0.2s ease;
+    }
+    .visualization-btn.active {
+        background-color: var(--bs-primary);
+        color: white;
+        border-color: var(--bs-primary);
+    }
+    .visualization-btn:hover:not(.active) {
+        background-color: rgba(0, 0, 0, 0.1);
+    }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="container-fluid">
+    <div class="row mb-4">
+        <div class="col">
+            <h1>Property Map</h1>
+            <p class="lead">Visualize property assessment data geographically to identify patterns and trends.</p>
+        </div>
+    </div>
+
+    <div class="row">
+        <!-- Map Controls Sidebar -->
+        <div class="col-md-3">
+            <div class="map-sidebar">
+                <h4>Map Controls</h4>
+                
+                <!-- Visualization Type Selector -->
+                <div class="visualization-selector">
+                    <label class="form-label">Visualization Mode</label>
+                    <div class="d-flex flex-wrap">
+                        <button class="visualization-btn active" data-mode="markers">Markers</button>
+                        <button class="visualization-btn" data-mode="clusters">Clusters</button>
+                        <button class="visualization-btn" data-mode="heatmap">Heat Map</button>
+                        <button class="visualization-btn" data-mode="value">Value Map</button>
+                    </div>
+                </div>
+                
+                <!-- Data Source Selection -->
+                <div class="map-control-section">
+                    <label for="data-source" class="form-label">Data Source</label>
+                    <select class="form-select" id="data-source">
+                        <option value="accounts" selected>Property Accounts</option>
+                    </select>
+                </div>
+                
+                <!-- Value Filtering -->
+                <div class="map-control-section">
+                    <label for="value-filter" class="form-label">Value Range</label>
+                    <select class="form-select" id="value-filter">
+                        <option value="all" selected>All Properties</option>
+                        <option value="0-100000">Under $100,000</option>
+                        <option value="100000-250000">$100,000 - $250,000</option>
+                        <option value="250000-500000">$250,000 - $500,000</option>
+                        <option value="500000-1000000">$500,000 - $1,000,000</option>
+                        <option value="1000000+">Over $1,000,000</option>
+                    </select>
+                </div>
+                
+                <!-- Clustering Option -->
+                <div class="map-control-section">
+                    <label class="form-label">Display Options</label>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="clustering-toggle" checked>
+                        <label class="form-check-label" for="clustering-toggle">Enable Clustering</label>
+                    </div>
+                    <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" id="animation-toggle" checked>
+                        <label class="form-check-label" for="animation-toggle">Enable Animations</label>
+                    </div>
+                </div>
+                <div class="map-control-section">
+                    <label for="city-filter" class="form-label">City</label>
+                    <select class="form-select" id="city-filter">
+                        <option value="all" selected>All Cities</option>
+                        <!-- Cities will be loaded dynamically -->
+                    </select>
+                </div>
+                
+                <!-- Property Type Filtering -->
+                <div class="map-control-section">
+                    <label for="property-type-filter" class="form-label">Property Type</label>
+                    <div class="form-check">
+                        <input class="form-check-input property-type-checkbox" type="checkbox" value="Residential" id="residential-checkbox" checked>
+                        <label class="form-check-label" for="residential-checkbox">
+                            Residential
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input property-type-checkbox" type="checkbox" value="Commercial" id="commercial-checkbox" checked>
+                        <label class="form-check-label" for="commercial-checkbox">
+                            Commercial
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input property-type-checkbox" type="checkbox" value="Agricultural" id="agricultural-checkbox" checked>
+                        <label class="form-check-label" for="agricultural-checkbox">
+                            Agricultural
+                        </label>
+                    </div>
+                    <div class="form-check">
+                        <input class="form-check-input property-type-checkbox" type="checkbox" value="Industrial" id="industrial-checkbox" checked>
+                        <label class="form-check-label" for="industrial-checkbox">
+                            Industrial
+                        </label>
+                    </div>
+                </div>
+                
+                <!-- Apply Filters Button -->
+                <div class="d-grid gap-2">
+                    <button class="btn btn-primary" id="apply-filters">Apply Filters</button>
+                </div>
+
+                <!-- Statistics Section -->
+                <div class="stats-panel mt-4">
+                    <div class="stats-header">
+                        <h5 class="mb-0">Property Statistics</h5>
+                    </div>
+                    <div id="property-stats">
+                        <div class="stats-item">
+                            <span>Properties:</span>
+                            <span id="stat-count">0</span>
+                        </div>
+                        <div class="stats-item">
+                            <span>Average Value:</span>
+                            <span id="stat-avg">$0</span>
+                        </div>
+                        <div class="stats-item">
+                            <span>Median Value:</span>
+                            <span id="stat-median">$0</span>
+                        </div>
+                        <div class="stats-item">
+                            <span>Value Range:</span>
+                            <span id="stat-range">$0 - $0</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <!-- Map Display Area -->
+        <div class="col-md-9">
+            <div id="map-container">
+                <div id="property-map"></div>
+                <div class="loading-indicator" id="map-loading">
+                    <span><i class="fas fa-spinner fa-spin me-2"></i> Loading map data...</span>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<!-- Leaflet.js JavaScript -->
+<script src="https://unpkg.com/leaflet@1.9.3/dist/leaflet.js" integrity="sha256-WBkoXOwTeyKclOHuWtc+i2uENFpDZ9YPdf5Hf+D7ewM=" crossorigin=""></script>
+<!-- Leaflet Markercluster JS -->
+<script src="https://unpkg.com/leaflet.markercluster@1.4.1/dist/leaflet.markercluster.js"></script>
+<!-- Leaflet Heat plugin -->
+<script src="{{ url_for('static', filename='js/leaflet-heat.js') }}"></script>
+<!-- Map Visualizations -->
+<script src="{{ url_for('static', filename='js/map_visualizations.js') }}"></script>
+
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // Initialize the map
+        const map = L.map('property-map').setView([46.28, -119.29], 11);
+        
+        // Add base tile layer
+        L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+            attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+            maxZoom: 19
+        }).addTo(map);
+        
+        // Initialize visualizations manager
+        const visualizationsManager = new PropertyMapVisualizations(map, {
+            heatmapRadius: 25,
+            heatmapBlur: 15,
+            clusterAnimationEnabled: true,
+            timeSeriesEnabled: false
+        });
+        
+        // Initialize property clusters with enhanced features
+        let markerClusterGroup = L.markerClusterGroup({
+            maxClusterRadius: 50,
+            spiderfyOnMaxZoom: true,
+            showCoverageOnHover: true,
+            zoomToBoundsOnClick: true,
+            animate: true,
+            animateAddingMarkers: true,
+            disableClusteringAtZoom: 18,
+            iconCreateFunction: function(cluster) {
+                const childCount = cluster.getChildCount();
+                const childMarkers = cluster.getAllChildMarkers();
+                
+                // Calculate average property value for the cluster
+                let totalValue = 0;
+                let valueCount = 0;
+                childMarkers.forEach(marker => {
+                    if (marker.feature && marker.feature.properties && marker.feature.properties.assessed_value) {
+                        totalValue += marker.feature.properties.assessed_value;
+                        valueCount++;
+                    }
+                });
+                const avgValue = valueCount > 0 ? totalValue / valueCount : 0;
+                
+                // Determine class based on count
+                let clusterClass = "marker-cluster-";
+                if (childCount < 10) {
+                    clusterClass += "small";
+                } else if (childCount < 50) {
+                    clusterClass += "medium";
+                } else {
+                    clusterClass += "large";
+                }
+                
+                // Create the cluster icon with enhanced information
+                return new L.DivIcon({
+                    html: "<div><span>" + childCount + "</span></div>",
+                    className: "marker-cluster " + clusterClass,
+                    iconSize: new L.Point(40, 40),
+                    iconAnchor: new L.Point(20, 20)
+                });
+            }
+        });
+        
+        // Toggle clustering
+        const clusteringToggle = document.getElementById('clustering-toggle');
+        clusteringToggle.addEventListener('change', function() {
+            loadMapData();
+        });
+        let propertyLayer = L.layerGroup().addTo(map);
+        
+        // Legend
+        const legend = L.control({position: 'bottomright'});
+        legend.onAdd = function (map) {
+            const div = L.DomUtil.create('div', 'property-legend');
+            div.innerHTML = `
+                <h6>Property Types</h6>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background-color: #4CAF50;"></div>
+                    <span>Residential</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background-color: #2196F3;"></div>
+                    <span>Commercial</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background-color: #FFC107;"></div>
+                    <span>Agricultural</span>
+                </div>
+                <div class="legend-item">
+                    <div class="legend-marker" style="background-color: #F44336;"></div>
+                    <span>Industrial</span>
+                </div>
+            `;
+            return div;
+        };
+        legend.addTo(map);
+        
+        // Load cities dropdown
+        fetch('/api/map/cities')
+            .then(response => response.json())
+            .then(data => {
+                const citySelect = document.getElementById('city-filter');
+                data.cities.forEach(city => {
+                    const option = document.createElement('option');
+                    option.value = city;
+                    option.textContent = city;
+                    citySelect.appendChild(option);
+                });
+            })
+            .catch(error => console.error('Error fetching cities:', error));
+        
+        // Format currency
+        function formatCurrency(value) {
+            return new Intl.NumberFormat('en-US', {
+                style: 'currency',
+                currency: 'USD',
+                maximumFractionDigits: 0
+            }).format(value);
+        }
+        
+        // Get marker color based on property type
+        function getMarkerColor(propertyType) {
+            switch(propertyType) {
+                case 'Commercial': return '#2196F3';
+                case 'Agricultural': return '#FFC107';
+                case 'Industrial': return '#F44336';
+                default: return '#4CAF50'; // Residential
+            }
+        }
+        
+        // Create custom marker with enhanced hover effects
+        function createPropertyMarker(feature, latlng) {
+            const propertyType = feature.properties.property_type || "Residential";
+            const markerColor = getMarkerColor(propertyType);
+            
+            const marker = L.circleMarker(latlng, {
+                radius: 8,
+                fillColor: markerColor,
+                color: "#fff",
+                weight: 1,
+                opacity: 1,
+                fillOpacity: 0.8,
+                className: "property-marker",
+                interactive: true
+            });
+            
+            // Add hover effects
+            marker.on("mouseover", function() {
+                this.setStyle({
+                    radius: 10,
+                    weight: 2,
+                    fillOpacity: 1.0,
+                    color: "#fff"
+                });
+            });
+            
+            marker.on("mouseout", function() {
+                this.setStyle({
+                    radius: 8,
+                    weight: 1,
+                    fillOpacity: 0.8,
+                    color: "#fff"
+                });
+            });
+            
+            return marker;
+        }
+        
+        // Create popup content
+        function createPopupContent(properties) {
+            return `
+                <div class="property-popup">
+                    <h6>${properties.property_address || 'Property'}</h6>
+                    <p><strong>Account ID:</strong> ${properties.account_id || 'N/A'}</p>
+                    <p><strong>Owner:</strong> ${properties.owner_name || 'N/A'}</p>
+                    <p><strong>City:</strong> ${properties.property_city || 'N/A'}</p>
+                    <p><strong>Type:</strong> ${properties.property_type || 'Residential'}</p>
+                    <p><strong>Value:</strong> ${formatCurrency(properties.assessed_value || 0)}</p>
+                    <button class="btn btn-sm btn-outline-primary view-images-btn" 
+                        data-account-id="${properties.account_id}">
+                        View Images
+                    </button>
+                </div>
+            `;
+        }
+        
+        // Update property statistics display
+        function updateStatistics(stats) {
+            document.getElementById('stat-count').textContent = stats.count.toLocaleString();
+            document.getElementById('stat-avg').textContent = formatCurrency(stats.average);
+            document.getElementById('stat-median').textContent = formatCurrency(stats.median);
+            document.getElementById('stat-range').textContent = `${formatCurrency(stats.min)} - ${formatCurrency(stats.max)}`;
+        }
+        
+        // Handle visualization mode switching
+        const vizButtons = document.querySelectorAll('.visualization-btn');
+        let currentMode = 'markers';
+        
+        vizButtons.forEach(button => {
+            button.addEventListener('click', function() {
+                // Update active button
+                vizButtons.forEach(btn => btn.classList.remove('active'));
+                this.classList.add('active');
+                
+                // Get selected mode
+                currentMode = this.getAttribute('data-mode');
+                
+                // Reload data with new visualization mode
+                loadMapData();
+            });
+        });
+        
+        // Load map data with filters
+        function loadMapData() {
+            // Show loading indicator
+            document.getElementById('map-loading').style.display = 'block';
+            
+            // Get selected filters
+            const dataSource = document.getElementById('data-source').value;
+            const valueFilter = document.getElementById('value-filter').value;
+            const cityFilter = document.getElementById('city-filter').value;
+            const useClustering = document.getElementById('clustering-toggle').checked;
+            const useAnimation = document.getElementById('animation-toggle').checked;
+            
+            // Get selected property types
+            const selectedPropertyTypes = [];
+            document.querySelectorAll('.property-type-checkbox:checked').forEach(checkbox => {
+                selectedPropertyTypes.push(checkbox.value);
+            });
+            
+            // Build URL with query parameters
+            const url = new URL('/api/map/data', window.location.origin);
+            url.searchParams.append('data_source', dataSource);
+            url.searchParams.append('value_filter', valueFilter);
+            url.searchParams.append('mode', currentMode);
+            if (cityFilter !== 'all') {
+                url.searchParams.append('city', cityFilter);
+            }
+            url.searchParams.append('clustering', useClustering.toString());
+            
+            // Fetch map data
+            fetch(url)
+                .then(response => response.json())
+                .then(data => {
+                    // Clear existing layers
+                    propertyLayer.clearLayers();
+                    markerClusterGroup.clearLayers();
+                    visualizationsManager.clearAllLayers();
+                    
+                    if (!data.geojson) {
+                        console.error('No GeoJSON data returned from the server');
+                        document.getElementById('map-loading').style.display = 'none';
+                        return;
+                    }
+                    
+                    // Filter properties by selected property types if we have features
+                    const filteredFeatures = data.geojson.features.filter(feature => 
+                        selectedPropertyTypes.includes(feature.properties.property_type));
+                    
+                    // Create new GeoJSON with filtered features
+                    const filteredGeoJSON = {
+                        type: 'FeatureCollection',
+                        features: filteredFeatures
+                    };
+                    
+                    // Extract property data for visualizations
+                    const propertyData = filteredFeatures.map(feature => {
+                        return {
+                            latitude: feature.geometry.coordinates[1],
+                            longitude: feature.geometry.coordinates[0],
+                            assessed_value: feature.properties.assessed_value,
+                            property_type: feature.properties.property_type,
+                            property_address: feature.properties.property_address,
+                            account_id: feature.properties.account_id,
+                            owner_name: feature.properties.owner_name,
+                            property_city: feature.properties.property_city
+                        };
+                    });
+                    
+                    // Set data for visualization manager
+                    visualizationsManager.setPropertyData(propertyData);
+                    
+                    // Apply selected visualization mode
+                    switch (currentMode) {
+                        case 'heatmap':
+                            // Heat map mode
+                            if (data.heatmap) {
+                                // Use server-generated heatmap data if available
+                                const heatLayer = L.heatLayer(data.heatmap, {
+                                    radius: 25,
+                                    blur: 15,
+                                    maxZoom: 16,
+                                    gradient: {
+                                        0.2: '#ffffb2',
+                                        0.4: '#fed976',
+                                        0.6: '#feb24c',
+                                        0.8: '#fd8d3c',
+                                        0.9: '#f03b20',
+                                        1.0: '#bd0026'
+                                    }
+                                }).addTo(map);
+                                
+                                // Add to custom layer group for cleanup
+                                propertyLayer.addLayer(heatLayer);
+                            } else {
+                                // Fallback to client-side rendering
+                                visualizationsManager.showHeatmap('assessed_value');
+                            }
+                            
+                            // Add heat map legend
+                            const heatLegend = L.control({position: 'bottomright'});
+                            heatLegend.onAdd = function(map) {
+                                const div = L.DomUtil.create('div', 'property-legend property-value-legend');
+                                div.innerHTML = `
+                                    <h6>Property Values</h6>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #bd0026;"></div>
+                                        <span>Over $1,000,000</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #f03b20;"></div>
+                                        <span>$500,000 - $1,000,000</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #fd8d3c;"></div>
+                                        <span>$250,000 - $500,000</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #feb24c;"></div>
+                                        <span>$100,000 - $250,000</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #fed976;"></div>
+                                        <span>$50,000 - $100,000</span>
+                                    </div>
+                                    <div class="legend-item">
+                                        <div class="legend-marker" style="background-color: #ffffb2;"></div>
+                                        <span>Under $50,000</span>
+                                    </div>
+                                `;
+                                return div;
+                            }
+                            propertyLayer.addLayer(heatLegend.addTo(map));
+                            break;
+                            
+                        case 'value':
+                            // Value-based visualization
+                            visualizationsManager.showClusters(
+                                // Marker factory function with value-based sizing
+                                function(prop) {
+                                    const value = prop.assessed_value || 0;
+                                    const radius = Math.max(5, Math.min(15, Math.sqrt(value) / 1000 * 5));
+                                    
+                                    return L.circleMarker([prop.latitude, prop.longitude], {
+                                        radius: radius,
+                                        fillColor: visualizationsManager._getValueColor(value),
+                                        color: '#fff',
+                                        weight: 1,
+                                        opacity: 1,
+                                        fillOpacity: 0.8
+                                    });
+                                },
+                                // Popup factory function
+                                function(prop) {
+                                    return `
+                                        <div class="property-popup">
+                                            <h6>${prop.property_address || 'Property'}</h6>
+                                            <p><strong>Value:</strong> ${formatCurrency(prop.assessed_value || 0)}</p>
+                                            <p><strong>Type:</strong> ${prop.property_type || 'Residential'}</p>
+                                            <p><strong>City:</strong> ${prop.property_city || 'N/A'}</p>
+                                            <button class="btn btn-sm btn-outline-primary view-images-btn" 
+                                                data-account-id="${prop.account_id}">
+                                                View Images
+                                            </button>
+                                        </div>
+                                    `;
+                                }
+                            );
+                            visualizationsManager.addValueLegend();
+                            break;
+                            
+                        case 'clusters':
+                            // Create GeoJSON layer with custom marker and popup
+                            const geoJsonLayer = L.geoJSON(filteredGeoJSON, {
+                                pointToLayer: createPropertyMarker,
+                                onEachFeature: function(feature, layer) {
+                                    layer.bindPopup(createPopupContent(feature.properties));
+                                }
+                            });
+                            
+                            // Add to cluster layer with enhanced options
+                            markerClusterGroup.addLayer(geoJsonLayer);
+                            propertyLayer.addLayer(markerClusterGroup);
+                            break;
+                            
+                        default:
+                            // Default marker mode
+                            // Create GeoJSON layer with custom marker and popup
+                            const regularLayer = L.geoJSON(filteredGeoJSON, {
+                                pointToLayer: createPropertyMarker,
+                                onEachFeature: function(feature, layer) {
+                                    layer.bindPopup(createPopupContent(feature.properties));
+                                }
+                            });
+                            
+                            // Add markers based on clustering preference
+                            if (useClustering) {
+                                // Add cluster tooltip with value information
+                                markerClusterGroup.on("clusterclick", function(cluster) {
+                                    const childMarkers = cluster.layer.getAllChildMarkers();
+                                    const propertyCount = childMarkers.length;
+                                    
+                                    // Calculate value statistics for this cluster
+                                    let totalValue = 0;
+                                    let propertyValues = [];
+                                    childMarkers.forEach(marker => {
+                                        if (marker.feature && marker.feature.properties && marker.feature.properties.assessed_value) {
+                                            const value = marker.feature.properties.assessed_value;
+                                            totalValue += value;
+                                            propertyValues.push(value);
+                                        }
+                                    });
+                                    
+                                    // Add tooltip data
+                                    const avgValue = propertyValues.length > 0 ? totalValue / propertyValues.length : 0;
+                                    cluster.layer.bindTooltip(
+                                        `<strong>${propertyCount} Properties</strong><br>
+                                        Average Value: ${formatCurrency(avgValue)}`,
+                                        { direction: "top", offset: [0, -10] }
+                                    );
+                                });
+                                
+                                markerClusterGroup.addLayer(regularLayer);
+                                propertyLayer.addLayer(markerClusterGroup);
+                            } else {
+                                regularLayer.addTo(propertyLayer);
+                            }
+                    }
+                    
+                    // Update statistics
+                    updateStatistics(data.statistics);
+                    
+                    // Adjust map bounds
+                    if (filteredFeatures.length > 0) {
+                        map.fitBounds([
+                            [data.bounds.south, data.bounds.west],
+                            [data.bounds.north, data.bounds.east]
+                        ]);
+                    }
+                    
+                    // Hide loading indicator
+                    document.getElementById('map-loading').style.display = 'none';
+                })
+                .catch(error => {
+                    console.error('Error fetching map data:', error);
+                    document.getElementById('map-loading').style.display = 'none';
+                });
+        }
+        
+        // Handle Apply Filters button click
+        document.getElementById('apply-filters').addEventListener('click', loadMapData);
+        
+        // Handle property image button clicks
+        document.addEventListener('click', function(e) {
+            if (e.target && e.target.classList.contains('view-images-btn')) {
+                const accountId = e.target.getAttribute('data-account-id');
+                window.location.href = `/property/${accountId}/images`;
+            }
+        });
+        
+        // Load initial map data
+        loadMapData();
+    });
+</script>
+{% endblock %}

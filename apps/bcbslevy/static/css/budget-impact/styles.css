@@ -1,0 +1,200 @@
+/* Budget Impact Visualization Styles */
+
+.impact-increase {
+  color: #dc3545;
+  font-weight: 600;
+}
+
+.impact-decrease {
+  color: #28a745;
+  font-weight: 600;
+}
+
+.impact-neutral {
+  color: #6c757d;
+  font-weight: 600;
+}
+
+/* AI Insights Styles */
+.insight-card {
+  border-radius: 8px;
+  box-shadow: 0 4px 8px rgba(0,0,0,0.1);
+  margin-bottom: 1rem;
+  transition: all 0.3s ease;
+}
+
+.insight-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 6px 12px rgba(0,0,0,0.15);
+}
+
+.insight-header {
+  padding: 0.75rem 1rem;
+  border-bottom: 1px solid rgba(0,0,0,0.1);
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  background-color: #f8f9fa;
+}
+
+.insight-body {
+  padding: 1rem;
+}
+
+/* Badges */
+.badge-high {
+  background-color: #dc3545;
+  color: white;
+}
+
+.badge-medium {
+  background-color: #fd7e14;
+  color: white;
+}
+
+.badge-low {
+  background-color: #17a2b8;
+  color: white;
+}
+
+.badge-positive {
+  background-color: #28a745;
+  color: white;
+}
+
+.badge-negative {
+  background-color: #dc3545;
+  color: white;
+}
+
+.badge-mixed {
+  background-color: #fd7e14;
+  color: white;
+}
+
+.badge-neutral {
+  background-color: #6c757d;
+  color: white;
+}
+
+/* Animation for AI insights */
+@keyframes highlightPulse {
+  0% { background-color: rgba(13, 110, 253, 0.05); }
+  50% { background-color: rgba(13, 110, 253, 0.15); }
+  100% { background-color: rgba(13, 110, 253, 0.05); }
+}
+
+.highlight-pulse {
+  animation: highlightPulse 2s ease-in-out;
+  border-radius: 4px;
+}
+
+/* Optimal scenario card */
+.optimal-scenario-card {
+  background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+  border-left: 4px solid #28a745;
+}
+
+/* Multi-year projection styles */
+.projection-year {
+  font-weight: 600;
+  color: #495057;
+}
+
+.current-year {
+  font-weight: 700;
+  color: #0d6efd;
+}
+
+.projection-year-future {
+  color: #6c757d;
+}
+
+/* Sensitivity analysis styles */
+.sensitivity-parameter {
+  font-weight: 600;
+  min-width: 180px;
+}
+
+.sensitivity-value {
+  font-family: monospace;
+  padding: 0.1rem 0.3rem;
+  background-color: #f8f9fa;
+  border-radius: 3px;
+}
+
+/* Executive summary styles */
+.executive-summary {
+  font-size: 1.1rem;
+  line-height: 1.5;
+  padding: 1rem;
+  background-color: rgba(13, 110, 253, 0.05);
+  border-radius: 8px;
+  border-left: 4px solid #0d6efd;
+}
+
+/* Implementation considerations */
+.implementation-consideration {
+  padding: 0.5rem 0.75rem;
+  margin-bottom: 0.5rem;
+  border-radius: 4px;
+  background-color: #f8f9fa;
+  border-left: 3px solid #6c757d;
+}
+
+/* Historical context */
+.historical-context {
+  font-style: italic;
+  padding: 1rem;
+  background-color: rgba(108, 117, 125, 0.05);
+  border-radius: 8px;
+}
+
+/* Optimal scenario apply button */
+.apply-optimal {
+  transition: all 0.2s ease;
+}
+
+.apply-optimal:hover {
+  transform: scale(1.05);
+}
+
+/* Custom tooltips */
+.custom-tooltip {
+  position: relative;
+  display: inline-block;
+  cursor: help;
+}
+
+.custom-tooltip .tooltip-text {
+  visibility: hidden;
+  width: 200px;
+  background-color: #212529;
+  color: #fff;
+  text-align: center;
+  border-radius: 6px;
+  padding: 5px;
+  position: absolute;
+  z-index: 1;
+  bottom: 125%;
+  left: 50%;
+  margin-left: -100px;
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+
+.custom-tooltip .tooltip-text::after {
+  content: "";
+  position: absolute;
+  top: 100%;
+  left: 50%;
+  margin-left: -5px;
+  border-width: 5px;
+  border-style: solid;
+  border-color: #212529 transparent transparent transparent;
+}
+
+.custom-tooltip:hover .tooltip-text {
+  visibility: visible;
+  opacity: 1;
+}

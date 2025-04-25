@@ -1,0 +1,139 @@
+{% extends "base.html" %}
+
+{% block title %}Imported Assessment Data | MCP Assessor Agent API{% endblock %}
+
+{% block content %}
+<div class="container-fluid px-4 py-4">
+    <div class="row mb-4">
+        <div class="col-12">
+            <h1 class="mb-4">Imported Assessment Data</h1>
+            <p class="lead">
+                View and search property assessment data imported from external sources.
+            </p>
+        </div>
+    </div>
+
+    <!-- Tabs for different data types -->
+    <ul class="nav nav-tabs mb-4" id="dataTabs" role="tablist">
+        <li class="nav-item" role="presentation">
+            <button class="nav-link active" id="accounts-tab" data-bs-toggle="tab" data-bs-target="#accounts-content" type="button" role="tab" aria-controls="accounts-content" aria-selected="true">
+                Accounts
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="images-tab" data-bs-toggle="tab" data-bs-target="#images-content" type="button" role="tab" aria-controls="images-content" aria-selected="false">
+                Property Images
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="improvements-tab" data-bs-toggle="tab" data-bs-target="#improvements-content" type="button" role="tab" aria-controls="improvements-content" aria-selected="false">
+                Improvements
+            </button>
+        </li>
+        <li class="nav-item" role="presentation">
+            <button class="nav-link" id="combined-tab" data-bs-toggle="tab" data-bs-target="#combined-content" type="button" role="tab" aria-controls="combined-content" aria-selected="false">
+                Combined Export
+            </button>
+        </li>
+    </ul>
+
+    <!-- Tab content -->
+    <div class="tab-content" id="dataTabsContent">
+        <!-- Rest of the content similar to the original imported_data.html but with added export options -->
+        
+        <!-- Combined Export tab -->
+        <div class="tab-pane fade" id="combined-content" role="tabpanel" aria-labelledby="combined-tab">
+            <div class="card">
+                <div class="card-header">
+                    <h5 class="mb-0">Combined Data Export</h5>
+                </div>
+                <div class="card-body">
+                    <p class="card-text">
+                        Export data from multiple tables in a single file. The combined export will include accounts data as the base,
+                        with related improvements and property images.
+                    </p>
+                    
+                    <form id="combined-export-form">
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label for="combined-owner-name" class="form-label">Owner Name (contains)</label>
+                                <input type="text" class="form-control" id="combined-owner-name" name="owner_name">
+                            </div>
+                            <div class="col-md-6">
+                                <label for="combined-property-city" class="form-label">Property City</label>
+                                <input type="text" class="form-control" id="combined-property-city" name="property_city">
+                            </div>
+                        </div>
+                        
+                        <div class="row mb-3">
+                            <div class="col-md-6">
+                                <label class="form-label">Include Related Data</label>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="include-improvements" name="include_improvements" checked>
+                                    <label class="form-check-label" for="include-improvements">
+                                        Include Improvements
+                                    </label>
+                                </div>
+                                <div class="form-check">
+                                    <input class="form-check-input" type="checkbox" id="include-images" name="include_images" checked>
+                                    <label class="form-check-label" for="include-images">
+                                        Include Property Images
+                                    </label>
+                                </div>
+                            </div>
+                            <div class="col-md-6">
+                                <label for="combined-limit" class="form-label">Maximum Records</label>
+                                <select class="form-select" id="combined-limit" name="limit">
+                                    <option value="100">100</option>
+                                    <option value="500" selected>500</option>
+                                    <option value="1000">1,000</option>
+                                </select>
+                            </div>
+                        </div>
+                        
+                        <div class="d-grid gap-2 d-md-flex justify-content-md-end">
+                            <button type="button" class="btn btn-success" id="export-combined-btn">
+                                <i class="fas fa-file-excel"></i> Export as Excel
+                            </button>
+                        </div>
+                    </form>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+// JavaScript code for handling export form submissions
+document.addEventListener('DOMContentLoaded', function() {
+    // Handle combined export
+    document.getElementById('export-combined-btn').addEventListener('click', function() {
+        const form = document.getElementById('combined-export-form');
+        const formData = new FormData(form);
+        const params = new URLSearchParams();
+        
+        for (let [key, value] of formData.entries()) {
+            if (value && key !== "include_improvements" && key !== "include_images") {
+                params.append(key, value);
+            }
+        }
+        
+        // Handle checkboxes separately
+        if (document.getElementById('include-improvements')) {
+            params.append('include_improvements', document.getElementById('include-improvements').checked);
+        }
+        if (document.getElementById('include-images')) {
+            params.append('include_images', document.getElementById('include-images').checked);
+        }
+        
+        // Create the export URL with all parameters
+        const exportUrl = `/api/export/combined/excel?${params.toString()}`;
+        
+        // Redirect to the export URL
+        window.location.href = exportUrl;
+    });
+});
+</script>
+{% endblock %}

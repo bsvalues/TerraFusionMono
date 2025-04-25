@@ -1,0 +1,96 @@
+/* Custom styling for marker clusters */
+.marker-cluster {
+    background-clip: padding-box;
+    border-radius: 20px;
+    background-color: rgba(44, 82, 130, 0.6);
+    box-shadow: 0 3px 8px rgba(0, 0, 0, 0.2);
+    transition: all 0.3s ease;
+}
+
+.marker-cluster:hover {
+    transform: scale(1.1);
+}
+
+.marker-cluster div {
+    width: 34px;
+    height: 34px;
+    margin-left: 3px;
+    margin-top: 3px;
+    text-align: center;
+    border-radius: 17px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #ffffff;
+    background-color: rgba(44, 82, 130, 0.9);
+}
+
+/* Different size clusters */
+.marker-cluster-small {
+    background-color: rgba(44, 82, 130, 0.7);
+}
+
+.marker-cluster-small div {
+    background-color: rgba(44, 82, 130, 0.9);
+}
+
+.marker-cluster-medium {
+    background-color: rgba(49, 130, 206, 0.7);
+}
+
+.marker-cluster-medium div {
+    background-color: rgba(49, 130, 206, 0.9);
+}
+
+.marker-cluster-large {
+    background-color: rgba(66, 153, 225, 0.7);
+}
+
+.marker-cluster-large div {
+    background-color: rgba(66, 153, 225, 0.9);
+}
+
+.marker-cluster-xlarge {
+    background-color: rgba(99, 179, 237, 0.7);
+}
+
+.marker-cluster-xlarge div {
+    background-color: rgba(99, 179, 237, 0.9);
+}
+
+/* Animation for cluster */
+@keyframes clusterFadeIn {
+    from {
+        opacity: 0;
+        transform: scale(0.8);
+    }
+    to {
+        opacity: 1;
+        transform: scale(1);
+    }
+}
+
+.marker-cluster {
+    animation: clusterFadeIn 0.3s ease-out forwards;
+}
+
+/* Custom marker styling */
+.custom-marker {
+    transition: transform 0.3s ease;
+}
+
+.custom-marker:hover {
+    transform: scale(1.5);
+    z-index: 1000 !important;
+}
+
+.leaflet-marker-icon {
+    transition: transform 0.3s ease;
+}
+
+.leaflet-marker-icon:hover {
+    z-index: 1000 !important;
+}
