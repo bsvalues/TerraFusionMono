@@ -49,6 +49,7 @@ import { pluginService } from "./services/plugins";
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
+import { natsMonitoringService } from "./services/nats-monitoring";
 import { initializeJobs } from "./jobs";
 
 (async () => {
@@ -64,6 +65,7 @@ import { initializeJobs } from "./jobs";
     await jobService.initializeDefaultJobs();
     await logsService.initializeSampleLogs();
     await metricsService.initializeAiProviders();
+    await natsMonitoringService.initialize();
     
     // Initialize marketplace products based on available plugins
     await marketplaceService.initializeSampleProducts();
