@@ -157,9 +157,11 @@ We provide tools to test the crop analysis capabilities:
 For detailed information about specific aspects of the platform, refer to these guides:
 
 - [Repository Import Process](docs/REPOSITORY_IMPORT.md) - How repositories are imported into the monorepo
+- [Adding New Repositories](docs/ADDING_NEW_REPOSITORIES.md) - Step-by-step guide for adding new repositories
 - [Apollo Gateway Integration](docs/GATEWAY_INTEGRATION.md) - How to integrate services with the Federation Gateway
 - [WebSocket Fix for Replit](docs/WEBSOCKET_FIX.md) - How to fix WebSocket connections in Replit environment
 - [WebSocket Testing Guide](docs/WEBSOCKET_TESTING.md) - How to test and debug WebSocket connections
+- [Utility Scripts](docs/UTILITY_SCRIPTS.md) - Description of utility scripts for common tasks
 
 ## Development Guidelines
 
