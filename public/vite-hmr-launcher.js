@@ -20,35 +20,44 @@
     return;
   }
   
-  // Choose the appropriate fix script based on the environment
-  let scriptToLoad;
+  // Choose the appropriate fix scripts based on the environment
+  let scriptsToLoad = [];
   
   if (isJaneway) {
     console.log('[vite-hmr-launcher] Janeway environment detected');
-    scriptToLoad = '/janeway-vite-hmr-fix.js';
+    scriptsToLoad.push('/janeway-vite-hmr-fix.js');
+    scriptsToLoad.push('/janeway-direct-fix.js'); // Add the aggressive fix
   } else {
     console.log('[vite-hmr-launcher] Standard Replit environment detected');
-    scriptToLoad = '/improved-vite-hmr-fix.js';
+    scriptsToLoad.push('/improved-vite-hmr-fix.js');
   }
   
-  // Load the script
-  const script = document.createElement('script');
-  script.src = scriptToLoad;
-  script.async = true;
-  script.onerror = function() {
-    console.error(`[vite-hmr-launcher] Failed to load script: ${scriptToLoad}`);
+  // Load all scripts
+  function loadScript(src, isLast) {
+    const script = document.createElement('script');
+    script.src = src;
+    script.async = true;
+    script.onerror = function() {
+      console.error(`[vite-hmr-launcher] Failed to load script: ${src}`);
+      
+      // Fallback to basic fix if all else fails and this is the last script
+      if (isLast && src !== '/vite-hmr-fix.js') {
+        console.log('[vite-hmr-launcher] Attempting to load fallback fix');
+        const fallbackScript = document.createElement('script');
+        fallbackScript.src = '/vite-hmr-fix.js';
+        fallbackScript.async = true;
+        document.head.appendChild(fallbackScript);
+      }
+    };
     
-    // Fallback to basic fix if the specific fix fails to load
-    if (scriptToLoad !== '/vite-hmr-fix.js') {
-      console.log('[vite-hmr-launcher] Attempting to load fallback fix');
-      const fallbackScript = document.createElement('script');
-      fallbackScript.src = '/vite-hmr-fix.js';
-      fallbackScript.async = true;
-      document.head.appendChild(fallbackScript);
-    }
-  };
+    // Insert the script into the document
+    document.head.appendChild(script);
+    console.log(`[vite-hmr-launcher] Loading WebSocket fix: ${src}`);
+  }
   
-  // Insert the script into the document
-  document.head.appendChild(script);
-  console.log(`[vite-hmr-launcher] Loading WebSocket fix: ${scriptToLoad}`);
+  // Load each script in sequence
+  for (let i = 0; i < scriptsToLoad.length; i++) {
+    const isLast = i === scriptsToLoad.length - 1;
+    loadScript(scriptsToLoad[i], isLast);
+  }
 })();
