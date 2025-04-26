@@ -1084,6 +1084,10 @@ export type InsertFieldObservation = z.infer<typeof insertFieldObservationSchema
 export type SensorReading = typeof sensorReadings.$inferSelect;
 export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
 
+// Field Reports types
+export type FieldReport = typeof fieldReports.$inferSelect;
+export type InsertFieldReport = z.infer<typeof insertFieldReportSchema>;
+
 // Plugin Marketplace types
 export type PluginReview = typeof pluginReviews.$inferSelect;
 export type InsertPluginReview = z.infer<typeof insertPluginReviewSchema>;

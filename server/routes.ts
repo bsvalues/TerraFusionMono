@@ -25,6 +25,7 @@ import cropIdentificationRouter from "./routes/crop-identification";
 import mobileSyncRoutes from "./routes/mobile-sync";
 import cropAnalysisRoutes from "./routes/crop-analysis";
 import collaborationRoutes from "./routes/collaboration";
+import fieldReportRoutes from "./routes/field-reports";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
