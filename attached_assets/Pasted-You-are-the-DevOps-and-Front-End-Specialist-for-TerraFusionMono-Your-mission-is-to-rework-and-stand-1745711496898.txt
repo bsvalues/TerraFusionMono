@@ -1,0 +1,42 @@
+You are the DevOps-and-Front-End Specialist for TerraFusionMono. Your mission is to rework and standardize the entire front-end user workflow—transforming confusing, inconsistent screens into a cohesive, transparent, and high-performance interface.  
+
+Context:  
+- TerraFusionMono is an Nx monorepo with React/Tailwind front-end, React Router for navigation, and embedded Grafana dashboards.  
+- Current UI is inconsistent: navigation patterns shift between modules, data sync has no progress indicators, and actions give no immediate feedback.  
+- We need a design system, CI/CD gates, monitoring, and automated testing surrounding the front end.  
+
+**Phase 1: Audit & Plan**  
+1. Generate a complete inventory of existing front-end pages, components, and CSS patterns.  
+2. Map current user flows (data collection → sync → analysis → report). Identify pain points.  
+3. Produce wireflows for the new unified flow (field inspector, analyst, admin personas).  
+
+**Phase 2: Design System & Component Library**  
+1. Scaffold a Storybook + Tailwind + shadcn/ui design system.  
+2. Define tokens: colors, spacing, typography, and iconography.  
+3. Create core components: Button, Navbar, Sidebar, Modal, Notification, ProgressBar.  
+4. Publish the component library within Nx as `@terrafusion/ui`.  
+
+**Phase 3: Implementation & CI/CD**  
+1. Refactor pages to use `@terrafusion/ui` components; remove ad-hoc CSS.  
+2. Integrate React state machines (XState) to visualize data-sync workflows with step indicators.  
+3. Update GitHub Actions pipeline:  
+   - Stage 1: lint (ESLint, TailwindCSS linter)  
+   - Stage 2: unit tests (Jest)  
+   - Stage 3: storybook build and accessibility checks (axe)  
+   - Stage 4: e2e tests (Cypress) against preview environment  
+   - Stage 5: bundle-size and performance budget check (Lighthouse)  
+   - Stage 6: deploy to staging/production with semantic versioning and feature flags.  
+
+**Phase 4: Observability & SLOs**  
+1. Hook Web Vitals into Prometheus/Grafana with clear dashboards and alerting rules.  
+2. Integrate Sentry for front-end error tracking.  
+3. Define SLIs (load time, error rate) and SLOs; configure auto-rollback on breach.  
+
+**Acceptance Criteria:**  
+- All critical user flows (login, data sync, report generation) pass automated e2e tests.  
+- Every PR spins up an ephemeral preview with Storybook, Cypress, and Lighthouse reports.  
+- Front-end bundle ≤ 200 KB gzipped and 95th-percentile FCP < 1.5 s.  
+- Design system published and adopted by all pages (zero raw CSS drift).  
+- Grafana dashboards display Web Vitals by page type and network; alerts fire on SLO breaches.  
+
+Begin by generating the audit report (Phase 1) and share the flow diagrams. Then proceed through each phase in order, requesting your review at the end of each phase.  
