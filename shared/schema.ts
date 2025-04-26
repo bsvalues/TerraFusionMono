@@ -854,6 +854,11 @@ export const validationStatusEnum = pgEnum('validation_status', [
   'pending', 'valid', 'suspect', 'invalid', 'verified'
 ]);
 
+// Enum for field report types
+export const fieldReportTypeEnum = pgEnum('field_report_type', [
+  'crop_health', 'pest_disease', 'irrigation', 'soil_quality', 'yield_estimate', 'comprehensive'
+]);
+
 // Field observations
 export const fieldObservations = pgTable("field_observations", {
   id: serial("id").primaryKey(),
@@ -935,6 +940,58 @@ export const insertSensorReadingSchema = createInsertSchema(sensorReadings)
   .extend({
     location: z.any().optional(),
     metadata: z.any().optional(),
+  });
+
+// Field reports for one-tap AI summaries
+export const fieldReports = pgTable("field_reports", {
+  id: serial("id").primaryKey(),
+  reportId: varchar("report_id", { length: 36 }).notNull().unique(), // UUID for sync
+  parcelId: varchar("parcel_id", { length: 50 }).notNull().references(() => parcels.externalId, { onDelete: 'cascade' }),
+  userId: integer("user_id").notNull().references(() => users.id),
+  title: text("title").notNull(),
+  reportType: fieldReportTypeEnum("report_type").default('comprehensive').notNull(),
+  summary: text("summary").notNull(), // AI-generated summary
+  details: json("details"), // Structured JSON data with detailed analysis
+  weatherData: json("weather_data"), // Weather conditions during report generation
+  observations: integer("observations").array(), // Array of related field observation IDs
+  cropData: json("crop_data"), // Specific crop metrics and analysis
+  soilData: json("soil_data"), // Soil condition metrics
+  recommendations: text("recommendations"), // AI-generated recommendations
+  mediaUrls: text("media_urls").array(), // Photos, videos, etc.
+  locationData: json("location_data"), // Report location data
+  generatedAt: timestamp("generated_at").defaultNow().notNull(),
+  aiModel: text("ai_model"), // Which AI model was used
+  promptVersion: text("prompt_version"), // Version of prompt used for generation
+  status: text("status").default("completed").notNull(), // in_progress, completed, failed
+  isPublic: boolean("is_public").default(false).notNull(), // Whether shared publicly
+  collaborationSessionId: varchar("collaboration_session_id", { length: 36 }),
+  yDocData: text("y_doc_data"), // Collaborative document data
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  syncStatus: text("sync_status").default("pending"),
+  lastSynced: timestamp("last_synced"),
+  version: integer("version").default(1).notNull(),
+}, (table) => {
+  return {
+    parcelIdx: index("field_reports_parcel_idx").on(table.parcelId),
+    userIdx: index("field_reports_user_idx").on(table.userId),
+    typeIdx: index("field_reports_type_idx").on(table.reportType),
+    generatedAtIdx: index("field_reports_generated_at_idx").on(table.generatedAt),
+    statusIdx: index("field_reports_status_idx").on(table.status),
+    syncStatusIdx: index("field_reports_sync_idx").on(table.syncStatus),
+  };
+});
+
+export const insertFieldReportSchema = createInsertSchema(fieldReports)
+  .omit({ id: true, createdAt: true, updatedAt: true, lastSynced: true })
+  .extend({
+    details: z.any().optional(),
+    weatherData: z.any().optional(),
+    cropData: z.any().optional(),
+    soilData: z.any().optional(),
+    locationData: z.any().optional(),
+    observations: z.array(z.number()).optional(),
+    mediaUrls: z.array(z.string()).optional(),
   });
 
 // ====== PLUGIN MARKETPLACE SYSTEM ======
