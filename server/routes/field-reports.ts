@@ -6,6 +6,17 @@ import { eq } from "drizzle-orm";
 import { z } from "zod";
 import { generateFieldReport } from "../services/ai/field-report-generator";
 
+// Define session extension for Express Request type
+declare global {
+  namespace Express {
+    interface Request {
+      session: {
+        userId?: number;
+      }
+    }
+  }
+}
+
 const router = Router();
 
 // Validation schema for field report creation

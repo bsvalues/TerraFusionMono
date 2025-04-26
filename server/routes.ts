@@ -998,6 +998,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // AI-powered crop analysis routes (OpenAI integration)
   app.use('/api/crop-analysis', cropAnalysisRoutes);
   
+  // Field reports with AI summary routes
+  app.use('/api/field-reports', fieldReportRoutes);
+  
   // Collaboration routes for real-time editing features
   app.use('/api/collaboration', collaborationRoutes);
   
@@ -1006,6 +1009,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Set up the WebSocket server for real-time updates with multiple paths
   // Initialize the WebSocket server for general notifications
   const wss = new WebSocketServer({ server: httpServer, path: '/ws' });
+  
+  // Make WebSocket server accessible to routes
+  app.locals.wss = wss;
   
   // Store active general connections
   const clients = new Set<WebSocket>();
