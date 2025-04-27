@@ -10,6 +10,16 @@ export interface WebSocketMessage {
   [key: string]: any;
 }
 
+export type ConnectionStatus = 'disconnected' | 'connecting' | 'connected' | 'reconnecting' | 'error';
+
+export interface ConnectionStatusChangeEvent {
+  status: ConnectionStatus;
+  timestamp: number;
+  attempt?: number;
+  code?: number;
+  reason?: string;
+}
+
 export interface WebSocketOptions {
   /**
    * The URL of the WebSocket server
@@ -30,6 +40,11 @@ export interface WebSocketOptions {
    * Whether to use exponential backoff for reconnections
    */
   useExponentialBackoff?: boolean;
+  
+  /**
+   * Automatic reconnection on connection close or error
+   */
+  autoReconnect?: boolean;
   
   /**
    * Authentication token
@@ -55,6 +70,11 @@ export interface WebSocketOptions {
    * Optional callback for WebSocket messages
    */
   onMessage?: (message: WebSocketMessage) => void;
+  
+  /**
+   * Optional callback for connection status changes
+   */
+  onStatusChange?: (event: ConnectionStatusChangeEvent) => void;
 }
 
 /**
@@ -66,18 +86,26 @@ class WebSocketClient {
   private maxReconnectAttempts: number;
   private reconnectDelay: number;
   private useExponentialBackoff: boolean;
+  private autoReconnect: boolean;
   private reconnectAttempts = 0;
   private reconnectTimeout: ReturnType<typeof setTimeout> | null = null;
   private token: string | undefined;
   private clientId: string | null = null;
   private messageQueue: WebSocketMessage[] = [];
   private sessionId: string | null = null;
+  private connectionStatus: ConnectionStatus = 'disconnected';
+  private connectionStartTime: number = 0;
+  private lastMessageTime: number = 0;
+  private pingInterval: ReturnType<typeof setInterval> | null = null;
+  private heartbeatMissed = 0;
+  private heartbeatThreshold = 3; // Number of missed heartbeats before attempting reconnection
   
   // Callbacks
   private onConnectCallback: (() => void) | undefined;
   private onDisconnectCallback: ((event: CloseEvent) => void) | undefined;
   private onErrorCallback: ((error: Event) => void) | undefined;
   private onMessageCallback: ((message: WebSocketMessage) => void) | undefined;
+  private onStatusChangeCallback: ((event: ConnectionStatusChangeEvent) => void) | undefined;
   
   // Event listeners
   private messageListeners: Map<string, ((message: WebSocketMessage) => void)[]> = new Map();
@@ -87,14 +115,42 @@ class WebSocketClient {
     this.maxReconnectAttempts = options.maxReconnectAttempts || 10;
     this.reconnectDelay = options.reconnectDelay || 1000;
     this.useExponentialBackoff = options.useExponentialBackoff !== false;
+    this.autoReconnect = options.autoReconnect !== false;
     this.token = options.token;
     
     this.onConnectCallback = options.onConnect;
     this.onDisconnectCallback = options.onDisconnect;
     this.onErrorCallback = options.onError;
     this.onMessageCallback = options.onMessage;
+    this.onStatusChangeCallback = options.onStatusChange;
     
     // Don't connect automatically - call connect() when ready
+  }
+  
+  /**
+   * Update the connection status and trigger the onStatusChange callback
+   */
+  private _updateConnectionStatus(status: ConnectionStatus, code?: number, reason?: string): void {
+    // Only trigger callback if status actually changed
+    if (this.connectionStatus !== status) {
+      this.connectionStatus = status;
+      
+      const statusEvent: ConnectionStatusChangeEvent = {
+        status,
+        timestamp: Date.now(),
+        attempt: status === 'reconnecting' ? this.reconnectAttempts : undefined,
+        code,
+        reason
+      };
+      
+      // Log the status change
+      console.log(`WebSocket connection status changed to ${status}`, statusEvent);
+      
+      // Invoke the status change callback if provided
+      if (this.onStatusChangeCallback) {
+        this.onStatusChangeCallback(statusEvent);
+      }
+    }
   }
   
   /**
@@ -107,6 +163,8 @@ class WebSocketClient {
     }
     
     this.reconnectAttempts = 0;
+    this.connectionStartTime = Date.now();
+    this._updateConnectionStatus('connecting');
     this._connect();
   }
   
@@ -117,6 +175,11 @@ class WebSocketClient {
     try {
       console.log(`Connecting to WebSocket server at ${this.url}`);
       
+      // Update status to connecting if not already
+      if (this.connectionStatus !== 'connecting') {
+        this._updateConnectionStatus(this.reconnectAttempts > 0 ? 'reconnecting' : 'connecting');
+      }
+      
       this.ws = new WebSocket(this.url);
       
       this.ws.onopen = this._handleOpen.bind(this);
@@ -125,6 +188,7 @@ class WebSocketClient {
       this.ws.onmessage = this._handleMessage.bind(this);
     } catch (error) {
       console.error('Error creating WebSocket connection:', error);
+      this._updateConnectionStatus('error');
       this._scheduleReconnect();
     }
   }
@@ -136,6 +200,9 @@ class WebSocketClient {
     console.log('WebSocket connection established');
     
     this.reconnectAttempts = 0;
+    this._updateConnectionStatus('connected');
+    this.connectionStartTime = Date.now();
+    this.lastMessageTime = Date.now();
     
     // If we have a token, authenticate immediately
     if (this.token) {
@@ -144,6 +211,9 @@ class WebSocketClient {
     
     // Process any queued messages
     this._processQueue();
+    
+    // Start the heartbeat process
+    this._startHeartbeat();
     
     // Call the onConnect callback if provided
     if (this.onConnectCallback) {
@@ -157,13 +227,19 @@ class WebSocketClient {
   private _handleClose(event: CloseEvent): void {
     console.log(`WebSocket connection closed: ${event.code}, ${event.reason}`);
     
+    // Stop the heartbeat process
+    this._stopHeartbeat();
+    
+    // Update the connection status
+    this._updateConnectionStatus('disconnected', event.code, event.reason);
+    
     // Call the onDisconnect callback if provided
     if (this.onDisconnectCallback) {
       this.onDisconnectCallback(event);
     }
     
-    // Don't reconnect if the closure was clean (code 1000)
-    if (event.code !== 1000) {
+    // Don't reconnect if the closure was clean (code 1000) or autoReconnect is disabled
+    if (event.code !== 1000 && this.autoReconnect) {
       this._scheduleReconnect();
     }
   }
@@ -174,9 +250,46 @@ class WebSocketClient {
   private _handleError(error: Event): void {
     console.error('WebSocket error:', error);
     
+    // Update the connection status
+    this._updateConnectionStatus('error');
+    
     // Call the onError callback if provided
     if (this.onErrorCallback) {
       this.onErrorCallback(error);
+    }
+  }
+  
+  /**
+   * Start the heartbeat process to detect connection issues
+   */
+  private _startHeartbeat(): void {
+    // Clear any existing interval
+    this._stopHeartbeat();
+    
+    // Set up a ping interval (every 30 seconds)
+    this.pingInterval = setInterval(() => {
+      if (this.isConnected()) {
+        // Send a ping message
+        this.send({ type: 'ping', timestamp: Date.now() });
+      } else {
+        // Connection is not open but interval is running - attempt reconnect
+        this.heartbeatMissed++;
+        
+        if (this.heartbeatMissed >= this.heartbeatThreshold) {
+          console.log(`Missed ${this.heartbeatMissed} heartbeats, attempting reconnection`);
+          this._scheduleReconnect();
+        }
+      }
+    }, 30000); // 30 second interval
+  }
+  
+  /**
+   * Stop the heartbeat process
+   */
+  private _stopHeartbeat(): void {
+    if (this.pingInterval) {
+      clearInterval(this.pingInterval);
+      this.pingInterval = null;
     }
   }
   
@@ -187,12 +300,25 @@ class WebSocketClient {
     try {
       const message = JSON.parse(event.data) as WebSocketMessage;
       
+      // Update last message time and reset heartbeat missed counter
+      this.lastMessageTime = Date.now();
+      this.heartbeatMissed = 0;
+      
       console.log(`Received message of type: ${message.type}`);
       
       // Handle welcome message to capture clientId
       if (message.type === 'welcome' && message.clientId) {
         this.clientId = message.clientId;
         console.log(`Received client ID: ${this.clientId}`);
+      }
+      
+      // Handle pong messages for connection health monitoring
+      if (message.type === 'pong') {
+        // Calculate round-trip time if we have the original ping timestamp
+        if (message.originalTimestamp) {
+          const rtt = Date.now() - message.originalTimestamp;
+          console.log(`WebSocket ping-pong round-trip time: ${rtt}ms`);
+        }
       }
       
       // Call type-specific listener callbacks
@@ -440,9 +566,40 @@ class WebSocketClient {
   }
   
   /**
+   * Get current connection status
+   */
+  public getConnectionStatus(): ConnectionStatus {
+    return this.connectionStatus;
+  }
+  
+  /**
+   * Get connection metrics - uptime, reconnection attempts, etc.
+   */
+  public getConnectionMetrics(): {
+    status: ConnectionStatus;
+    uptime: number;
+    reconnectAttempts: number;
+    lastMessageTime: number;
+  } {
+    const now = Date.now();
+    const uptime = this.connectionStartTime ? now - this.connectionStartTime : 0;
+    
+    return {
+      status: this.connectionStatus,
+      uptime: uptime,
+      reconnectAttempts: this.reconnectAttempts,
+      lastMessageTime: this.lastMessageTime
+    };
+  }
+  
+  /**
    * Close the WebSocket connection
    */
   public disconnect(code?: number, reason?: string): void {
+    // Stop the heartbeat process
+    this._stopHeartbeat();
+    
+    // Clear the reconnect timeout
     if (this.reconnectTimeout) {
       clearTimeout(this.reconnectTimeout);
       this.reconnectTimeout = null;
@@ -463,6 +620,9 @@ class WebSocketClient {
       this.ws = null;
     }
     
+    // Update connection status
+    this._updateConnectionStatus('disconnected', code, reason);
+    
     this.sessionId = null;
     this.clientId = null;
   }
@@ -481,8 +641,35 @@ export function createWebSocketClient(options: WebSocketOptions): WebSocketClien
 export function createWebSocketHook(baseUrl: string) {
   return function useWebSocket(path: string = '/ws') {
     const wsRef = React.useRef<WebSocketClient | null>(null);
-    const [isConnected, setIsConnected] = React.useState(false);
+    const [connectionStatus, setConnectionStatus] = React.useState<ConnectionStatus>('disconnected');
     const [messages, setMessages] = React.useState<WebSocketMessage[]>([]);
+    const [connectionMetrics, setConnectionMetrics] = React.useState<{
+      uptime: number;
+      reconnectAttempts: number;
+      lastMessageTime: number;
+    }>({
+      uptime: 0,
+      reconnectAttempts: 0,
+      lastMessageTime: 0
+    });
+    
+    // Update metrics on an interval
+    React.useEffect(() => {
+      if (!wsRef.current) return;
+      
+      const intervalId = setInterval(() => {
+        if (wsRef.current) {
+          const metrics = wsRef.current.getConnectionMetrics();
+          setConnectionMetrics({
+            uptime: metrics.uptime,
+            reconnectAttempts: metrics.reconnectAttempts,
+            lastMessageTime: metrics.lastMessageTime
+          });
+        }
+      }, 1000);
+      
+      return () => clearInterval(intervalId);
+    }, [wsRef.current]);
     
     React.useEffect(() => {
       // Determine the protocol (ws: or wss:)
@@ -498,8 +685,12 @@ export function createWebSocketHook(baseUrl: string) {
         maxReconnectAttempts: 5,
         reconnectDelay: 1000,
         useExponentialBackoff: true,
-        onConnect: () => setIsConnected(true),
-        onDisconnect: () => setIsConnected(false),
+        autoReconnect: true,
+        onConnect: () => setConnectionStatus('connected'),
+        onDisconnect: () => setConnectionStatus('disconnected'),
+        onStatusChange: (event) => {
+          setConnectionStatus(event.status);
+        },
         onMessage: (message) => {
           setMessages(prev => [...prev, message]);
         }
@@ -517,8 +708,12 @@ export function createWebSocketHook(baseUrl: string) {
       };
     }, [path]);
     
+    const isConnected = connectionStatus === 'connected';
+    
     return {
       isConnected,
+      connectionStatus,
+      connectionMetrics,
       messages,
       client: wsRef.current,
       send: (message: WebSocketMessage) => wsRef.current?.send(message),
@@ -529,7 +724,14 @@ export function createWebSocketHook(baseUrl: string) {
       sendCursorUpdate: (position: any, selection?: any) => wsRef.current?.sendCursorUpdate(position, selection),
       sendPresenceUpdate: (state: any) => wsRef.current?.sendPresenceUpdate(state),
       sendComment: (comment: any) => wsRef.current?.sendComment(comment),
-      disconnect: () => wsRef.current?.disconnect()
+      disconnect: () => wsRef.current?.disconnect(),
+      getConnectionStatus: () => wsRef.current?.getConnectionStatus() || 'disconnected',
+      getConnectionMetrics: () => wsRef.current?.getConnectionMetrics() || {
+        status: 'disconnected' as ConnectionStatus,
+        uptime: 0,
+        reconnectAttempts: 0,
+        lastMessageTime: 0
+      }
     };
   };
 }
