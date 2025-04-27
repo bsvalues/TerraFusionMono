@@ -7,6 +7,9 @@
 
 export interface WebSocketMessage {
   type: string;
+  clientId?: string;
+  timestamp?: number;
+  originalTimestamp?: number;
   [key: string]: any;
 }
 
@@ -643,11 +646,7 @@ export function createWebSocketHook(baseUrl: string) {
     const wsRef = React.useRef<WebSocketClient | null>(null);
     const [connectionStatus, setConnectionStatus] = React.useState<ConnectionStatus>('disconnected');
     const [messages, setMessages] = React.useState<WebSocketMessage[]>([]);
-    const [connectionMetrics, setConnectionMetrics] = React.useState<{
-      uptime: number;
-      reconnectAttempts: number;
-      lastMessageTime: number;
-    }>({
+    const [connectionMetrics, setConnectionMetrics] = React.useState({
       uptime: 0,
       reconnectAttempts: 0,
       lastMessageTime: 0
@@ -655,7 +654,7 @@ export function createWebSocketHook(baseUrl: string) {
     
     // Update metrics on an interval
     React.useEffect(() => {
-      if (!wsRef.current) return;
+      if (!wsRef.current) return undefined;
       
       const intervalId = setInterval(() => {
         if (wsRef.current) {
@@ -669,7 +668,7 @@ export function createWebSocketHook(baseUrl: string) {
       }, 1000);
       
       return () => clearInterval(intervalId);
-    }, [wsRef.current]);
+    }, []);
     
     React.useEffect(() => {
       // Determine the protocol (ws: or wss:)
@@ -692,7 +691,7 @@ export function createWebSocketHook(baseUrl: string) {
           setConnectionStatus(event.status);
         },
         onMessage: (message) => {
-          setMessages(prev => [...prev, message]);
+          setMessages((prevMessages) => [...prevMessages, message]);
         }
       });
       
