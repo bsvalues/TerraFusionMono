@@ -1129,18 +1129,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
     
     try {
       // Store connection in database
+      const now = new Date();
       const connection = await storage.createWebSocketConnection({
-        connectionId,
-        userId: userId || undefined,
-        ipAddress: req.socket.remoteAddress || '',
-        userAgent: req.headers['user-agent'] || '',
-        connectionTime: new Date(),
+        connection_id: connectionId,
+        user_id: userId || undefined,
+        ip_address: req.socket.remoteAddress || '',
+        user_agent: req.headers['user-agent'] || '',
+        connection_time: now,
         status: 'connected',
-        lastActivity: new Date(),
-        disconnectionTime: null,
-        clientInfo: JSON.stringify({
+        last_activity: now, 
+        last_ping_time: now,
+        reconnect_count: 0,
+        disconnection_time: null,
+        client_info: JSON.stringify({
           headers: req.headers,
           address: req.socket.remoteAddress
+        }),
+        session_data: JSON.stringify({
+          clientId: connectionId.substring(0, 8),
+          userAgent: req.headers['user-agent']
         })
       });
       
@@ -1161,8 +1168,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Update connection status in database
           await storage.updateWebSocketConnectionByConnectionId(connectionId, {
             status: 'disconnected',
-            disconnectionTime: new Date(),
-            disconnectionReason: reason.toString() || `Code: ${code}`
+            disconnection_time: new Date(),
+            disconnection_reason: reason.toString() || `Code: ${code}`
           });
           
           console.log(`WebSocket connection closed and updated in database. ID: ${connectionId}`);
@@ -1197,8 +1204,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           // Update connection status in database
           await storage.updateWebSocketConnectionByConnectionId(connectionId, {
             status: 'error',
-            disconnectionTime: new Date(),
-            disconnectionReason: error.message || 'Unknown error'
+            disconnection_time: new Date(),
+            disconnection_reason: error.message || 'Unknown error'
           });
         } catch (dbError) {
           console.error(`Error updating WebSocket connection error in database: ${dbError}`);
