@@ -1130,7 +1130,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       // Store connection in database
       const now = new Date();
-      const connection = await storage.createWebSocketConnection({
+      const connectionData = {
         connectionId: connectionId,
         userId: userId || undefined,
         ipAddress: req.socket.remoteAddress || '',
@@ -1149,7 +1149,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           clientId: connectionId.substring(0, 8),
           userAgent: req.headers['user-agent']
         })
+      };
+      
+      console.log(`Creating WebSocket connection with data:`, {
+        connectionId,
+        userId,
+        status: 'connected'
       });
+      
+      const connection = await storage.createWebSocketConnection(connectionData);
       
       console.log(`WebSocket connection established and tracked in database. ID: ${connectionId}`);
       

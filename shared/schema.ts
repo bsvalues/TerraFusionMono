@@ -169,10 +169,14 @@ export const webSocketConnections = pgTable("websocket_connections", {
   status: webSocketConnectionsEnum("status").default("disconnected").notNull(),
   clientInfo: json("client_info"),
   connectionTime: timestamp("connection_time").defaultNow().notNull(),
+  lastActivity: timestamp("last_activity").defaultNow().notNull(),
   lastPingTime: timestamp("last_ping_time").defaultNow().notNull(),
   disconnectionTime: timestamp("disconnection_time"),
   reconnectCount: integer("reconnect_count").default(0),
   sessionData: json("session_data"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  disconnectionReason: text("disconnection_reason"),
 });
 
 export const insertWebSocketConnectionSchema = createInsertSchema(webSocketConnections).omit({
