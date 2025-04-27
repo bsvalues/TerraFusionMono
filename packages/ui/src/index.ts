@@ -18,6 +18,7 @@ export * from './components/tooltip';
 // Agricultural specific components
 export * from './components/crop-health-indicator';
 export * from './components/field-map';
+export * from './components/field-report';
 export * from './components/soil-analysis-card';
 export * from './components/sync-progress-panel';
 export * from './components/sync-status-indicator';
