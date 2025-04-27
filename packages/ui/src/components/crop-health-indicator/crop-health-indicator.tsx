@@ -7,7 +7,7 @@ import {
   AlertCircle,
   CheckCircle2,
   Info,
-  Plant,
+  Flower2,
   GanttChart,
   Sprout,
   Thermometer,
@@ -118,7 +118,7 @@ export const CropHealthIndicator = ({
     } else if (lowerName.includes('growth') || lowerName.includes('height')) {
       return <Ruler className={iconClassName} />;
     } else if (lowerName.includes('nutrient') || lowerName.includes('fertilizer')) {
-      return <Plant className={iconClassName} />;
+      return <Flower2 className={iconClassName} />;
     } else if (lowerName.includes('development') || lowerName.includes('stage')) {
       return <GanttChart className={iconClassName} />;
     } else if (lowerName.includes('germination') || lowerName.includes('sprout')) {

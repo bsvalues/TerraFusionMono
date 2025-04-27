@@ -18,9 +18,11 @@ export * from './components/tooltip';
 // Agricultural specific components
 export * from './components/crop-health-indicator';
 export * from './components/field-map';
+export * from './components/soil-analysis-card';
 export * from './components/sync-progress-panel';
 export * from './components/sync-status-indicator';
 export * from './components/weather-widget';
+export * from './components/yield-prediction-chart';
 
 // Design tokens and utilities
 export * from './tokens';
