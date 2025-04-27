@@ -157,6 +157,29 @@ export const insertAiProviderSchema = createInsertSchema(aiProviders).pick({
   config: true,
 });
 
+// WebSocket connections for real-time communication
+export const webSocketConnectionsEnum = pgEnum('websocket_connection_status', [
+  'connected', 'disconnected', 'error', 'reconnecting'
+]);
+
+export const webSocketConnections = pgTable("websocket_connections", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id),
+  connectionId: text("connection_id").notNull().unique(),
+  status: webSocketConnectionsEnum("status").default("disconnected").notNull(),
+  clientInfo: json("client_info"),
+  connectionTime: timestamp("connection_time").defaultNow().notNull(),
+  lastPingTime: timestamp("last_ping_time").defaultNow().notNull(),
+  disconnectionTime: timestamp("disconnection_time"),
+  reconnectCount: integer("reconnect_count").default(0),
+  sessionData: json("session_data"),
+});
+
+export const insertWebSocketConnectionSchema = createInsertSchema(webSocketConnections).omit({
+  id: true,
+  disconnectionTime: true,
+});
+
 // System metrics
 export const systemMetrics = pgTable("system_metrics", {
   id: serial("id").primaryKey(),
@@ -276,6 +299,9 @@ export const insertGeocodeCallSchema = createInsertSchema(geocodeCalls).pick({
 
 export type GeocodeCall = typeof geocodeCalls.$inferSelect;
 export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
+
+export type WebSocketConnection = typeof webSocketConnections.$inferSelect;
+export type InsertWebSocketConnection = z.infer<typeof insertWebSocketConnectionSchema>;
 
 // Land parcels (fields) data
 export const parcels = pgTable("parcels", {

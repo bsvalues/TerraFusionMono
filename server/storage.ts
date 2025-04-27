@@ -14,6 +14,8 @@ import {
   parcelMeasurements, type ParcelMeasurement, type InsertParcelMeasurement,
   cropIdentifications, type CropIdentification, type InsertCropIdentification,
   cropHealthAnalyses, type InsertCropHealthAnalysis,
+  // WebSocket Connections
+  webSocketConnections, type WebSocketConnection, type InsertWebSocketConnection,
   // WebSocket Collaboration
   collaborationSessions, sessionParticipants, documentVersions, collaborationEvents,
   type CollaborationSession, type SessionParticipant, type DocumentVersion, type CollaborationEvent,
@@ -192,6 +194,15 @@ export interface IStorage {
   getPluginCategoryRelations(pluginId: number): Promise<PluginCategoryRelation[]>;
   createPluginCategoryRelation(relation: InsertPluginCategoryRelation): Promise<PluginCategoryRelation>;
   deletePluginCategoryRelation(pluginId: number, categoryId: number): Promise<boolean>;
+  
+  // WebSocket Connection operations
+  getWebSocketConnections(options?: { limit?: number, userId?: number, status?: string }): Promise<WebSocketConnection[]>;
+  getWebSocketConnection(id: number): Promise<WebSocketConnection | undefined>;
+  getWebSocketConnectionByConnectionId(connectionId: string): Promise<WebSocketConnection | undefined>;
+  createWebSocketConnection(connection: InsertWebSocketConnection): Promise<WebSocketConnection>;
+  updateWebSocketConnection(id: number, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined>;
+  updateWebSocketConnectionByConnectionId(connectionId: string, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined>;
+  deleteWebSocketConnection(id: number): Promise<boolean>;
 }
 
 // Database-backed storage implementation
@@ -1219,6 +1230,72 @@ export class DatabaseStorage implements IStorage {
           eq(pluginCategoryRelations.categoryId, categoryId)
         )
       );
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // WebSocket Connection operations
+  async getWebSocketConnections(options?: { 
+    limit?: number, 
+    userId?: number, 
+    status?: string 
+  }): Promise<WebSocketConnection[]> {
+    let query = db.select().from(webSocketConnections);
+    
+    if (options?.userId) {
+      query = query.where(eq(webSocketConnections.userId, options.userId));
+    }
+    
+    if (options?.status) {
+      query = query.where(eq(webSocketConnections.status, options.status));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(webSocketConnections.connectionTime));
+  }
+  
+  async getWebSocketConnection(id: number): Promise<WebSocketConnection | undefined> {
+    const [connection] = await db.select().from(webSocketConnections).where(eq(webSocketConnections.id, id));
+    return connection;
+  }
+  
+  async getWebSocketConnectionByConnectionId(connectionId: string): Promise<WebSocketConnection | undefined> {
+    const [connection] = await db.select().from(webSocketConnections).where(eq(webSocketConnections.connectionId, connectionId));
+    return connection;
+  }
+  
+  async createWebSocketConnection(connection: InsertWebSocketConnection): Promise<WebSocketConnection> {
+    const [newConnection] = await db
+      .insert(webSocketConnections)
+      .values(connection)
+      .returning();
+    return newConnection;
+  }
+  
+  async updateWebSocketConnection(id: number, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined> {
+    const [updatedConnection] = await db
+      .update(webSocketConnections)
+      .set(updates)
+      .where(eq(webSocketConnections.id, id))
+      .returning();
+    return updatedConnection;
+  }
+  
+  async updateWebSocketConnectionByConnectionId(connectionId: string, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined> {
+    const [updatedConnection] = await db
+      .update(webSocketConnections)
+      .set(updates)
+      .where(eq(webSocketConnections.connectionId, connectionId))
+      .returning();
+    return updatedConnection;
+  }
+  
+  async deleteWebSocketConnection(id: number): Promise<boolean> {
+    const result = await db
+      .delete(webSocketConnections)
+      .where(eq(webSocketConnections.id, id));
     return result.rowCount !== null && result.rowCount > 0;
   }
 }
