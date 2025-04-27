@@ -1,25 +1,36 @@
 import * as React from 'react';
 import { cn } from '../../utils';
 import { 
-  WifiOff, 
   Wifi, 
+  WifiOff,
   CheckCircle2, 
   AlertCircle, 
   Loader2,
-  Clock
+  Clock,
+  ArrowDownUp,
+  Ban
 } from 'lucide-react';
+import { 
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger 
+} from '../tooltip';
+import { Badge } from '../badge';
 
-export type SyncStatus = 'syncing' | 'synced' | 'offline' | 'error' | 'delayed';
+export type SyncStatus = 
+  | 'synced'
+  | 'syncing'
+  | 'error'
+  | 'offline'
+  | 'pending'
+  | 'disabled';
 
 export interface SyncStatusIndicatorProps {
   /**
    * Current sync status
    */
   status: SyncStatus;
-  /**
-   * Progress percentage (0-100) when status is 'syncing'
-   */
-  progress?: number;
   /**
    * Last sync timestamp
    */
@@ -33,48 +44,35 @@ export interface SyncStatusIndicatorProps {
    */
   className?: string;
   /**
-   * Whether the indicator is clickable
+   * Whether to show a badge with detailed info
    */
-  clickable?: boolean;
+  showBadge?: boolean;
   /**
-   * Click handler
+   * Whether to show a tooltip with detailed info
    */
-  onClick?: () => void;
+  showTooltip?: boolean;
+  /**
+   * Size variant
+   */
+  size?: 'sm' | 'md' | 'lg';
 }
 
 /**
- * Displays the current sync status with visual indicators
+ * Status indicator for mobile data synchronization
  */
 export const SyncStatusIndicator = ({
   status,
-  progress = 0,
   lastSynced = null,
   pendingChanges = 0,
   className = '',
-  clickable = false,
-  onClick,
+  showBadge = false,
+  showTooltip = true,
+  size = 'md'
 }: SyncStatusIndicatorProps) => {
-  // Get status styling based on status
-  const getStatusStyling = () => {
-    switch (status) {
-      case 'syncing':
-        return 'bg-terrafusion-blue-100 text-terrafusion-blue-800 hover:bg-terrafusion-blue-200';
-      case 'synced':
-        return 'bg-terrafusion-green-100 text-terrafusion-green-800 hover:bg-terrafusion-green-200';
-      case 'offline':
-        return 'bg-slate-100 text-slate-800 hover:bg-slate-200';
-      case 'delayed':
-        return 'bg-terrafusion-soil-100 text-terrafusion-soil-800 hover:bg-terrafusion-soil-200';
-      case 'error':
-        return 'bg-red-100 text-red-800 hover:bg-red-200';
-      default:
-        return '';
-    }
-  };
 
-  // Format last synced time
+  // Format the last synced time
   const formatLastSynced = () => {
-    if (!lastSynced) return 'Never';
+    if (!lastSynced) return 'Never synced';
     
     const now = new Date();
     const diffMs = now.getTime() - lastSynced.getTime();
@@ -90,63 +88,114 @@ export const SyncStatusIndicator = ({
     return `${diffDays}d ago`;
   };
 
-  // Render the appropriate icon based on status
-  const renderIcon = () => {
+  // Get status details based on current status
+  const getStatusDetails = () => {
     switch (status) {
-      case 'syncing':
-        return <Loader2 className="animate-spin h-4 w-4 mr-1.5" />;
       case 'synced':
-        return <CheckCircle2 className="h-4 w-4 mr-1.5" />;
-      case 'offline':
-        return <WifiOff className="h-4 w-4 mr-1.5" />;
-      case 'delayed':
-        return <Clock className="h-4 w-4 mr-1.5" />;
+        return {
+          icon: <CheckCircle2 className={cn(
+            "text-terrafusion-green-500",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Synced',
+          description: lastSynced ? `Last sync: ${formatLastSynced()}` : 'Fully synchronized',
+          badgeVariant: 'green-subtle' as const
+        };
+      case 'syncing':
+        return {
+          icon: <Loader2 className={cn(
+            "text-terrafusion-blue-500 animate-spin",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Syncing',
+          description: 'Synchronizing data...',
+          badgeVariant: 'blue-subtle' as const
+        };
       case 'error':
-        return <AlertCircle className="h-4 w-4 mr-1.5" />;
+        return {
+          icon: <AlertCircle className={cn(
+            "text-destructive",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Error',
+          description: 'Sync failed. Retry required.',
+          badgeVariant: 'destructive' as const
+        };
+      case 'offline':
+        return {
+          icon: <WifiOff className={cn(
+            "text-slate-500",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Offline',
+          description: 'No connection available',
+          badgeVariant: 'outline' as const
+        };
+      case 'pending':
+        return {
+          icon: <ArrowDownUp className={cn(
+            "text-terrafusion-soil-500",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: `Pending (${pendingChanges})`,
+          description: `${pendingChanges} changes waiting to sync`,
+          badgeVariant: 'soil-subtle' as const
+        };
+      case 'disabled':
+        return {
+          icon: <Ban className={cn(
+            "text-slate-400",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Disabled',
+          description: 'Synchronization is disabled',
+          badgeVariant: 'secondary' as const
+        };
       default:
-        return <Wifi className="h-4 w-4 mr-1.5" />;
+        return {
+          icon: <Clock className={cn(
+            "text-slate-400",
+            size === 'sm' ? 'h-4 w-4' : size === 'lg' ? 'h-6 w-6' : 'h-5 w-5'
+          )} />,
+          label: 'Unknown',
+          description: 'Status unknown',
+          badgeVariant: 'outline' as const
+        };
     }
   };
 
-  // Get the status label text
-  const getStatusLabel = () => {
-    switch (status) {
-      case 'syncing':
-        return 'Syncing';
-      case 'synced':
-        return 'Synced';
-      case 'offline':
-        return 'Offline';
-      case 'delayed':
-        return 'Delayed';
-      case 'error':
-        return 'Sync Error';
-      default:
-        return 'Unknown';
-    }
-  };
+  const statusDetails = getStatusDetails();
 
-  const containerClasses = cn(
-    'inline-flex items-center px-2.5 py-1 rounded-full text-sm font-medium',
-    getStatusStyling(),
-    clickable && 'cursor-pointer transition-colors duration-200',
-    className
-  );
-
-  return (
-    <div className={containerClasses} onClick={clickable ? onClick : undefined} role={clickable ? 'button' : undefined}>
-      {renderIcon()}
-      <span>{getStatusLabel()}</span>
-      {pendingChanges > 0 && (
-        <span className="ml-1.5 text-xs bg-blue-500 text-white rounded-full px-1.5 py-0.5">
-          {pendingChanges}
-        </span>
-      )}
-      {lastSynced && (
-        <span className="ml-1.5 text-xs opacity-80">
-          ({formatLastSynced()})
-        </span>
+  // Render with tooltip if requested
+  const statusIndicator = (
+    <div className={cn("flex items-center space-x-2", className)}>
+      {statusDetails.icon}
+      
+      {showBadge && (
+        <Badge variant={statusDetails.badgeVariant} className="text-xs">
+          {statusDetails.label}
+        </Badge>
       )}
     </div>
   );
+
+  // Wrap in tooltip if requested
+  if (showTooltip) {
+    return (
+      <TooltipProvider>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            {statusIndicator}
+          </TooltipTrigger>
+          <TooltipContent>
+            <div className="text-sm font-semibold">{statusDetails.label}</div>
+            <div className="text-xs">{statusDetails.description}</div>
+          </TooltipContent>
+        </Tooltip>
+      </TooltipProvider>
+    );
+  }
+
+  // Return without tooltip
+  return statusIndicator;
 };
