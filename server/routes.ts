@@ -1004,6 +1004,92 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Collaboration routes for real-time editing features
   app.use('/api/collaboration', collaborationRoutes);
   
+  // WebSocket monitoring endpoints
+  app.get('/api/websocket/connections', async (req, res) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 100;
+      const userId = req.query.userId ? Number(req.query.userId) : undefined;
+      const status = req.query.status as string | undefined;
+      
+      const connections = await storage.getWebSocketConnections({
+        limit,
+        userId,
+        status
+      });
+      
+      res.json({
+        connections,
+        active: connections.filter(c => c.status === 'connected').length,
+        total: connections.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching WebSocket connections: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/websocket/connections/:id', async (req, res) => {
+    try {
+      const connection = await storage.getWebSocketConnection(Number(req.params.id));
+      
+      if (!connection) {
+        return res.status(404).json({ message: `WebSocket connection with ID ${req.params.id} not found` });
+      }
+      
+      res.json(connection);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching WebSocket connection: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/websocket/status', (req, res) => {
+    const activeConnections = Array.from(clients).filter(client => 
+      client.readyState === WebSocket.OPEN
+    ).length;
+    
+    res.json({
+      status: 'online',
+      activeConnections,
+      server: {
+        path: '/ws',
+        protocol: req.secure ? 'wss://' : 'ws://'
+      },
+      timestamp: new Date().toISOString()
+    });
+  });
+  
+  app.post('/api/websocket/broadcast', (req, res) => {
+    try {
+      const { message, type, channel } = req.body;
+      
+      if (!message) {
+        return res.status(400).json({ message: 'Message content is required' });
+      }
+      
+      let count = 0;
+      const payload = JSON.stringify({
+        type: type || 'broadcast',
+        message,
+        channel,
+        timestamp: new Date().toISOString()
+      });
+      
+      for (const client of clients) {
+        if (client.readyState === WebSocket.OPEN) {
+          client.send(payload);
+          count++;
+        }
+      }
+      
+      res.json({
+        success: true,
+        messagesSent: count,
+        totalClients: clients.size
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error broadcasting message: ${error.message}` });
+    }
+  });
+  
   const httpServer = createServer(app);
   
   // Set up the WebSocket server for real-time updates with multiple paths
@@ -1020,25 +1106,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
   const collaborationService = new CollaborationService(httpServer);
   
   // Handle general WebSocket connections
-  wss.on('connection', (ws) => {
+  wss.on('connection', async (ws, req) => {
+    // Generate a unique connection ID
+    const connectionId = req.headers['sec-websocket-key'] || `conn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Add to in-memory clients set
     clients.add(ws);
     
-    // Send a welcome message
-    ws.send(JSON.stringify({
-      type: 'connected',
-      message: 'Connected to TerraFusion WebSocket Server'
-    }));
+    // Store connection metadata in the WebSocket object for reference
+    (ws as any).connectionId = connectionId;
+    (ws as any).connectionTime = new Date();
     
-    // Handle disconnection
-    ws.on('close', () => {
-      clients.delete(ws);
-    });
+    // Determine user ID if authenticated (optional)
+    let userId: number | null = null;
+    
+    if (req.headers.cookie) {
+      // Extract user ID from session if available - simplified example
+      // In a real implementation, this would parse the session cookie and extract the user ID
+      // For demonstration, we're setting a placeholder user ID
+      userId = 1; // Default test user ID
+    }
+    
+    try {
+      // Store connection in database
+      const connection = await storage.createWebSocketConnection({
+        connectionId,
+        userId: userId || undefined,
+        ipAddress: req.socket.remoteAddress || '',
+        userAgent: req.headers['user-agent'] || '',
+        connectionTime: new Date(),
+        status: 'connected',
+        lastActivity: new Date(),
+        disconnectionTime: null,
+        clientInfo: JSON.stringify({
+          headers: req.headers,
+          address: req.socket.remoteAddress
+        })
+      });
+      
+      console.log(`WebSocket connection established and tracked in database. ID: ${connectionId}`);
+      
+      // Send a welcome message
+      ws.send(JSON.stringify({
+        type: 'connected',
+        message: 'Connected to TerraFusion WebSocket Server',
+        connectionId
+      }));
+      
+      // Handle disconnection
+      ws.on('close', async (code, reason) => {
+        clients.delete(ws);
+        
+        try {
+          // Update connection status in database
+          await storage.updateWebSocketConnectionByConnectionId(connectionId, {
+            status: 'disconnected',
+            disconnectionTime: new Date(),
+            disconnectionReason: reason.toString() || `Code: ${code}`
+          });
+          
+          console.log(`WebSocket connection closed and updated in database. ID: ${connectionId}`);
+        } catch (error) {
+          console.error(`Error updating WebSocket connection in database: ${error}`);
+        }
+      });
+      
+      // Regular ping to keep the connection alive and update last activity
+      const pingInterval = setInterval(async () => {
+        if (ws.readyState === WebSocket.OPEN) {
+          ws.send(JSON.stringify({ type: 'ping', timestamp: Date.now() }));
+          
+          try {
+            // Update last activity timestamp
+            await storage.updateWebSocketConnectionByConnectionId(connectionId, {
+              lastActivity: new Date()
+            });
+          } catch (error) {
+            console.error(`Error updating WebSocket connection activity: ${error}`);
+          }
+        } else {
+          clearInterval(pingInterval);
+        }
+      }, 30000); // Send ping every 30 seconds
+      
+      // Handle client errors
+      ws.on('error', async (error) => {
+        console.error(`WebSocket error for connection ${connectionId}:`, error);
+        
+        try {
+          // Update connection status in database
+          await storage.updateWebSocketConnectionByConnectionId(connectionId, {
+            status: 'error',
+            disconnectionTime: new Date(),
+            disconnectionReason: error.message || 'Unknown error'
+          });
+        } catch (dbError) {
+          console.error(`Error updating WebSocket connection error in database: ${dbError}`);
+        }
+      });
+      
+    } catch (error) {
+      console.error(`Error creating WebSocket connection in database: ${error}`);
+    }
     
     // Handle messages
-    ws.on('message', (message) => {
+    ws.on('message', async (message) => {
       try {
         const data = JSON.parse(message.toString());
         console.log('WebSocket message received:', data);
+        
+        // Update last activity timestamp
+        try {
+          await storage.updateWebSocketConnectionByConnectionId(connectionId, {
+            lastActivity: new Date()
+          });
+        } catch (error) {
+          console.error(`Error updating WebSocket connection activity: ${error}`);
+        }
         
         // Handle different message types
         switch (data.type) {
