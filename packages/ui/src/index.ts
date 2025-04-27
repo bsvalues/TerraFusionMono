@@ -16,6 +16,8 @@ export * from './components/progress';
 export * from './components/tooltip';
 
 // Agricultural specific components
+export * from './components/collaboration-indicator';
+export * from './components/collaborative-field-report';
 export * from './components/crop-health-indicator';
 export * from './components/field-map';
 export * from './components/field-report';
