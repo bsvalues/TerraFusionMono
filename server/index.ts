@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { setupVite, serveStatic, log } from "./vite";
 import { apiVersionMiddleware, warnDeprecatedMiddleware } from "./middleware/api-versioning";
 import { createViews } from "@shared/views";
+import { runMigrations } from "./db-migrations";
 
 const app = express();
 app.use(express.json());
@@ -57,7 +58,10 @@ import { initializeJobs } from "./jobs";
 
   // Initialize default data for services
   try {
-    // First initialize plugins and core services
+    // Run database migrations first
+    await runMigrations();
+    
+    // Then initialize plugins and core services
     await pluginService.initializeDefaultPlugins();
     await coreService.initializeDefaultServices();
     
