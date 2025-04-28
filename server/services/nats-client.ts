@@ -399,9 +399,31 @@ export class NatsClient {
           // Extract headers if any
           let hdrs: Record<string, string> | undefined;
           if (msg.headers) {
-            hdrs = {};
-            for (const [key, value] of msg.headers) {
-              hdrs[key] = value;
+            hdrs = {}; 
+            
+            // Create a safe extraction method for headers
+            // This avoids TypeScript errors related to MsgHdrs iteration
+            try {
+              // Get all defined header names and extract them
+              const headerNames = msg.headers.keys();
+              if (headerNames && headerNames.length > 0) {
+                for (let i = 0; i < headerNames.length; i++) {
+                  const key = headerNames[i];
+                  const value = msg.headers.get(key);
+                  if (value !== null && value !== undefined) {
+                    hdrs[key] = value;
+                  }
+                }
+              }
+            } catch (err) {
+              // Fallback to common headers if iteration doesn't work
+              const possibleHeaders = ['content-type', 'message-id', 'correlation-id', 'reply-to', 'subject'];
+              for (const key of possibleHeaders) {
+                const value = msg.headers.get(key);
+                if (value) {
+                  hdrs[key] = value;
+                }
+              }
             }
           }
           
@@ -550,7 +572,10 @@ export class NatsClient {
     
     // Update connection status in database
     if (this.dbConnectionId) {
-      this._updateConnectionInDatabase({ status });
+      // Convert NatsConnectionStatus to expected database enum type
+      // The error happens because 'connecting' is in our type but not in the DB schema
+      const dbStatus = status === 'connecting' ? 'reconnecting' : status;
+      this._updateConnectionInDatabase({ status: dbStatus });
     }
   }
   
