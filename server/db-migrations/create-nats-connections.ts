@@ -54,6 +54,19 @@ export async function createNatsConnectionsTable() {
         )
       `);
       
+      // Create indexes for better performance
+      await db.execute(sql`
+        CREATE INDEX nats_connections_service_idx ON nats_connections (service_name)
+      `);
+      
+      await db.execute(sql`
+        CREATE INDEX nats_connections_status_idx ON nats_connections (status)
+      `);
+      
+      await db.execute(sql`
+        CREATE INDEX nats_connections_activity_idx ON nats_connections (last_activity)
+      `);
+      
       console.log('NATS connections table created successfully');
     } else {
       console.log('NATS connections table already exists');
