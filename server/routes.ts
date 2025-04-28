@@ -335,8 +335,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Detailed health endpoint
   app.get('/api/health', async (req, res) => {
     try {
-      // Check NATS connection
-      const natsStatus = await natsMonitoringService.checkConnection();
+      // Check NATS connection status
+      let natsStatus = { 
+        monitoring: false,
+        client: false
+      };
+      
+      try {
+        // Check HTTP monitoring connection if enabled
+        natsStatus.monitoring = await natsMonitoringService.checkMonitoringConnection();
+      } catch (error) {
+        console.log('Error checking NATS monitoring connection:', error);
+      }
+      
+      // Check NATS client connection
+      natsStatus.client = natsMonitoringService.isClientConnected();
       
       const healthData = {
         status: "ok",
@@ -348,6 +361,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         pitr: {
           latestSnapshot: new Date(Date.now() - 45 * 60 * 1000).toISOString(), // 45 minutes ago
           snapshotCount: 24
+        },
+        nats: {
+          monitoring: natsStatus.monitoring,
+          client: natsStatus.client
         },
         dlq: {
           itemCount: 1,

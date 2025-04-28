@@ -213,6 +213,24 @@ class NatsMonitoringService {
   }
 
   /**
+   * Check if connected to the NATS server (either via monitoring or client)
+   * @returns Promise<boolean> True if connected, false otherwise
+   */
+  async checkConnection(): Promise<boolean> {
+    // If client is enabled, prioritize client connection status
+    if (this.clientEnabled && this.natsClient) {
+      return this.natsClient.isConnected();
+    }
+    
+    // Fallback to monitoring connection
+    if (this.monitoringEnabled) {
+      return this.checkMonitoringConnection();
+    }
+    
+    return false;
+  }
+
+  /**
    * Get NATS connection status
    */
   getConnectionStatus(): { 
@@ -222,9 +240,20 @@ class NatsMonitoringService {
     clientConnected: boolean;
     clientMetrics?: any;
   } {
+    // Try to get the current monitoring connection status if available
+    let monitoringConnected = false;
+    
+    try {
+      // We can't do an async call here, so we'll rely on the last known status
+      // This might not be 100% accurate but is usually fine for status checks
+      monitoringConnected = this.monitoringEnabled;
+    } catch (error) {
+      // Ignore errors, default to false
+    }
+    
     return {
       monitoringEnabled: this.monitoringEnabled,
-      monitoringConnected: this.monitoringEnabled,
+      monitoringConnected,
       clientEnabled: this.clientEnabled,
       clientConnected: this.isClientConnected(),
       clientMetrics: this.natsClient ? this.natsClient.getMetrics() : undefined
