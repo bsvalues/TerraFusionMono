@@ -1090,6 +1090,100 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   
+  // NATS Monitoring and Connection endpoints
+  app.get('/api/nats/status', (req, res) => {
+    try {
+      // Get NATS connection status from monitoring service
+      const status = natsMonitoringService.getConnectionStatus();
+      
+      res.json({
+        ...status,
+        timestamp: new Date().toISOString()
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS status: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/connections', async (req, res) => {
+    try {
+      const limit = req.query.limit ? Number(req.query.limit) : 100;
+      const serviceName = req.query.serviceName as string | undefined;
+      const status = req.query.status as string | undefined;
+      
+      const connections = await storage.getNatsConnections({
+        limit,
+        serviceName,
+        status
+      });
+      
+      res.json({
+        connections,
+        active: connections.filter(c => c.status === 'connected').length,
+        total: connections.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS connections: ${error.message}` });
+    }
+  });
+  
+  app.get('/api/nats/connections/:id', async (req, res) => {
+    try {
+      const connection = await storage.getNatsConnection(Number(req.params.id));
+      
+      if (!connection) {
+        return res.status(404).json({ message: `NATS connection with ID ${req.params.id} not found` });
+      }
+      
+      res.json(connection);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching NATS connection: ${error.message}` });
+    }
+  });
+  
+  app.post('/api/nats/publish', (req, res) => {
+    try {
+      // Check if client is enabled/connected
+      if (!natsMonitoringService.isClientConnected()) {
+        return res.status(503).json({ 
+          success: false, 
+          message: 'NATS client is not connected or enabled' 
+        });
+      }
+      
+      const { subject, data, headers } = req.body;
+      
+      if (!subject) {
+        return res.status(400).json({ success: false, message: 'Subject is required' });
+      }
+      
+      if (!data) {
+        return res.status(400).json({ success: false, message: 'Data is required' });
+      }
+      
+      // Send a heartbeat
+      natsMonitoringService.sendHeartbeat()
+        .then(result => {
+          res.json({
+            success: true,
+            message: `Message published to ${subject}`,
+            timestamp: new Date().toISOString()
+          });
+        })
+        .catch(error => {
+          res.status(500).json({ 
+            success: false,
+            message: `Error publishing message: ${error.message}` 
+          });
+        });
+    } catch (error: any) {
+      res.status(500).json({ 
+        success: false,
+        message: `Error publishing message: ${error.message}` 
+      });
+    }
+  });
+  
   const httpServer = createServer(app);
   
   // Set up the WebSocket server for real-time updates with multiple paths
