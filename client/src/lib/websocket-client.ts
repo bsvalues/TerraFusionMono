@@ -735,13 +735,25 @@ export function createWebSocketHook(baseUrl: string) {
   };
 }
 
+// React typing interface to avoid TypeScript errors
+interface ReactModule {
+  useState<T>(initialState: T): [T, (state: T) => void];
+  useEffect(effect: () => void | (() => void), deps?: readonly any[]): void;
+  useRef<T>(initialValue: T): { current: T };
+}
+
 // Import React if the environment is React
-let React: any;
+let React: ReactModule;
 try {
   React = require('react');
 } catch (e) {
-  // Not in a React environment, ignore
+  // Not in a React environment, provide fallback to prevent errors
+  React = {
+    useState: () => [null, () => {}],
+    useEffect: () => {},
+    useRef: () => ({ current: null })
+  } as any;
 }
 
 // Export the React hook if React is available
-export const useWebSocket = React ? createWebSocketHook('/ws') : undefined;
+export const useWebSocket = createWebSocketHook('/ws');
