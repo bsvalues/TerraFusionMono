@@ -401,14 +401,23 @@ export class NatsClient {
           if (msg.headers) {
             hdrs = {}; 
             
-            // Create a safe extraction method for headers
-            // This avoids TypeScript errors related to MsgHdrs iteration
             try {
-              // Get all defined header names and extract them
-              const headerNames = msg.headers.keys();
-              if (headerNames && headerNames.length > 0) {
-                for (let i = 0; i < headerNames.length; i++) {
-                  const key = headerNames[i];
+              // Use the safer type-checked approach for headers extraction
+              // This prevents TypeScript errors with MsgHdrs iteration
+              const headerKeys = msg.headers.keys();
+              
+              // Check if keys are available before trying to iterate
+              if (headerKeys && Array.isArray(headerKeys) && headerKeys.length > 0) {
+                for (const key of headerKeys) {
+                  const value = msg.headers.get(key);
+                  if (value !== null && value !== undefined) {
+                    hdrs[key] = value;
+                  }
+                }
+              } else {
+                // Manual iteration through some common headers if keys() doesn't work
+                const possibleHeaders = ['content-type', 'message-id', 'correlation-id', 'reply-to', 'subject'];
+                for (const key of possibleHeaders) {
                   const value = msg.headers.get(key);
                   if (value !== null && value !== undefined) {
                     hdrs[key] = value;
@@ -701,14 +710,15 @@ export class NatsClient {
         status: 'connected',
         connectionInfo: JSON.stringify({
           servers: this.options.servers,
-          clientName: this.options.name
+          clientName: this.options.name,
+          messageTracking: {
+            initialCount: 0
+          }
         }),
         connectionTime: new Date(),
         lastActivity: new Date(),
         lastPingTime: new Date(),
         reconnectCount: this.reconnectAttempts,
-        messagesSent: 0,
-        messagesReceived: 0,
         subscriptions: JSON.stringify(
           this.subscriptionHandlers.map(s => ({ subject: s.subject, queue: s.queue }))
         ),
@@ -730,11 +740,34 @@ export class NatsClient {
     try {
       if (!this.dbConnectionId) return;
       
+      // Store message metrics in the connection_info JSON field
+      const connection = await storage.getNatsConnection(this.dbConnectionId);
+      if (!connection) return;
+      
+      // Parse existing connection info
+      let connectionInfo = {};
+      try {
+        connectionInfo = JSON.parse(connection.connectionInfo as string) || {};
+      } catch (e) {
+        // If parsing fails, use empty object
+        connectionInfo = {};
+      }
+      
+      // Update connection_info with message counts
+      const updatedConnectionInfo = {
+        ...connectionInfo,
+        messageTracking: {
+          ...((connectionInfo as any).messageTracking || {}),
+          messagesSent: this.messagesSent,
+          messagesReceived: this.messagesReceived,
+          lastUpdated: new Date().toISOString()
+        }
+      };
+      
       await storage.updateNatsConnection(this.dbConnectionId, {
         lastActivity: new Date(),
         lastPingTime: this.lastPingTime ? new Date(this.lastPingTime) : undefined,
-        messagesSent: this.messagesSent,
-        messagesReceived: this.messagesReceived
+        connectionInfo: JSON.stringify(updatedConnectionInfo)
       });
     } catch (error) {
       log(`Error updating NATS connection activity: ${(error as Error).message}`, 'error');
@@ -761,12 +794,35 @@ export class NatsClient {
     try {
       if (!this.dbConnectionId) return;
       
+      // Get current connection record
+      const connection = await storage.getNatsConnection(this.dbConnectionId);
+      if (!connection) return;
+      
+      // Parse existing connection info
+      let connectionInfo = {};
+      try {
+        connectionInfo = JSON.parse(connection.connectionInfo as string) || {};
+      } catch (e) {
+        connectionInfo = {};
+      }
+      
+      // Update connection_info with final message counts and disconnection details
+      const updatedConnectionInfo = {
+        ...connectionInfo,
+        messageTracking: {
+          ...((connectionInfo as any).messageTracking || {}),
+          finalMessagesSent: this.messagesSent,
+          finalMessagesReceived: this.messagesReceived,
+          disconnectionReason: reason,
+          disconnectionTime: new Date().toISOString()
+        }
+      };
+      
       await storage.updateNatsConnection(this.dbConnectionId, {
         status: 'disconnected',
         disconnectionTime: new Date(),
         disconnectionReason: reason,
-        messagesSent: this.messagesSent,
-        messagesReceived: this.messagesReceived
+        connectionInfo: JSON.stringify(updatedConnectionInfo)
       });
     } catch (error) {
       log(`Error updating NATS disconnection in database: ${(error as Error).message}`, 'error');
