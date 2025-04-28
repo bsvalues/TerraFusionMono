@@ -16,6 +16,8 @@ import {
   cropHealthAnalyses, type InsertCropHealthAnalysis,
   // WebSocket Connections
   webSocketConnections, type WebSocketConnection, type InsertWebSocketConnection,
+  // NATS Connections
+  natsConnections, type NatsConnection, type InsertNatsConnection,
   // WebSocket Collaboration
   collaborationSessions, sessionParticipants, documentVersions, collaborationEvents,
   type CollaborationSession, type SessionParticipant, type DocumentVersion, type CollaborationEvent,
@@ -203,6 +205,15 @@ export interface IStorage {
   updateWebSocketConnection(id: number, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined>;
   updateWebSocketConnectionByConnectionId(connectionId: string, updates: Partial<WebSocketConnection>): Promise<WebSocketConnection | undefined>;
   deleteWebSocketConnection(id: number): Promise<boolean>;
+  
+  // NATS Connection operations
+  getNatsConnections(options?: { limit?: number, serviceName?: string, status?: string }): Promise<NatsConnection[]>;
+  getNatsConnection(id: number): Promise<NatsConnection | undefined>;
+  getNatsConnectionByConnectionId(connectionId: string): Promise<NatsConnection | undefined>;
+  createNatsConnection(connection: InsertNatsConnection): Promise<NatsConnection>;
+  updateNatsConnection(id: number, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined>;
+  updateNatsConnectionByConnectionId(connectionId: string, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined>;
+  deleteNatsConnection(id: number): Promise<boolean>;
 }
 
 // Database-backed storage implementation
@@ -1296,6 +1307,72 @@ export class DatabaseStorage implements IStorage {
     const result = await db
       .delete(webSocketConnections)
       .where(eq(webSocketConnections.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // NATS Connection operations
+  async getNatsConnections(options?: { 
+    limit?: number, 
+    serviceName?: string, 
+    status?: string 
+  }): Promise<NatsConnection[]> {
+    let query = db.select().from(natsConnections);
+    
+    if (options?.serviceName) {
+      query = query.where(eq(natsConnections.serviceName, options.serviceName));
+    }
+    
+    if (options?.status) {
+      query = query.where(eq(natsConnections.status, options.status));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(natsConnections.connectionTime));
+  }
+  
+  async getNatsConnection(id: number): Promise<NatsConnection | undefined> {
+    const [connection] = await db.select().from(natsConnections).where(eq(natsConnections.id, id));
+    return connection;
+  }
+  
+  async getNatsConnectionByConnectionId(connectionId: string): Promise<NatsConnection | undefined> {
+    const [connection] = await db.select().from(natsConnections).where(eq(natsConnections.connectionId, connectionId));
+    return connection;
+  }
+  
+  async createNatsConnection(connection: InsertNatsConnection): Promise<NatsConnection> {
+    const [newConnection] = await db
+      .insert(natsConnections)
+      .values(connection)
+      .returning();
+    return newConnection;
+  }
+  
+  async updateNatsConnection(id: number, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined> {
+    const [updatedConnection] = await db
+      .update(natsConnections)
+      .set(updates)
+      .where(eq(natsConnections.id, id))
+      .returning();
+    return updatedConnection;
+  }
+  
+  async updateNatsConnectionByConnectionId(connectionId: string, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined> {
+    const [updatedConnection] = await db
+      .update(natsConnections)
+      .set(updates)
+      .where(eq(natsConnections.connectionId, connectionId))
+      .returning();
+    return updatedConnection;
+  }
+  
+  async deleteNatsConnection(id: number): Promise<boolean> {
+    const result = await db
+      .delete(natsConnections)
+      .where(eq(natsConnections.id, id));
     return result.rowCount !== null && result.rowCount > 0;
   }
 }
