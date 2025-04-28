@@ -1,68 +1,78 @@
 {
   "subgraphs": [
     {
-      "name": "terralegislativepulsepub",
+      "name": "terraagent",
       "url": "http://localhost:4001/graphql",
       "enabled": true
     },
     {
-      "name": "terraagent",
+      "name": "terraflow",
       "url": "http://localhost:4002/graphql",
       "enabled": true
     },
     {
-      "name": "terraf",
+      "name": "terraminer",
       "url": "http://localhost:4003/graphql",
       "enabled": true
     },
     {
-      "name": "terraflow",
+      "name": "terrafusionpro",
       "url": "http://localhost:4004/graphql",
       "enabled": true
     },
     {
-      "name": "terrafusionpro",
+      "name": "terrafusionsync",
       "url": "http://localhost:4005/graphql",
       "enabled": true
     },
     {
-      "name": "terrafusionsync",
+      "name": "terraf",
       "url": "http://localhost:4006/graphql",
       "enabled": true
     },
     {
-      "name": "terraminer",
+      "name": "terralegislativepulsepub",
       "url": "http://localhost:4007/graphql",
       "enabled": true
     },
     {
-      "name": "bcbscostapp",
+      "name": "crop-health-analysis",
       "url": "http://localhost:4008/graphql",
       "enabled": true
     },
     {
-      "name": "bcbsgispro",
+      "name": "crop-identifier",
       "url": "http://localhost:4009/graphql",
       "enabled": true
     },
     {
-      "name": "bcbslevy",
+      "name": "bcbscostapp",
       "url": "http://localhost:4010/graphql",
       "enabled": true
     },
     {
-      "name": "bcbswebhub",
+      "name": "bcbsgispro",
       "url": "http://localhost:4011/graphql",
       "enabled": true
     },
     {
-      "name": "bsbcmaster",
+      "name": "bcbslevy",
       "url": "http://localhost:4012/graphql",
       "enabled": true
     },
     {
-      "name": "bsincomevaluation",
+      "name": "bcbswebhub",
       "url": "http://localhost:4013/graphql",
+      "enabled": true
+    },
+    {
+      "name": "bsbcmaster",
+      "url": "http://localhost:4014/graphql",
+      "enabled": true
+    },
+    {
+      "name": "bsincomevaluation",
+      "url": "http://localhost:4015/graphql",
       "enabled": true
     }
   ]
