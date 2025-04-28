@@ -188,7 +188,7 @@ export const insertWebSocketConnectionSchema = createInsertSchema(webSocketConne
   disconnectionTime: true,
 });
 
-// NATS connections for service-to-service communication
+// NATS connections for messaging
 export const natsConnections = pgTable("nats_connections", {
   id: serial("id").primaryKey(),
   connectionId: text("connection_id").notNull().unique(),
@@ -204,12 +204,22 @@ export const natsConnections = pgTable("nats_connections", {
   messagesReceived: integer("messages_received").default(0),
   subscriptions: json("subscriptions"),
   disconnectionReason: text("disconnection_reason"),
+}, (table) => {
+  return {
+    serviceIdx: index("nats_connections_service_idx").on(table.serviceName),
+    statusIdx: index("nats_connections_status_idx").on(table.status),
+    activityIdx: index("nats_connections_activity_idx").on(table.lastActivity),
+  };
 });
 
 export const insertNatsConnectionSchema = createInsertSchema(natsConnections).omit({
   id: true,
   disconnectionTime: true,
+  messagesSent: true,
+  messagesReceived: true,
 });
+
+
 
 // System metrics
 export const systemMetrics = pgTable("system_metrics", {
