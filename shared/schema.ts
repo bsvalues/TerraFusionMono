@@ -162,6 +162,10 @@ export const webSocketConnectionsEnum = pgEnum('websocket_connection_status', [
   'connected', 'disconnected', 'error', 'reconnecting'
 ]);
 
+export const natsConnectionsEnum = pgEnum('nats_connection_status', [
+  'connected', 'disconnected', 'error', 'reconnecting'
+]);
+
 export const webSocketConnections = pgTable("websocket_connections", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").references(() => users.id),
@@ -180,6 +184,29 @@ export const webSocketConnections = pgTable("websocket_connections", {
 });
 
 export const insertWebSocketConnectionSchema = createInsertSchema(webSocketConnections).omit({
+  id: true,
+  disconnectionTime: true,
+});
+
+// NATS connections for service-to-service communication
+export const natsConnections = pgTable("nats_connections", {
+  id: serial("id").primaryKey(),
+  connectionId: text("connection_id").notNull().unique(),
+  serviceName: text("service_name").notNull(),
+  status: natsConnectionsEnum("status").default("disconnected").notNull(),
+  connectionInfo: json("connection_info"),
+  connectionTime: timestamp("connection_time").defaultNow().notNull(),
+  lastActivity: timestamp("last_activity").defaultNow().notNull(),
+  lastPingTime: timestamp("last_ping_time").defaultNow().notNull(),
+  disconnectionTime: timestamp("disconnection_time"),
+  reconnectCount: integer("reconnect_count").default(0),
+  messagesSent: integer("messages_sent").default(0),
+  messagesReceived: integer("messages_received").default(0),
+  subscriptions: json("subscriptions"),
+  disconnectionReason: text("disconnection_reason"),
+});
+
+export const insertNatsConnectionSchema = createInsertSchema(natsConnections).omit({
   id: true,
   disconnectionTime: true,
 });
@@ -306,6 +333,9 @@ export type InsertGeocodeCall = z.infer<typeof insertGeocodeCallSchema>;
 
 export type WebSocketConnection = typeof webSocketConnections.$inferSelect;
 export type InsertWebSocketConnection = z.infer<typeof insertWebSocketConnectionSchema>;
+
+export type NatsConnection = typeof natsConnections.$inferSelect;
+export type InsertNatsConnection = z.infer<typeof insertNatsConnectionSchema>;
 
 // Land parcels (fields) data
 export const parcels = pgTable("parcels", {
