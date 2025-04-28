@@ -14,12 +14,20 @@
     "eslint-config": "tools/eslint-config",
     "plugin-scaffold": "tools/plugin-scaffold",
     "dev-container": "tools/dev-container",
-    "terraagent": "apps/terraagent",
+    "terraagent": {
+      "root": "apps/terraagent",
+      "sourceRoot": "apps/terraagent",
+      "projectType": "application"
+    },
     "terraf": "apps/terraf",
     "terraflow": "apps/terraflow",
     "terrafusionpro": "apps/terrafusionpro",
     "terrafusionsync": "apps/terrafusionsync",
-    "terralegislativepulsepub": "apps/terralegislativepulsepub",
+    "terralegislativepulsepub": {
+      "root": "apps/terralegislativepulsepub",
+      "sourceRoot": "apps/terralegislativepulsepub",
+      "projectType": "application"
+    },
     "terraminer": "apps/terraminer",
     "bcbscostapp": "apps/bcbscostapp",
     "bcbsgispro": "apps/bcbsgispro",

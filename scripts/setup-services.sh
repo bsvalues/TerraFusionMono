@@ -47,7 +47,7 @@ verify_service() {
   if [ ! -f "$service_dir/package.json" ]; then
     echo -e "${RED}package.json not found in: $service_dir${NC}"
     return 1
-  }
+  fi
   
   # Check for required scripts in package.json
   if ! grep -q '"build"' "$service_dir/package.json"; then
