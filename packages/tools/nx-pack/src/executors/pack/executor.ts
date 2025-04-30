@@ -1,14 +1,16 @@
 import { ExecutorContext } from '@nx/devkit';
-import * as fs from 'fs';
 import * as path from 'path';
+import * as fs from 'fs';
 import * as crypto from 'crypto';
 
-export interface PackExecutorOptions {
+interface PackExecutorOptions {
   outputPath: string;
-  generateHash: boolean;
+  includeFiles?: string[];
+  excludeFiles?: string[];
+  generateChecksums?: boolean;
 }
 
-function computeSha256(filePath: string): string {
+function computeHash(filePath: string): string {
   const fileBuffer = fs.readFileSync(filePath);
   const hashSum = crypto.createHash('sha256');
   hashSum.update(fileBuffer);
@@ -18,56 +20,87 @@ function computeSha256(filePath: string): string {
 export default async function packExecutor(
   options: PackExecutorOptions,
   context: ExecutorContext
-) {
-  const { projectName } = context;
-  const { outputPath = 'dist/pack', generateHash = true } = options;
+): Promise<{ success: boolean }> {
+  console.log('Executing Pack...');
 
+  const projectName = context.projectName;
   if (!projectName) {
     console.error('No project name provided');
     return { success: false };
   }
 
-  // Get the project configuration
-  const projectConfig = context.workspace?.projects?.[projectName];
-  if (!projectConfig) {
-    console.error(`Cannot find project configuration for ${projectName}`);
+  console.log(`Packaging project: ${projectName}`);
+
+  const projectRoot = context.workspace.projects[projectName]?.root;
+  if (!projectRoot) {
+    console.error(`Could not find root for project ${projectName}`);
     return { success: false };
   }
 
-  const projectRoot = projectConfig.root;
-  const terraJsonPath = path.join(projectRoot, 'terra.json');
-
-  // Check if terra.json exists
-  if (!fs.existsSync(terraJsonPath)) {
-    console.error(`No terra.json found at ${terraJsonPath}`);
-    return { success: false };
+  // Load terra.json if exists
+  let terraConfig = null;
+  const terraConfigPath = path.join(projectRoot, 'terra.json');
+  if (fs.existsSync(terraConfigPath)) {
+    try {
+      terraConfig = JSON.parse(fs.readFileSync(terraConfigPath, 'utf8'));
+      console.log(`Found terra.json for ${projectName}`);
+    } catch (e) {
+      console.error(`Error parsing terra.json: ${e}`);
+    }
   }
 
-  // Create the output directory
-  const projectOutputPath = path.join(outputPath, projectName);
-  const fullOutputPath = path.join(context.root, projectOutputPath);
+  // Determine the output directory
+  const packageId = terraConfig?.id || projectName;
+  const outputDir = path.join(options.outputPath, packageId);
   
-  if (!fs.existsSync(fullOutputPath)) {
-    fs.mkdirSync(fullOutputPath, { recursive: true });
+  // Ensure the output directory exists
+  if (!fs.existsSync(outputDir)) {
+    fs.mkdirSync(outputDir, { recursive: true });
+    console.log(`Created output directory: ${outputDir}`);
   }
 
-  // Copy terra.json to the output directory
-  const outputTerraJsonPath = path.join(fullOutputPath, 'terra.json');
-  fs.copyFileSync(terraJsonPath, outputTerraJsonPath);
+  // Define default include and exclude patterns
+  const includeFiles = options.includeFiles || ['terra.json', 'README.md', 'LICENSE'];
+  const excludeFiles = options.excludeFiles || ['node_modules', '.git', 'dist'];
 
-  console.log(`Copied ${terraJsonPath} to ${outputTerraJsonPath}`);
+  // Copy included files to the output directory
+  const copiedFiles: string[] = [];
 
-  // Generate SHA256 hash if requested
-  if (generateHash) {
-    const hash = computeSha256(outputTerraJsonPath);
-    const hashFilePath = path.join(fullOutputPath, `${projectName}.sha256`);
-    fs.writeFileSync(hashFilePath, hash);
-    console.log(`Generated hash and wrote to ${hashFilePath}`);
+  for (const includePattern of includeFiles) {
+    const sourcePath = path.join(projectRoot, includePattern);
+    if (fs.existsSync(sourcePath)) {
+      const targetPath = path.join(outputDir, includePattern);
+      
+      // Create directory if it doesn't exist
+      const targetDir = path.dirname(targetPath);
+      if (!fs.existsSync(targetDir)) {
+        fs.mkdirSync(targetDir, { recursive: true });
+      }
+      
+      // Copy the file
+      fs.copyFileSync(sourcePath, targetPath);
+      copiedFiles.push(includePattern);
+      console.log(`Copied ${includePattern} to ${targetPath}`);
+    } else {
+      console.warn(`Warning: File not found: ${sourcePath}`);
+    }
   }
 
-  console.log(`📦 packed ${projectName}`);
+  // Generate checksums if required
+  if (options.generateChecksums) {
+    const checksumFile = path.join(outputDir, `${packageId}.sha256`);
+    const checksumContent = copiedFiles
+      .map(file => {
+        const filePath = path.join(outputDir, file);
+        const hash = computeHash(filePath);
+        return `${hash}  ${file}`;
+      })
+      .join('\n');
+    
+    fs.writeFileSync(checksumFile, checksumContent);
+    console.log(`Generated checksums: ${checksumFile}`);
+  }
 
-  return {
-    success: true
-  };
+  console.log(`Package created successfully at: ${outputDir}`);
+  return { success: true };
 }
