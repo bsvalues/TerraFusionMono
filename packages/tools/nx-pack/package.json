@@ -1,11 +1,22 @@
 {
   "name": "@terrafusion/nx-pack",
   "version": "0.1.0",
+  "description": "TerraFusion NX plugin for packaging standalone components",
   "main": "src/index.js",
-  "generators": "./generators.json",
   "executors": "./executors.json",
-  "dependencies": {},
-  "peerDependencies": {
-    "nx": ">=16.0.0"
-  }
+  "dependencies": {
+    "@nx/devkit": "^17.0.0",
+    "tslib": "^2.3.0"
+  },
+  "publishConfig": {
+    "access": "restricted"
+  },
+  "keywords": [
+    "nx",
+    "plugin",
+    "terrafusion",
+    "packaging"
+  ],
+  "author": "TerraFusion Dev Team",
+  "license": "PROPRIETARY"
 }

@@ -1,15 +1,18 @@
 {
-  "id": "agentmesh",
-  "name": "MCPS Agent-Mesh",
-  "type": "backend",
-  "entry": "docker://ghcr.io/bsvalues/agentmesh:1.0.0",
-  "version": "1.0.0",
-  "dependencies": ["shared>=1.0.0"],
-  "exposes": ["grpc://agentmesh:9000"],
-  "infra": {
-    "helmChart": "https://charts.terrafusion.io/agentmesh-1.0.0.tgz",
-    "k8sNamespace": "tf-agentmesh"
+  "id": "mcps-agentmesh",
+  "type": "service",
+  "name": "MCPS Agent Mesh",
+  "version": "0.1.0",
+  "requires": [
+    "core@>=1.0.0"
+  ],
+  "provides": [
+    "agentmesh@0.1.0"
+  ],
+  "config": {
+    "port": 4000,
+    "maxConnections": 100,
+    "logLevel": "info"
   },
-  "tags": ["pacs-migration"],
   "license": "EULA-commercial"
 }
