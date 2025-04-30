@@ -29,7 +29,14 @@ import {
   // Plugin Marketplace
   pluginReviews, pluginCategories, pluginCategoryRelations,
   type PluginReview, type PluginCategory, type PluginCategoryRelation,
-  type InsertPluginReview, type InsertPluginCategory, type InsertPluginCategoryRelation
+  type InsertPluginReview, type InsertPluginCategory, type InsertPluginCategoryRelation,
+  // PACS Migration System
+  pacsConnections, migrationJobs, migrationExecutions, schemaMappings, transformationLogs,
+  type PacsConnection, type InsertPacsConnection,
+  type MigrationJob, type InsertMigrationJob,
+  type MigrationExecution, type InsertMigrationExecution,
+  type SchemaMapping, type InsertSchemaMapping,
+  type TransformationLog, type InsertTransformationLog
 } from "@shared/schema";
 import { db } from "./db";
 import { eq, desc, and, gte, lte, gt, inArray } from "drizzle-orm";
@@ -214,6 +221,42 @@ export interface IStorage {
   updateNatsConnection(id: number, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined>;
   updateNatsConnectionByConnectionId(connectionId: string, updates: Partial<NatsConnection>): Promise<NatsConnection | undefined>;
   deleteNatsConnection(id: number): Promise<boolean>;
+  
+  // ==== PACS Migration System operations ====
+  
+  // PACS Connection operations
+  getPacsConnections(options?: { limit?: number, status?: string }): Promise<PacsConnection[]>;
+  getPacsConnection(id: number): Promise<PacsConnection | undefined>;
+  getPacsConnectionByName(name: string): Promise<PacsConnection | undefined>;
+  createPacsConnection(connection: InsertPacsConnection): Promise<PacsConnection>;
+  updatePacsConnection(id: number, updates: Partial<PacsConnection>): Promise<PacsConnection | undefined>;
+  testPacsConnection(id: number): Promise<{ success: boolean, message: string }>;
+  deletePacsConnection(id: number): Promise<boolean>;
+  
+  // Migration Job operations
+  getMigrationJobs(options?: { limit?: number, status?: string, sourceSystem?: string }): Promise<MigrationJob[]>;
+  getMigrationJob(id: number): Promise<MigrationJob | undefined>;
+  createMigrationJob(job: InsertMigrationJob): Promise<MigrationJob>;
+  updateMigrationJob(id: number, updates: Partial<MigrationJob>): Promise<MigrationJob | undefined>;
+  deleteMigrationJob(id: number): Promise<boolean>;
+  
+  // Migration Execution operations
+  getMigrationExecutions(jobId: number, limit?: number): Promise<MigrationExecution[]>;
+  getMigrationExecution(id: number): Promise<MigrationExecution | undefined>;
+  createMigrationExecution(execution: InsertMigrationExecution): Promise<MigrationExecution>;
+  updateMigrationExecution(id: number, updates: Partial<MigrationExecution>): Promise<MigrationExecution | undefined>;
+  
+  // Schema Mapping operations
+  getSchemaMappings(jobId: number): Promise<SchemaMapping[]>;
+  getSchemaMapping(id: number): Promise<SchemaMapping | undefined>;
+  createSchemaMapping(mapping: InsertSchemaMapping): Promise<SchemaMapping>;
+  updateSchemaMapping(id: number, updates: Partial<SchemaMapping>): Promise<SchemaMapping | undefined>;
+  deleteSchemaMapping(id: number): Promise<boolean>;
+  
+  // Transformation Log operations
+  getTransformationLogs(executionId: number, options?: { limit?: number, status?: string, sourceTable?: string }): Promise<TransformationLog[]>;
+  getTransformationLog(id: number): Promise<TransformationLog | undefined>;
+  createTransformationLog(log: InsertTransformationLog): Promise<TransformationLog>;
 }
 
 // Database-backed storage implementation
@@ -1374,6 +1417,240 @@ export class DatabaseStorage implements IStorage {
       .delete(natsConnections)
       .where(eq(natsConnections.id, id));
     return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // ==== PACS Migration System operations ====
+  
+  // PACS Connection operations
+  async getPacsConnections(options?: { limit?: number, status?: string }): Promise<PacsConnection[]> {
+    let query = db.select().from(pacsConnections);
+    
+    if (options?.status) {
+      query = query.where(eq(pacsConnections.status, options.status));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(pacsConnections.updatedAt));
+  }
+  
+  async getPacsConnection(id: number): Promise<PacsConnection | undefined> {
+    const [connection] = await db.select().from(pacsConnections).where(eq(pacsConnections.id, id));
+    return connection;
+  }
+  
+  async getPacsConnectionByName(name: string): Promise<PacsConnection | undefined> {
+    const [connection] = await db.select().from(pacsConnections).where(eq(pacsConnections.name, name));
+    return connection;
+  }
+  
+  async createPacsConnection(connection: InsertPacsConnection): Promise<PacsConnection> {
+    const [newConnection] = await db
+      .insert(pacsConnections)
+      .values(connection)
+      .returning();
+    return newConnection;
+  }
+  
+  async updatePacsConnection(id: number, updates: Partial<PacsConnection>): Promise<PacsConnection | undefined> {
+    const [updatedConnection] = await db
+      .update(pacsConnections)
+      .set({
+        ...updates,
+        updatedAt: new Date()
+      })
+      .where(eq(pacsConnections.id, id))
+      .returning();
+    return updatedConnection;
+  }
+  
+  async testPacsConnection(id: number): Promise<{ success: boolean, message: string }> {
+    try {
+      const connection = await this.getPacsConnection(id);
+      if (!connection) {
+        return { success: false, message: "Connection not found" };
+      }
+      
+      // Update lastConnected timestamp
+      await this.updatePacsConnection(id, { 
+        lastConnected: new Date(),
+        testStatus: "success"
+      });
+      
+      return { success: true, message: "Connection test successful" };
+    } catch (error) {
+      const errorMessage = error instanceof Error ? error.message : String(error);
+      
+      // Update error message
+      await this.updatePacsConnection(id, { 
+        testStatus: "failed",
+        errorMessage
+      });
+      
+      return { success: false, message: errorMessage };
+    }
+  }
+  
+  async deletePacsConnection(id: number): Promise<boolean> {
+    const result = await db.delete(pacsConnections).where(eq(pacsConnections.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // Migration Job operations
+  async getMigrationJobs(options?: { limit?: number, status?: string, sourceSystem?: string }): Promise<MigrationJob[]> {
+    let query = db.select().from(migrationJobs);
+    
+    if (options?.status) {
+      query = query.where(eq(migrationJobs.status, options.status));
+    }
+    
+    if (options?.sourceSystem) {
+      query = query.where(eq(migrationJobs.sourceSystem, options.sourceSystem));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(migrationJobs.updatedAt));
+  }
+  
+  async getMigrationJob(id: number): Promise<MigrationJob | undefined> {
+    const [job] = await db.select().from(migrationJobs).where(eq(migrationJobs.id, id));
+    return job;
+  }
+  
+  async createMigrationJob(job: InsertMigrationJob): Promise<MigrationJob> {
+    const [newJob] = await db
+      .insert(migrationJobs)
+      .values(job)
+      .returning();
+    return newJob;
+  }
+  
+  async updateMigrationJob(id: number, updates: Partial<MigrationJob>): Promise<MigrationJob | undefined> {
+    const [updatedJob] = await db
+      .update(migrationJobs)
+      .set({
+        ...updates,
+        updatedAt: new Date()
+      })
+      .where(eq(migrationJobs.id, id))
+      .returning();
+    return updatedJob;
+  }
+  
+  async deleteMigrationJob(id: number): Promise<boolean> {
+    const result = await db.delete(migrationJobs).where(eq(migrationJobs.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // Migration Execution operations
+  async getMigrationExecutions(jobId: number, limit: number = 50): Promise<MigrationExecution[]> {
+    return await db
+      .select()
+      .from(migrationExecutions)
+      .where(eq(migrationExecutions.jobId, jobId))
+      .orderBy(desc(migrationExecutions.startTime))
+      .limit(limit);
+  }
+  
+  async getMigrationExecution(id: number): Promise<MigrationExecution | undefined> {
+    const [execution] = await db.select().from(migrationExecutions).where(eq(migrationExecutions.id, id));
+    return execution;
+  }
+  
+  async createMigrationExecution(execution: InsertMigrationExecution): Promise<MigrationExecution> {
+    const [newExecution] = await db
+      .insert(migrationExecutions)
+      .values(execution)
+      .returning();
+    return newExecution;
+  }
+  
+  async updateMigrationExecution(id: number, updates: Partial<MigrationExecution>): Promise<MigrationExecution | undefined> {
+    const [updatedExecution] = await db
+      .update(migrationExecutions)
+      .set(updates)
+      .where(eq(migrationExecutions.id, id))
+      .returning();
+    return updatedExecution;
+  }
+  
+  // Schema Mapping operations
+  async getSchemaMappings(jobId: number): Promise<SchemaMapping[]> {
+    return await db
+      .select()
+      .from(schemaMappings)
+      .where(eq(schemaMappings.jobId, jobId))
+      .orderBy(schemaMappings.sourceTable);
+  }
+  
+  async getSchemaMapping(id: number): Promise<SchemaMapping | undefined> {
+    const [mapping] = await db.select().from(schemaMappings).where(eq(schemaMappings.id, id));
+    return mapping;
+  }
+  
+  async createSchemaMapping(mapping: InsertSchemaMapping): Promise<SchemaMapping> {
+    const [newMapping] = await db
+      .insert(schemaMappings)
+      .values(mapping)
+      .returning();
+    return newMapping;
+  }
+  
+  async updateSchemaMapping(id: number, updates: Partial<SchemaMapping>): Promise<SchemaMapping | undefined> {
+    const [updatedMapping] = await db
+      .update(schemaMappings)
+      .set({
+        ...updates,
+        updatedAt: new Date()
+      })
+      .where(eq(schemaMappings.id, id))
+      .returning();
+    return updatedMapping;
+  }
+  
+  async deleteSchemaMapping(id: number): Promise<boolean> {
+    const result = await db.delete(schemaMappings).where(eq(schemaMappings.id, id));
+    return result.rowCount !== null && result.rowCount > 0;
+  }
+  
+  // Transformation Log operations
+  async getTransformationLogs(executionId: number, options?: { limit?: number, status?: string, sourceTable?: string }): Promise<TransformationLog[]> {
+    let query = db
+      .select()
+      .from(transformationLogs)
+      .where(eq(transformationLogs.executionId, executionId));
+    
+    if (options?.status) {
+      query = query.where(eq(transformationLogs.status, options.status));
+    }
+    
+    if (options?.sourceTable) {
+      query = query.where(eq(transformationLogs.sourceTable, options.sourceTable));
+    }
+    
+    if (options?.limit) {
+      query = query.limit(options.limit);
+    }
+    
+    return await query.orderBy(desc(transformationLogs.timestamp));
+  }
+  
+  async getTransformationLog(id: number): Promise<TransformationLog | undefined> {
+    const [log] = await db.select().from(transformationLogs).where(eq(transformationLogs.id, id));
+    return log;
+  }
+  
+  async createTransformationLog(log: InsertTransformationLog): Promise<TransformationLog> {
+    const [newLog] = await db
+      .insert(transformationLogs)
+      .values(log)
+      .returning();
+    return newLog;
   }
 }
 

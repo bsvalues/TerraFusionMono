@@ -1158,6 +1158,191 @@ export type InsertSensorReading = z.infer<typeof insertSensorReadingSchema>;
 export type FieldReport = typeof fieldReports.$inferSelect;
 export type InsertFieldReport = z.infer<typeof insertFieldReportSchema>;
 
+// ======= PACS Migration System Schemas =======
+
+// Migration status enum for tracking the progress of migration tasks
+export const migrationStatusEnum = pgEnum('migration_status', [
+  'pending', 'in_progress', 'completed', 'failed', 'verified', 'rollback_required', 'rolled_back'
+]);
+
+// Source system type enum
+export const sourceSystemEnum = pgEnum('source_system_type', [
+  'pacs', 'cama', 'gis', 'other'
+]);
+
+// Migration type enum
+export const migrationTypeEnum = pgEnum('migration_type', [
+  'full', 'incremental', 'test', 'validation'
+]);
+
+// PACS system connection configurations
+export const pacsConnections = pgTable("pacs_connections", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull().unique(),
+  description: text("description"),
+  connectionType: text("connection_type").notNull(), // database, api, file
+  connectionConfig: json("connection_config").notNull(), // store connection details
+  credentialId: text("credential_id"), // optional reference to a secure credential store
+  status: text("status").default("inactive").notNull(), // active, inactive, error
+  lastConnected: timestamp("last_connected"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  testStatus: text("test_status").default("untested"), // untested, success, failed
+  errorMessage: text("error_message"),
+  createdBy: integer("created_by").references(() => users.id),
+}, (table) => {
+  return {
+    statusIdx: index("pacs_connections_status_idx").on(table.status),
+  };
+});
+
+export const insertPacsConnectionSchema = createInsertSchema(pacsConnections).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastConnected: true,
+});
+
+// Migration job definitions
+export const migrationJobs = pgTable("migration_jobs", {
+  id: serial("id").primaryKey(),
+  name: text("name").notNull(),
+  description: text("description"),
+  sourceConnectionId: integer("source_connection_id").references(() => pacsConnections.id),
+  sourceSystem: sourceSystemEnum("source_system").notNull(),
+  migrationType: migrationTypeEnum("migration_type").default("full").notNull(),
+  status: migrationStatusEnum("status").default("pending").notNull(),
+  config: json("config"), // configuration for this migration job
+  dataMap: json("data_map"), // field mapping configuration
+  transformRules: json("transform_rules"), // data transformation rules
+  validationRules: json("validation_rules"), // validation rules
+  schedule: text("schedule"), // cron expression for scheduled migrations
+  lastRun: timestamp("last_run"),
+  nextRun: timestamp("next_run"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  createdBy: integer("created_by").references(() => users.id),
+}, (table) => {
+  return {
+    statusIdx: index("migration_jobs_status_idx").on(table.status),
+    sourceSystemIdx: index("migration_jobs_source_system_idx").on(table.sourceSystem),
+    migrationTypeIdx: index("migration_jobs_migration_type_idx").on(table.migrationType),
+  };
+});
+
+export const insertMigrationJobSchema = createInsertSchema(migrationJobs).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  lastRun: true,
+  nextRun: true,
+});
+
+// Migration executions (individual runs of migration jobs)
+export const migrationExecutions = pgTable("migration_executions", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => migrationJobs.id),
+  status: migrationStatusEnum("status").default("pending").notNull(),
+  startTime: timestamp("start_time").defaultNow().notNull(),
+  endTime: timestamp("end_time"),
+  totalRecords: integer("total_records").default(0),
+  processedRecords: integer("processed_records").default(0),
+  successRecords: integer("success_records").default(0),
+  failedRecords: integer("failed_records").default(0),
+  warningRecords: integer("warning_records").default(0),
+  logs: json("logs"), // detailed logs of the execution
+  error: text("error"), // error message if execution failed
+  runBy: integer("run_by").references(() => users.id),
+  stats: json("stats"), // detailed statistics about the execution
+  rollbackStatus: text("rollback_status").default("not_required"), // not_required, required, completed, failed
+}, (table) => {
+  return {
+    statusIdx: index("migration_executions_status_idx").on(table.status),
+    jobIdIdx: index("migration_executions_job_id_idx").on(table.jobId),
+    startTimeIdx: index("migration_executions_start_time_idx").on(table.startTime),
+  };
+});
+
+export const insertMigrationExecutionSchema = createInsertSchema(migrationExecutions).omit({
+  id: true,
+  endTime: true,
+});
+
+// Schema mapping definitions
+export const schemaMappings = pgTable("schema_mappings", {
+  id: serial("id").primaryKey(),
+  jobId: integer("job_id").notNull().references(() => migrationJobs.id),
+  name: text("name").notNull(),
+  description: text("description"),
+  sourceTable: text("source_table").notNull(),
+  targetTable: text("target_table").notNull(),
+  mapping: json("mapping").notNull(), // JSON mapping of source to target fields
+  transformations: json("transformations"), // Field-level transformations
+  validations: json("validations"), // Field-level validations
+  isActive: boolean("is_active").default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (table) => {
+  return {
+    jobIdIdx: index("schema_mappings_job_id_idx").on(table.jobId),
+    sourceTableIdx: index("schema_mappings_source_table_idx").on(table.sourceTable),
+    targetTableIdx: index("schema_mappings_target_table_idx").on(table.targetTable),
+  };
+});
+
+export const insertSchemaMappingSchema = createInsertSchema(schemaMappings).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+// Data transformation logs
+export const transformationLogs = pgTable("transformation_logs", {
+  id: serial("id").primaryKey(),
+  executionId: integer("execution_id").notNull().references(() => migrationExecutions.id),
+  mappingId: integer("mapping_id").references(() => schemaMappings.id),
+  sourceTable: text("source_table").notNull(),
+  targetTable: text("target_table").notNull(),
+  sourceRecordId: text("source_record_id").notNull(),
+  targetRecordId: text("target_record_id"),
+  status: text("status").notNull(), // success, warning, error
+  transformations: json("transformations"), // Applied transformations
+  validationResults: json("validation_results"), // Results of validations
+  originalData: json("original_data"), // Original source data
+  transformedData: json("transformed_data"), // Data after transformation
+  errorMessage: text("error_message"),
+  timestamp: timestamp("timestamp").defaultNow().notNull(),
+}, (table) => {
+  return {
+    executionIdIdx: index("transformation_logs_execution_id_idx").on(table.executionId),
+    mappingIdIdx: index("transformation_logs_mapping_id_idx").on(table.mappingId),
+    statusIdx: index("transformation_logs_status_idx").on(table.status),
+    sourceTableIdx: index("transformation_logs_source_table_idx").on(table.sourceTable),
+    sourceRecordIdIdx: index("transformation_logs_source_record_id_idx").on(table.sourceRecordId),
+  };
+});
+
+export const insertTransformationLogSchema = createInsertSchema(transformationLogs).omit({
+  id: true,
+  timestamp: true,
+});
+
+// Types for database models
+export type PacsConnection = typeof pacsConnections.$inferSelect;
+export type InsertPacsConnection = z.infer<typeof insertPacsConnectionSchema>;
+
+export type MigrationJob = typeof migrationJobs.$inferSelect;
+export type InsertMigrationJob = z.infer<typeof insertMigrationJobSchema>;
+
+export type MigrationExecution = typeof migrationExecutions.$inferSelect;
+export type InsertMigrationExecution = z.infer<typeof insertMigrationExecutionSchema>;
+
+export type SchemaMapping = typeof schemaMappings.$inferSelect;
+export type InsertSchemaMapping = z.infer<typeof insertSchemaMappingSchema>;
+
+export type TransformationLog = typeof transformationLogs.$inferSelect;
+export type InsertTransformationLog = z.infer<typeof insertTransformationLogSchema>;
+
 // Plugin Marketplace types
 export type PluginReview = typeof pluginReviews.$inferSelect;
 export type InsertPluginReview = z.infer<typeof insertPluginReviewSchema>;

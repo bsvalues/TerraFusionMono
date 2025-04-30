@@ -26,6 +26,7 @@ import mobileSyncRoutes from "./routes/mobile-sync";
 import cropAnalysisRoutes from "./routes/crop-analysis";
 import collaborationRoutes from "./routes/collaboration";
 import fieldReportRoutes from "./routes/field-reports";
+import pacsMigrationRoutes from "./routes/pacs-migration";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
