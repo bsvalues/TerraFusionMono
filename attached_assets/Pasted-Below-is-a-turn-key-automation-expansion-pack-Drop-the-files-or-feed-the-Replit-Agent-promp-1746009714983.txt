@@ -1,0 +1,204 @@
+Below is a **turn-key automation expansion pack**.  
+Drop the files (or feed the Replit-Agent prompt at the end) and **EVERY** enhancement from the previous checklist will wire itself into your repo & CI:
+
+---
+
+## 1  nx-pack executor – add validation & SBOM hash  
+`packages/tools/nx-pack/executors/pack/executor.ts` (append)
+
+```ts
+// …existing imports
+import cp from 'child_process';
+import { promisify } from 'util';
+const exec = promisify(cp.exec);
+
+function readJson(p: string) { return JSON.parse(fs.readFileSync(p, 'utf8')); }
+
+async function validateTerraJson(
+  terraPath: string,
+  ctx: ExecutorContext,
+): Promise<void> {
+  const data = readJson(terraPath);
+
+  // 1. unique-id lint (bundle)
+  if (data.type === 'bundle') {
+    const seen = new Set<string>();
+    for (const entry of data.contains) {
+      const id = entry.split('@')[0];
+      if (seen.has(id)) throw new Error(`Duplicate id '${id}' in bundle`);
+      seen.add(id);
+      const childPath = join(ctx.root, `dist/pack/${id}/terra.json`);
+      if (!fs.existsSync(childPath))
+        throw new Error(`Dependency ${id} not packed yet`);
+    }
+  }
+
+  // 2. helm lint
+  if (data.infra?.helmChart) {
+    const { stderr } = await exec(`helm lint ${data.infra.helmChart}`);
+    if (stderr) throw new Error(stderr);
+  }
+}
+
+async function buildSbom(outDir: string, proj: string) {
+  // requires syft in CI image
+  const sbom = join(outDir, `${proj}.sbom.json`);
+  await exec(`syft packages dir:${outDir} -o json > ${sbom}`);
+}
+
+export default async function run(opts: Options, ctx: ExecutorContext) {
+  // …existing copy / hash logic
+  await validateTerraJson(terraPath, ctx);
+  await buildSbom(outDir, ctx.projectName!);
+  return { success: true };
+}
+```
+
+---
+
+## 2  Unit-test harness for the executor  
+`packages/tools/nx-pack/__tests__/pack.spec.ts`
+
+```ts
+import { runExecutor } from '@nrwl/devkit';
+import { join } from 'path';
+import fs from 'fs';
+
+describe('nx-pack executor', () => {
+  it('generates artefacts', async () => {
+    const proj = 'dummy-lib';
+    const ctx = createMockContext(proj);
+    await expect(
+      runExecutor({ outputPath: 'dist/pack' }, ctx),
+    ).resolves.toMatchObject({ success: true });
+
+    const base = join(ctx.root, 'dist/pack', proj);
+    expect(fs.existsSync(join(base, 'terra.json'))).toBe(true);
+    expect(fs.existsSync(join(base, `${proj}.sha256`))).toBe(true);
+    expect(fs.existsSync(join(base, `${proj}.sbom.json`))).toBe(true);
+  });
+});
+```
+
+---
+
+## 3  Rollback-aware **pacs_wizard.sh** (excerpt)
+
+```bash
+# new array to track installs
+INSTALLED=()
+trap 'echo "⚠️  Error – rolling back"; for rel in "${INSTALLED[@]}"; do helm uninstall "$rel" -n "$NS"; done' ERR
+
+for COMP in ${COMPONENTS}; do
+  # …helm upgrade
+  INSTALLED+=("$NAME")
+done
+```
+
+---
+
+## 4  GitHub Actions overhaul   `.github/workflows/infra-matrix.yml`
+
+```yaml
+name: CI / Build-Pack-Publish
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - run: pnpm install
+      - run: pnpm nx affected --target=lint --all
+      - run: pnpm nx affected --target=test --all
+
+  pack:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - run: pnpm install
+      - run: |
+          pnpm nx affected --target=build  --parallel
+          pnpm nx affected --target=docker --parallel
+          pnpm nx affected --target=pack   --parallel
+      - name: Publish artefacts to OCI
+        env:
+          OCI_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for dir in dist/pack/*; do
+            id=$(basename "$dir")
+            oras push ghcr.io/bsvalues/terra/$id:$(git rev-parse --short HEAD) $dir/*
+          done
+
+  kind-e2e:
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: engineerd/setup-kind@v0.5.0
+        with: { name: tf-ci, wait: 60s }
+      - uses: actions/checkout@v4
+      - run: |
+          chmod +x scripts/pacs_wizard.sh
+          scripts/pacs_wizard.sh --env ci --bundle pacs-migration-pack --namespace tf-ci
+          kubectl wait --for=condition=ready pod -A -l app.kubernetes.io/instance=agentmesh --timeout=180s
+
+  refresh-marketplace:
+    needs: kind-e2e
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - run: curl -XPOST https://marketplace.terrafusion.io/api/refresh -H "Authorization: Bearer ${{ secrets.MARKETPLACE_TOKEN }}"
+```
+
+---
+
+## 5  SBOM CVE gate (optional fail-fast)
+
+Add to **pack** job after build:
+
+```yaml
+- name: Scan SBOM
+  run: |
+    for sb in dist/pack/**/*.sbom.json; do
+      grype $sb || (echo "Critical CVE in $sb" && exit 1)
+    done
+```
+
+---
+
+## 6  Mini-prompt to unleash Replit AI Agent
+
+```
+# TerraformFusion | Bundle Auto-Enhance
+## Mission: automate ALL remaining steps
+– pull latest main
+– merge code snippets listed in “automation expansion pack”
+– commit with message:  chore(ci): full pack automation + rollback wizard
+– run nx test + kind E2E locally; block if red
+– push PR “Full automation pack (Helm-lint, SBOM, E2E, rollback, publish)”
+– set auto-merge on green
+Execute autonomously, no questions.
+
+```
+
+---
+
+### 🚀 What happens when this lands ? 
+1. **Every push** → build, Docker, pack, OCI publish.  
+2. **Helm charts** linted & template-validated.  
+3. **kind** spins up a throw-away cluster, runs your wizard, waits for pods.  
+4. **SBOM & CVE scan** keeps supply chain clean.  
+5. If the install fails mid-way, wizard auto-rolls back Helm releases.  
+6. Main merges trigger a **marketplace cache refresh** so customers see the new version within seconds.
+
+---
+
+Let me know if you want any of these steps broken down further, or if you’d like a new module (e.g., **performance benchmarks**) auto-wired into CI as well.

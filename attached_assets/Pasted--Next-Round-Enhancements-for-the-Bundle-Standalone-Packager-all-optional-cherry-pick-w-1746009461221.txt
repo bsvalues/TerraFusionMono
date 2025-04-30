@@ -1,0 +1,25 @@
+### 🎯 Next-Round Enhancements for the Bundle / Standalone Packager  
+*(all optional, cherry-pick what’s useful)*  
+
+| Pri | Enhancement | Why it’s Worth It | How to Tackle |
+|----|--------------|------------------|---------------|
+| **P0** | **Add pack-level unit tests** | Locks in executor logic so future refactors can’t break packaging. | In `packages/tools/nx-pack/__tests__/`: mock a dummy project, run the executor with `runExecutor`, assert that `terra.json` + `.sha256` land in `dist/pack/<proj>`. |
+| **P0** | **Schema + dependency validation** | Prevents bad bundles: duplicate IDs, circular `contains[]`, missing charts. | Extend executor: before copy, load every referenced component’s `terra.json`; fail if any `id` repeats or dependency missing. |
+| **P1** | **OCI registry publish step** | Lets other clusters pull artifacts without cloning the repo. | New CI job after `pack`: `oras push ghcr.io/bsvalues/terra/${id}:${gitSHA} dist/pack/${id}/*`. |
+| **P1** | **Helm‐lint & dry-run** | Catches chart syntax errors before the wizard tries to install. | `helm lint` + `helm template --validate --dry-run` for each `helmChart` found in `terra.json`. |
+| **P1** | **Kind-based E2E test** | Real proof bundle installs cleanly. | Spin up `kind` in CI, execute `scripts/pacs_wizard.sh --env ci`, assert that all pods enter `Ready` within 180 s. |
+| **P2** | **Rollback helper in wizard** | Nice UX if install halfway fails. | Maintain an array of installed releases; trap `ERR` and iterate `helm uninstall`. |
+| **P2** | **Marketplace auto-refresh API** | UI shows “Update available” right after a new pack lands. | After publish, call `POST /api/marketplace/refresh` (simple cache-bust webhook). |
+| **P3** | **Size + SBOM report** | Keeps images lean and supply-chain audited. | Add `docker sbom` + `syft` step; fail if critical CVE or image > 300 MB. |
+
+---
+
+#### Quick Wins You Can Ship Today
+
+1. **Unit-test scaffold** (P0) – 30 min, gives confidence.  
+2. **Helm lint** (P1) – copy-paste job; protects prod.  
+3. **Rollback flag** (P2) – 10 lines in `pacs_wizard.sh`, big UX gain.
+
+---
+
+Let me know which items you’d like me to spec out or automate, and I’ll dive right in!
