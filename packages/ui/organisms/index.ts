@@ -1,9 +1,12 @@
 /**
- * Atomic Design - Organisms
+ * TerraFusion UI Organisms
  * 
- * Organisms are groups of molecules joined together to form a relatively complex,
- * distinct section of an interface.
+ * Organisms are complex UI components that combine multiple atoms and molecules
+ * to form specific sections of a user interface.
+ * 
+ * Examples: forms, dashboards, navigation, data tables, etc.
  */
 
-// Re-export organism components here
-// Example: export * from './NavigationBar';
+export * from './Form';
+export * from './DataTable';
+export * from './Navbar';
