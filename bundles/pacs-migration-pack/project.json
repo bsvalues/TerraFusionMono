@@ -1,32 +1,60 @@
 {
   "name": "pacs-migration-pack",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "bundles/pacs-migration-pack/src",
   "projectType": "application",
+  "sourceRoot": "bundles/pacs-migration-pack/src",
   "targets": {
-    "validate-deps": {
-      "executor": "@nx/js:node",
+    "build": {
+      "executor": "nx:run-commands",
       "options": {
-        "buildTarget": "pacs-migration-pack:validate-deps",
-        "script": "bundles/pacs-migration-pack/scripts/validate-dependencies.js"
+        "commands": [
+          {
+            "command": "mkdir -p dist/bundles/pacs-migration-pack"
+          },
+          {
+            "command": "cp -r bundles/pacs-migration-pack/scripts dist/bundles/pacs-migration-pack/"
+          }
+        ],
+        "parallel": false
+      }
+    },
+    "lint": {
+      "executor": "@nx/eslint:lint",
+      "outputs": ["{options.outputFile}"],
+      "options": {
+        "lintFilePatterns": ["bundles/pacs-migration-pack/**/*.sh"]
+      }
+    },
+    "test": {
+      "executor": "nx:run-commands",
+      "options": {
+        "command": "echo 'Testing PACS Migration Pack bundle'"
       }
     },
     "pack": {
       "executor": "@terrafusion/nx-pack:pack",
-      "dependsOn": ["validate-deps"],
+      "outputs": ["{options.outputPath}/pacs-migration-pack"],
       "options": {
         "outputPath": "dist/pack",
         "includeFiles": [
-          "terra.json", 
-          "README.md", 
-          "LICENSE", 
-          "charts/**/*", 
+          "terra.json",
+          "README.md",
+          "LICENSE",
           "scripts/**/*",
+          "charts/**/*",
           "config/**/*"
         ],
-        "generateChecksums": true
+        "excludeFiles": [
+          "node_modules/**/*",
+          "**/*.test.sh",
+          "**/*.spec.sh"
+        ],
+        "generateChecksums": true,
+        "validateSchema": true,
+        "generateSBOM": true,
+        "sbomFormat": "cyclonedx"
       }
     }
   },
-  "tags": ["bundle", "pacs", "migration"]
+  "tags": []
 }

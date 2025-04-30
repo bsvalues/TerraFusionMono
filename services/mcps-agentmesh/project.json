@@ -5,13 +5,25 @@
   "projectType": "application",
   "targets": {
     "build": {
-      "executor": "@nx/js:tsc",
+      "executor": "@nx/node:webpack",
       "outputs": ["{options.outputPath}"],
       "options": {
         "outputPath": "dist/services/mcps-agentmesh",
         "main": "services/mcps-agentmesh/src/main.ts",
-        "tsConfig": "services/mcps-agentmesh/tsconfig.json",
-        "assets": ["services/mcps-agentmesh/src/assets"]
+        "tsConfig": "services/mcps-agentmesh/tsconfig.json"
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "extractLicenses": true,
+          "inspect": false
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nx/node:node",
+      "options": {
+        "buildTarget": "mcps-agentmesh:build"
       }
     },
     "lint": {
@@ -28,21 +40,31 @@
         "jestConfig": "services/mcps-agentmesh/jest.config.ts"
       }
     },
-    "docker": {
-      "executor": "@nx/js:node",
-      "options": {
-        "buildTarget": "mcps-agentmesh:build",
-        "dockerFile": "services/mcps-agentmesh/Dockerfile"
-      }
-    },
     "pack": {
       "executor": "@terrafusion/nx-pack:pack",
+      "outputs": ["{options.outputPath}/mcps-agentmesh"],
       "options": {
         "outputPath": "dist/pack",
-        "includeFiles": ["terra.json", "README.md", "LICENSE", "charts/**/*"],
-        "generateChecksums": true
+        "includeFiles": [
+          "terra.json",
+          "README.md",
+          "LICENSE",
+          "dist/**/*",
+          "charts/**/*",
+          "scripts/**/*"
+        ],
+        "excludeFiles": [
+          "node_modules/**/*",
+          "**/*.test.ts",
+          "**/*.spec.ts",
+          "**/jest.config.ts"
+        ],
+        "generateChecksums": true,
+        "validateSchema": true,
+        "generateSBOM": true,
+        "sbomFormat": "cyclonedx"
       }
     }
   },
-  "tags": ["service", "mcps", "agent"]
+  "tags": []
 }

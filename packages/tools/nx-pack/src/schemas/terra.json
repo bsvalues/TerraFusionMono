@@ -1,9 +1,7 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TerraFusion Component Manifest",
-  "description": "Schema for TerraFusion component manifest files (terra.json)",
+  "title": "TerraFusion Component Schema",
   "type": "object",
-  "required": ["id", "type", "name", "version", "description"],
   "properties": {
     "id": {
       "type": "string",
@@ -12,16 +10,16 @@
     },
     "type": {
       "type": "string",
-      "description": "Type of component",
-      "enum": ["service", "bundle", "plugin", "library"]
+      "description": "Type of the component",
+      "enum": ["service", "bundle", "library", "tool"]
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name for the component"
+      "description": "Display name of the component"
     },
     "version": {
       "type": "string",
-      "description": "Component version using semantic versioning",
+      "description": "Semantic version of the component",
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
     },
     "description": {
@@ -30,11 +28,11 @@
     },
     "maintainer": {
       "type": "string",
-      "description": "Maintainer information"
+      "description": "Maintainer name and contact information"
     },
     "license": {
       "type": "string",
-      "description": "License information"
+      "description": "License for the component"
     },
     "docs": {
       "type": "string",
@@ -43,22 +41,29 @@
     },
     "tags": {
       "type": "array",
+      "description": "Tags for searchability",
       "items": {
         "type": "string"
-      },
-      "description": "Tags for categorization"
+      }
     },
     "contains": {
       "type": "array",
-      "description": "List of component references for bundles",
+      "description": "List of components contained in a bundle",
       "items": {
         "type": "string",
-        "pattern": "^[a-z0-9-]+(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
+        "pattern": "^[a-z0-9-]+@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
+      }
+    },
+    "dependencies": {
+      "type": "array",
+      "description": "Dependencies for the component",
+      "items": {
+        "type": "string"
       }
     },
     "infra": {
       "type": "object",
-      "description": "Infrastructure-related configuration",
+      "description": "Infrastructure requirements",
       "properties": {
         "helmChart": {
           "type": "string",
@@ -84,14 +89,13 @@
         },
         "ports": {
           "type": "array",
-          "description": "Port configuration",
+          "description": "Ports exposed by the component",
           "items": {
             "type": "object",
-            "required": ["name", "containerPort", "servicePort", "protocol"],
             "properties": {
               "name": {
                 "type": "string",
-                "description": "Port name"
+                "description": "Name of the port"
               },
               "containerPort": {
                 "type": "integer",
@@ -103,77 +107,89 @@
               },
               "protocol": {
                 "type": "string",
-                "description": "Protocol",
-                "enum": ["TCP", "UDP", "SCTP"]
+                "description": "Protocol used",
+                "enum": ["TCP", "UDP"]
               }
-            }
+            },
+            "required": ["name", "containerPort"]
           }
         }
       }
     },
-    "dependencies": {
-      "type": "array",
-      "description": "List of dependencies",
-      "items": {
-        "type": "string"
-      }
-    },
     "config": {
       "type": "object",
-      "description": "Configuration parameters",
+      "description": "Configuration options",
       "additionalProperties": {
         "type": "object",
         "properties": {
           "type": {
             "type": "string",
-            "description": "Type of configuration parameter",
             "enum": ["string", "number", "boolean", "object", "array"]
           },
           "description": {
-            "type": "string",
-            "description": "Description of the parameter"
+            "type": "string"
           },
           "default": {
-            "description": "Default value"
+            "oneOf": [
+              { "type": "string" },
+              { "type": "number" },
+              { "type": "boolean" },
+              { "type": "object" },
+              { "type": "array" }
+            ]
           },
           "enum": {
-            "type": "array",
-            "description": "Enumeration of allowed values"
+            "type": "array"
           },
           "minimum": {
-            "type": "number",
-            "description": "Minimum value for number type"
+            "type": "number"
           },
           "maximum": {
-            "type": "number",
-            "description": "Maximum value for number type"
+            "type": "number"
           },
           "format": {
-            "type": "string",
-            "description": "Format hint for string values",
-            "enum": ["date-time", "date", "time", "uri", "email", "hostname", "ipv4", "ipv6"]
+            "type": "string"
+          },
+          "pattern": {
+            "type": "string"
+          },
+          "items": {
+            "type": "object"
+          },
+          "required": {
+            "type": "boolean"
           }
         },
-        "required": ["type"]
+        "required": ["type", "description"]
       }
     }
   },
-  "dependencies": {
-    "type": {
-      "oneOf": [
-        {
-          "properties": {
-            "type": { "enum": ["bundle"] },
-            "contains": { "type": "array", "minItems": 1 }
-          },
-          "required": ["contains"]
-        },
-        {
-          "properties": {
-            "type": { "enum": ["service", "plugin", "library"] }
-          }
+  "required": ["id", "type", "name", "version", "description"],
+  "allOf": [
+    {
+      "if": {
+        "properties": {
+          "type": { "enum": ["bundle"] }
         }
-      ]
+      },
+      "then": {
+        "required": ["contains"]
+      }
+    },
+    {
+      "if": {
+        "properties": {
+          "type": { "enum": ["service"] }
+        }
+      },
+      "then": {
+        "properties": {
+          "infra": {
+            "required": ["requirements"]
+          }
+        },
+        "required": ["infra"]
+      }
     }
-  }
+  ]
 }
