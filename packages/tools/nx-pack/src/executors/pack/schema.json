@@ -1,37 +1,28 @@
 {
   "$schema": "http://json-schema.org/schema",
   "version": 2,
-  "cli": "nx",
-  "title": "Package executor",
-  "description": "Package a project for distribution",
+  "title": "Pack executor",
+  "description": "Creates a package for distribution",
   "type": "object",
   "properties": {
     "outputPath": {
       "type": "string",
-      "description": "The output path of the packaged files.",
+      "description": "The output directory for the package.",
       "default": "dist/pack"
     },
     "includeFiles": {
       "type": "array",
-      "description": "Files to include in the package",
+      "description": "List of file patterns to include in the package.",
       "items": {
         "type": "string"
       },
       "default": ["terra.json", "README.md", "LICENSE"]
     },
-    "excludeFiles": {
-      "type": "array",
-      "description": "Files to exclude from the package",
-      "items": {
-        "type": "string"
-      },
-      "default": ["node_modules", ".git", "dist"]
-    },
     "generateChecksums": {
       "type": "boolean",
-      "description": "Whether to generate checksums for packaged files",
+      "description": "Generate checksums for all files in the package. Creates a checksums.json file.",
       "default": true
     }
   },
-  "required": ["outputPath"]
+  "required": ["outputPath", "includeFiles"]
 }

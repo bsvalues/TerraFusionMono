@@ -1,9 +1,9 @@
 /**
- * TerraFusion NX Pack Plugin
- * 
- * This plugin provides executors for packaging TerraFusion services and bundles
- * into standalone distributable packages.
+ * @fileoverview Entry point for the @terrafusion/nx-pack plugin
  */
 
-// Executors are defined in executors.json
-module.exports = {};
+module.exports = {
+  executors: {
+    pack: require.resolve('./executors/pack'),
+  },
+};
