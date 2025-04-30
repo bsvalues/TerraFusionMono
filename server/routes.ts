@@ -1022,6 +1022,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Collaboration routes for real-time editing features
   app.use('/api/collaboration', collaborationRoutes);
   
+  // PACS Migration routes - adding test endpoint without authentication
+  app.get('/api/pacs-migration/test', (req, res) => {
+    res.json({
+      success: true,
+      message: "PACS Migration API is configured and working",
+      timestamp: new Date().toISOString(),
+      endpoints: {
+        connections: '/api/pacs-migration/connections',
+        jobs: '/api/pacs-migration/jobs',
+        mappings: '/api/pacs-migration/jobs/:jobId/mappings',
+        executions: '/api/pacs-migration/jobs/:jobId/executions'
+      }
+    });
+  });
+  
+  // Main PACS Migration routes with authentication
+  app.use('/api/pacs-migration', isAuthenticated, pacsMigrationRoutes);
+  
   // WebSocket monitoring endpoints
   app.get('/api/websocket/connections', async (req, res) => {
     try {
