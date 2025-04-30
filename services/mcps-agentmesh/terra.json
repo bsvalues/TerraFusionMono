@@ -3,17 +3,17 @@
   "type": "service",
   "name": "MCPS Agent Mesh",
   "version": "1.0.0",
-  "description": "Agent Mesh component for TerraFusion's Medical Content Provider System",
-  "maintainer": "TerraFusion Core Team <support@terrafusion.io>",
-  "license": "Proprietary",
-  "docs": "https://docs.terrafusion.io/mcps",
-  "tags": ["mcps", "agent", "mesh", "healthcare"],
+  "description": "Distributed agent network for medical imaging data exchange",
+  "maintainer": "TerraFusion Team <support@terrafusion.io>",
+  "license": "PROPRIETARY",
+  "docs": "https://docs.terrafusion.io/mcps-agentmesh",
+  "tags": ["mcps", "agent", "mesh", "dicom", "medical-imaging"],
   "infra": {
     "helmChart": "charts/mcps-agentmesh",
     "requirements": {
       "cpu": "1",
       "memory": "1Gi",
-      "storage": "2Gi"
+      "storage": "5Gi"
     },
     "ports": [
       {
@@ -23,7 +23,7 @@
         "protocol": "TCP"
       },
       {
-        "name": "metrics",
+        "name": "mesh",
         "containerPort": 9090,
         "servicePort": 9090,
         "protocol": "TCP"
@@ -31,24 +31,43 @@
     ]
   },
   "dependencies": [
-    "postgresql:14",
-    "redis:7"
+    "dicom-converter",
+    "nats-server",
+    "postgresql"
   ],
   "config": {
     "logLevel": {
       "type": "string",
+      "description": "Logging level for the service",
       "default": "info",
       "enum": ["debug", "info", "warn", "error"]
     },
-    "maxAgents": {
+    "meshPort": {
       "type": "number",
+      "description": "Port for mesh communication",
+      "default": 9090,
+      "minimum": 1024,
+      "maximum": 65535
+    },
+    "agentCount": {
+      "type": "number",
+      "description": "Number of agent replicas to run",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10
+    },
+    "maxConcurrentTransfers": {
+      "type": "number",
+      "description": "Maximum number of concurrent transfers",
       "default": 5,
       "minimum": 1,
       "maximum": 20
     },
-    "enableTLS": {
-      "type": "boolean",
-      "default": true
+    "securityLevel": {
+      "type": "string",
+      "description": "Security level for data encryption",
+      "default": "high",
+      "enum": ["standard", "high", "extreme"]
     }
   }
 }

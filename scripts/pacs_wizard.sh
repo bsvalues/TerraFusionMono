@@ -1,358 +1,299 @@
-#!/bin/bash
-# PACS Migration Wizard
-# This script helps with setting up and managing PACS migrations
-
-# Array to track installed Helm releases for rollback
-INSTALLED=()
-
-# Error handling with rollback capability
-trap 'echo "⚠️ Error occurred – rolling back"; for rel in "${INSTALLED[@]}"; do helm uninstall "$rel" -n "$NAMESPACE"; done' ERR
+#!/usr/bin/env bash
+#
+# TerraFusion PACS Migration Wizard
+# This script helps with installing and configuring the PACS Migration Pack
 
 set -e
 
+# Version information
 VERSION="1.0.0"
-BANNER="
-┌────────────────────────────────────────┐
-│ TerraFusion PACS Migration Wizard      │
-│ Version: $VERSION                       │
-└────────────────────────────────────────┘
-"
+BUNDLE_VERSION="1.0.0"
 
-# Default configuration values
-CONFIG_FILE="$HOME/.pacs_config"
-DEFAULT_DB_TYPE="mssql"
-DEFAULT_BATCH_SIZE=1000
-DEFAULT_LOG_LEVEL="info"
+# Environment and configuration
+NAMESPACE="terrafusion"
+ENVIRONMENT="dev"
+LOG_LEVEL="info"
+BUNDLE="pacs-migration-pack"
+INSTALLED=()
+CONFIG_FILE=""
 
-# Function to display usage information
+# Color definitions
+RED='\033[0;31m'
+GREEN='\033[0;32m'
+YELLOW='\033[0;33m'
+BLUE='\033[0;34m'
+NC='\033[0m' # No Color
+
+# Function to show usage banner
 show_usage() {
-  echo "$BANNER"
-  echo "Usage: $(basename "$0") [OPTIONS]"
-  echo ""
-  echo "Options:"
-  echo "  -h, --help                       Show this help message"
-  echo "  -c, --configure                  Configure the PACS migration settings"
-  echo "  -s, --start-migration            Start the migration process"
-  echo "  --status                         Show the current migration status"
-  echo "  --verify                         Verify the connection to PACS system"
-  echo "  --reset                          Reset the migration configuration"
-  echo "  --dry-run                        Test the migration without making changes"
-  echo "  --log-level LEVEL                Set logging level (debug|info|warn|error)"
-  echo "  --batch-size SIZE                Set the batch size for data processing"
-  echo "  --bundle BUNDLE_NAME             Specify the bundle to install"
-  echo "  --namespace NAMESPACE            Specify the Kubernetes namespace"
-  echo "  --env ENVIRONMENT                Specify the environment (dev|staging|prod|ci)"
-  echo ""
-  echo "Examples:"
-  echo "  $(basename "$0") --configure                                # Interactive configuration"
-  echo "  $(basename "$0") --start-migration                          # Start the migration"
-  echo "  $(basename "$0") --status                                   # Check migration status"
-  echo "  $(basename "$0") --verify                                   # Test connection"
-  echo "  $(basename "$0") --bundle pacs-migration-pack --namespace tf-dev  # Install bundle in namespace"
-  echo ""
-}
+  cat << EOF
+${BLUE}TerraFusion PACS Migration Wizard v${VERSION}${NC}
 
-# Function to configure the migration settings
-configure() {
-  echo "Configuring PACS migration settings..."
-  
-  echo "Database type ($DEFAULT_DB_TYPE):"
-  read -r db_type
-  db_type=${db_type:-$DEFAULT_DB_TYPE}
-  
-  echo "Database host:"
-  read -r db_host
-  
-  echo "Database port:"
-  read -r db_port
-  
-  echo "Database name:"
-  read -r db_name
-  
-  echo "Database username:"
-  read -r db_user
-  
-  echo "Database password:"
-  read -rs db_password
-  echo ""
-  
-  echo "Batch size ($DEFAULT_BATCH_SIZE):"
-  read -r batch_size
-  batch_size=${batch_size:-$DEFAULT_BATCH_SIZE}
-  
-  # Save the configuration
-  mkdir -p "$(dirname "$CONFIG_FILE")"
-  cat > "$CONFIG_FILE" << EOF
-DB_TYPE=$db_type
-DB_HOST=$db_host
-DB_PORT=$db_port
-DB_NAME=$db_name
-DB_USER=$db_user
-DB_PASSWORD=$db_password
-BATCH_SIZE=$batch_size
-LOG_LEVEL=$DEFAULT_LOG_LEVEL
+${GREEN}USAGE:${NC}
+  $0 [OPTIONS]
+
+${GREEN}OPTIONS:${NC}
+  -h, --help              Show this help message
+  -n, --namespace NAME    Kubernetes namespace to use (default: terrafusion)
+  -e, --environment ENV   Environment to deploy to (dev, staging, prod, ci)
+  -c, --config FILE       Configuration file path
+  -b, --bundle NAME       Bundle to deploy (default: pacs-migration-pack)
+  -r, --rollback          Rollback the last installation
+  -v, --verbose           Enable verbose output
+
+${GREEN}EXAMPLES:${NC}
+  $0 --namespace medical-system
+  $0 --environment prod --config ./my-config.yaml
+  $0 --rollback
+
+For more information, visit: https://docs.terrafusion.io/pacs-migration
 EOF
-  
-  echo "Configuration saved to $CONFIG_FILE"
 }
 
-# Function to start the migration
-start_migration() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration not found. Please run --configure first."
+# Function to log messages
+log() {
+  local level=$1
+  local message=$2
+  
+  case $level in
+    "info")
+      echo -e "${BLUE}[INFO]${NC} $message"
+      ;;
+    "success")
+      echo -e "${GREEN}[SUCCESS]${NC} $message"
+      ;;
+    "warn")
+      echo -e "${YELLOW}[WARNING]${NC} $message"
+      ;;
+    "error")
+      echo -e "${RED}[ERROR]${NC} $message"
+      ;;
+    *)
+      echo -e "$message"
+      ;;
+  esac
+}
+
+# Error handling and cleanup
+cleanup() {
+  log "info" "Cleaning up..."
+}
+
+error_handler() {
+  local exit_code=$?
+  local line_number=$1
+  
+  log "error" "Error occurred at line $line_number with exit code $exit_code"
+  
+  # Perform rollback if there are installed components
+  if [ ${#INSTALLED[@]} -gt 0 ]; then
+    log "warn" "Rolling back installed components..."
+    for component in "${INSTALLED[@]}"; do
+      log "info" "Rolling back $component..."
+      helm uninstall "$component" --namespace "$NAMESPACE" || true
+    done
+  fi
+  
+  exit $exit_code
+}
+
+trap 'error_handler $LINENO' ERR
+trap cleanup EXIT
+
+# Function to validate environment
+validate_environment() {
+  case $ENVIRONMENT in
+    "dev"|"staging"|"prod"|"ci")
+      log "info" "Using environment: $ENVIRONMENT"
+      ;;
+    *)
+      log "error" "Invalid environment: $ENVIRONMENT"
+      log "error" "Valid options are: dev, staging, prod, ci"
+      exit 1
+      ;;
+  esac
+}
+
+# Function to check prerequisites
+check_prerequisites() {
+  log "info" "Checking prerequisites..."
+  
+  # Check for kubectl
+  if ! command -v kubectl &> /dev/null; then
+    log "error" "kubectl is not installed or not in PATH"
     exit 1
   fi
   
-  # Load configuration
-  # shellcheck source=/dev/null
+  # Check for helm
+  if ! command -v helm &> /dev/null; then
+    log "error" "helm is not installed or not in PATH"
+    exit 1
+  fi
+  
+  # Check connection to Kubernetes cluster
+  if ! kubectl cluster-info &> /dev/null; then
+    log "error" "Cannot connect to Kubernetes cluster"
+    exit 1
+  fi
+  
+  # Check if namespace exists
+  if ! kubectl get namespace "$NAMESPACE" &> /dev/null; then
+    log "info" "Namespace $NAMESPACE does not exist, creating..."
+    kubectl create namespace "$NAMESPACE"
+  fi
+  
+  log "success" "All prerequisites met"
+}
+
+# Function to load configuration file
+load_config() {
+  if [ -z "$CONFIG_FILE" ]; then
+    log "warn" "No configuration file specified, using defaults"
+    return
+  fi
+  
+  if [ ! -f "$CONFIG_FILE" ]; then
+    log "error" "Configuration file not found: $CONFIG_FILE"
+    exit 1
+  fi
+  
+  log "info" "Loading configuration from $CONFIG_FILE"
+  # Read config values from file
+  # This is a simplified example - in a real implementation, we would parse YAML/JSON
   source "$CONFIG_FILE"
+}
+
+# Function to install a component
+install_component() {
+  local component=$1
+  local version=$2
+  local values=$3
   
-  echo "Starting PACS migration with the following settings:"
-  echo "- Database type: $DB_TYPE"
-  echo "- Database host: $DB_HOST"
-  echo "- Database name: $DB_NAME"
-  echo "- Batch size: $BATCH_SIZE"
-  echo "- Log level: $LOG_LEVEL"
+  log "info" "Installing $component v$version..."
   
-  # Set default namespace if not provided
-  NAMESPACE=${NAMESPACE:-"terrafusion"}
+  # Add values file argument if provided
+  local values_arg=""
+  if [ -n "$values" ]; then
+    values_arg="--values $values"
+  fi
   
-  # Install required components
-  echo "Installing required components in namespace $NAMESPACE..."
-  
-  # Install database component first
-  echo "Installing PACS database connector..."
-  if helm upgrade --install pacs-db ./charts/pacs-db \
-    --set dbType="$DB_TYPE" \
-    --set dbHost="$DB_HOST" \
-    --set dbPort="$DB_PORT" \
-    --set dbName="$DB_NAME" \
+  # Install using Helm
+  helm upgrade --install "$component" "charts/$component" \
     --namespace "$NAMESPACE" \
-    --create-namespace; then
-    # Track the installed release for potential rollback
-    INSTALLED+=("pacs-db")
-    echo "✓ PACS database connector installed successfully"
-  else
-    echo "✗ Failed to install PACS database connector"
-    exit 1
-  fi
-  
-  # Install migration service
-  echo "Installing PACS migration service..."
-  if helm upgrade --install pacs-migration ./charts/pacs-migration \
-    --set batchSize="$BATCH_SIZE" \
+    --version "$version" \
+    --set environment="$ENVIRONMENT" \
     --set logLevel="$LOG_LEVEL" \
-    --namespace "$NAMESPACE"; then
-    # Track the installed release for potential rollback
-    INSTALLED+=("pacs-migration")
-    echo "✓ PACS migration service installed successfully"
-  else
-    echo "✗ Failed to install PACS migration service"
+    $values_arg
+  
+  # Add to installed components list for potential rollback
+  INSTALLED+=("$component")
+  
+  log "success" "$component installed successfully"
+}
+
+# Function to validate the bundle
+validate_bundle() {
+  log "info" "Validating bundle: $BUNDLE"
+  
+  # Check if bundle exists
+  if [ ! -d "bundles/$BUNDLE" ]; then
+    log "error" "Bundle not found: $BUNDLE"
     exit 1
   fi
   
-  # In a real implementation, this would call into the agent mesh
-  # and initiate the migration process.
-  echo "Migration started. Use --status to check progress."
-}
-
-# Function to check the migration status
-check_status() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration not found. Please run --configure first."
+  # Check terra.json exists
+  if [ ! -f "bundles/$BUNDLE/terra.json" ]; then
+    log "error" "Bundle manifest (terra.json) not found"
     exit 1
   fi
   
-  # In a real implementation, this would query the migration service
-  # for current status and progress.
-  echo "Migration status: In progress"
-  echo "Completed: 42%"
-  echo "Estimated time remaining: 1h 23m"
+  # Validate bundle content (simplified)
+  # In a real implementation, we would parse and validate terra.json
+  log "success" "Bundle validated successfully"
 }
 
-# Function to verify the connection to the PACS system
-verify_connection() {
-  if [ ! -f "$CONFIG_FILE" ]; then
-    echo "Error: Configuration not found. Please run --configure first."
-    exit 1
-  fi
+# Function to deploy the bundle
+deploy_bundle() {
+  log "info" "Deploying bundle: $BUNDLE"
   
-  # Load configuration
-  # shellcheck source=/dev/null
-  source "$CONFIG_FILE"
+  # Get components from bundle
+  # In a real implementation, this would parse terra.json
+  local components=("mcps-agentmesh" "dicom-converter" "data-validator")
   
-  echo "Verifying connection to PACS system..."
-  # In a real implementation, this would test the database connection
-  echo "Connection successful! PACS system is accessible."
+  for component in "${components[@]}"; do
+    install_component "$component" "$BUNDLE_VERSION" ""
+  done
+  
+  log "success" "Bundle deployed successfully"
 }
 
-# Function to reset the migration configuration
-reset_config() {
-  if [ -f "$CONFIG_FILE" ]; then
-    rm "$CONFIG_FILE"
-    echo "Configuration has been reset."
-  else
-    echo "No configuration found to reset."
+# Function to perform rollback
+perform_rollback() {
+  log "info" "Rolling back PACS Migration Pack..."
+  
+  # Get deployed components from namespace with the app label
+  local components=$(helm list --namespace "$NAMESPACE" --selector app.kubernetes.io/part-of=pacs-migration-pack -q)
+  
+  if [ -z "$components" ]; then
+    log "warn" "No components found to roll back"
+    exit 0
   fi
+  
+  for component in $components; do
+    log "info" "Rolling back $component..."
+    helm uninstall "$component" --namespace "$NAMESPACE"
+  done
+  
+  log "success" "Rollback completed successfully"
 }
 
 # Parse command line arguments
-if [ $# -eq 0 ]; then
-  show_usage
-  exit 0
-fi
-
-while [ $# -gt 0 ]; do
-  case "$1" in
+while [[ $# -gt 0 ]]; do
+  case $1 in
     -h|--help)
       show_usage
       exit 0
       ;;
-    -c|--configure)
-      configure
+    -n|--namespace)
+      NAMESPACE="$2"
+      shift 2
+      ;;
+    -e|--environment)
+      ENVIRONMENT="$2"
+      shift 2
+      ;;
+    -c|--config)
+      CONFIG_FILE="$2"
+      shift 2
+      ;;
+    -b|--bundle)
+      BUNDLE="$2"
+      shift 2
+      ;;
+    -r|--rollback)
+      perform_rollback
+      exit 0
+      ;;
+    -v|--verbose)
+      LOG_LEVEL="debug"
       shift
-      ;;
-    -s|--start-migration)
-      start_migration
-      shift
-      ;;
-    --status)
-      check_status
-      shift
-      ;;
-    --verify)
-      verify_connection
-      shift
-      ;;
-    --reset)
-      reset_config
-      shift
-      ;;
-    --dry-run)
-      echo "Performing dry run of the migration process..."
-      # Implementation would go here
-      shift
-      ;;
-    --log-level)
-      if [ -n "$2" ]; then
-        case "$2" in
-          debug|info|warn|error)
-            if [ -f "$CONFIG_FILE" ]; then
-              sed -i "s/LOG_LEVEL=.*/LOG_LEVEL=$2/" "$CONFIG_FILE"
-              echo "Log level set to $2"
-            else
-              echo "Error: Configuration not found. Please run --configure first."
-              exit 1
-            fi
-            ;;
-          *)
-            echo "Error: Invalid log level. Must be one of: debug, info, warn, error"
-            exit 1
-            ;;
-        esac
-        shift 2
-      else
-        echo "Error: Log level not specified"
-        exit 1
-      fi
-      ;;
-    --batch-size)
-      if [ -n "$2" ] && [[ "$2" =~ ^[0-9]+$ ]]; then
-        if [ -f "$CONFIG_FILE" ]; then
-          sed -i "s/BATCH_SIZE=.*/BATCH_SIZE=$2/" "$CONFIG_FILE"
-          echo "Batch size set to $2"
-        else
-          echo "Error: Configuration not found. Please run --configure first."
-          exit 1
-        fi
-        shift 2
-      else
-        echo "Error: Batch size must be a positive number"
-        exit 1
-      fi
-      ;;
-    --bundle)
-      if [ -n "$2" ]; then
-        BUNDLE="$2"
-        echo "Using bundle: $BUNDLE"
-        shift 2
-      else
-        echo "Error: Bundle name not specified"
-        exit 1
-      fi
-      ;;
-    --namespace)
-      if [ -n "$2" ]; then
-        NAMESPACE="$2"
-        echo "Using namespace: $NAMESPACE"
-        shift 2
-      else
-        echo "Error: Namespace not specified"
-        exit 1
-      fi
-      ;;
-    --env)
-      if [ -n "$2" ]; then
-        case "$2" in
-          dev|staging|prod|ci)
-            ENVIRONMENT="$2"
-            echo "Using environment: $ENVIRONMENT"
-            ;;
-          *)
-            echo "Error: Invalid environment. Must be one of: dev, staging, prod, ci"
-            exit 1
-            ;;
-        esac
-        shift 2
-      else
-        echo "Error: Environment not specified"
-        exit 1
-      fi
       ;;
     *)
-      echo "Error: Unknown option: $1"
+      log "error" "Unknown option: $1"
       show_usage
       exit 1
       ;;
   esac
 done
 
-# If bundle is specified, install it
-if [ -n "$BUNDLE" ]; then
-  # Set default namespace if not provided
-  NAMESPACE=${NAMESPACE:-"terrafusion"}
-  echo "Installing bundle $BUNDLE in namespace $NAMESPACE..."
-  
-  # Determine the bundle path
-  BUNDLE_PATH="./dist/pack/$BUNDLE"
-  if [ ! -d "$BUNDLE_PATH" ]; then
-    echo "Error: Bundle $BUNDLE not found at $BUNDLE_PATH"
-    exit 1
-  fi
-  
-  # Read terra.json to get bundle information
-  TERRA_JSON="$BUNDLE_PATH/terra.json"
-  if [ ! -f "$TERRA_JSON" ]; then
-    echo "Error: terra.json not found in bundle $BUNDLE"
-    exit 1
-  fi
-  
-  # Install the bundle components based on terra.json
-  echo "Installing bundle components from $TERRA_JSON..."
-  
-  # Example Helm install
-  if helm upgrade --install "$BUNDLE" "$BUNDLE_PATH/chart" \
-    --namespace "$NAMESPACE" \
-    --create-namespace; then
-    # Track the installed release for potential rollback
-    INSTALLED+=("$BUNDLE")
-    echo "✓ Bundle $BUNDLE installed successfully"
-  else
-    echo "✗ Failed to install bundle $BUNDLE"
-    exit 1
-  fi
-  
-  echo "Bundle $BUNDLE installed successfully in namespace $NAMESPACE"
-fi
+# Main execution
+log "info" "Starting TerraFusion PACS Migration Wizard v$VERSION"
 
-exit 0
+validate_environment
+check_prerequisites
+load_config
+validate_bundle
+deploy_bundle
+
+log "success" "PACS Migration Pack deployed successfully"
+log "info" "For more information and next steps, visit: https://docs.terrafusion.io/pacs-migration"

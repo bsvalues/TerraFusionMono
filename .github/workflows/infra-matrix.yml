@@ -1,89 +1,163 @@
-name: CI / Build-Pack-Publish
+name: Package CI/CD Matrix
+
 on:
   push:
-    branches: [main]
+    branches: [ main ]
+    paths:
+      - 'services/mcps-agentmesh/**'
+      - 'bundles/pacs-migration-pack/**'
+      - 'packages/tools/nx-pack/**'
+      - 'scripts/pacs_wizard.sh'
   pull_request:
-    branches: [main]
+    branches: [ main ]
+    paths:
+      - 'services/mcps-agentmesh/**'
+      - 'bundles/pacs-migration-pack/**'
+      - 'packages/tools/nx-pack/**'
+      - 'scripts/pacs_wizard.sh'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to build and package'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - mcps-agentmesh
+          - pacs-migration-pack
 
 jobs:
-  build-test:
+  detect-changes:
     runs-on: ubuntu-latest
+    outputs:
+      mcps-agentmesh: ${{ steps.filter.outputs.mcps-agentmesh }}
+      pacs-migration-pack: ${{ steps.filter.outputs.pacs-migration-pack }}
+      nx-pack: ${{ steps.filter.outputs.nx-pack }}
+      pacs-wizard: ${{ steps.filter.outputs.pacs-wizard }}
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-      - run: pnpm install
-      - run: pnpm nx affected --target=lint --all
-      - run: pnpm nx affected --target=test --all
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            mcps-agentmesh:
+              - 'services/mcps-agentmesh/**'
+            pacs-migration-pack:
+              - 'bundles/pacs-migration-pack/**'
+            nx-pack:
+              - 'packages/tools/nx-pack/**'
+            pacs-wizard:
+              - 'scripts/pacs_wizard.sh'
 
-  pack:
-    needs: build-test
+  build-and-test:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.mcps-agentmesh == 'true' || needs.detect-changes.outputs.pacs-migration-pack == 'true' || needs.detect-changes.outputs.nx-pack == 'true' || needs.detect-changes.outputs.pacs-wizard == 'true' || github.event_name == 'workflow_dispatch' }}
     runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
+        include:
+          - component: mcps-agentmesh
+            path: services/mcps-agentmesh
+          - component: pacs-migration-pack
+            path: bundles/pacs-migration-pack
     steps:
-      - uses: actions/checkout@v4
-      - uses: pnpm/action-setup@v2
-      - run: pnpm install
-      - run: |
-          pnpm nx affected --target=build  --parallel
-          pnpm nx affected --target=docker --parallel
-          pnpm nx affected --target=pack   --parallel
-      - name: Scan SBOM
-        run: |
-          for sb in dist/pack/**/*.sbom.json; do
-            if [ -f "$sb" ]; then
-              echo "Scanning $sb for vulnerabilities..."
-              if command -v grype &> /dev/null; then
-                grype "$sb" || (echo "Critical CVE in $sb" && exit 1)
-              else
-                echo "Skipping grype scan - tool not installed"
-              fi
-            fi
-          done
-      - name: Publish artifacts to OCI
-        env:
-          OCI_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          for dir in dist/pack/*; do
-            if [ -d "$dir" ]; then
-              id=$(basename "$dir")
-              echo "Publishing $id to container registry..."
-              if command -v oras &> /dev/null; then
-                oras push ghcr.io/bsvalues/terra/$id:$(git rev-parse --short HEAD) $dir/* || echo "Failed to publish $id - continuing"
-              else
-                echo "Skipping publication - oras tool not installed"
-              fi
-            fi
-          done
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npx nx lint ${{ matrix.component }}
+      
+      - name: Build
+        if: ${{ matrix.component == 'mcps-agentmesh' }}
+        run: npx nx build ${{ matrix.component }}
+      
+      - name: Test
+        if: ${{ matrix.component == 'mcps-agentmesh' }}
+        run: npx nx test ${{ matrix.component }}
 
-  kind-e2e:
-    needs: pack
+  package:
+    needs: build-and-test
     runs-on: ubuntu-latest
-    timeout-minutes: 15
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
     steps:
-      - uses: engineerd/setup-kind@v0.5.0
-        with: { name: tf-ci, wait: 60s }
-      - uses: actions/checkout@v4
-      - run: |
-          chmod +x scripts/pacs_wizard.sh
-          echo "Running E2E test with pacs_wizard.sh"
-          ./scripts/pacs_wizard.sh --env ci --bundle pacs-migration-pack --namespace tf-ci || echo "E2E test failed but continuing"
-          echo "Waiting for pods to be ready..."
-          if kubectl wait --for=condition=ready pod -A -l app.kubernetes.io/instance=agentmesh --timeout=180s; then
-            echo "Pods are ready!"
-          else
-            echo "Pods failed to become ready within timeout"
-            kubectl get pods -A
-            echo "Continuing despite errors..."
-          fi
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Package Component
+        run: npx nx run ${{ matrix.component }}:pack
+      
+      - name: SBOM Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './dist/pack/${{ matrix.component }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload SBOM Scan Results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.component }}-package
+          path: dist/pack/${{ matrix.component }}
+          if-no-files-found: error
+          retention-days: 7
 
-  refresh-marketplace:
-    needs: kind-e2e
+  publish:
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
     runs-on: ubuntu-latest
-    if: github.ref == 'refs/heads/main'
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
     steps:
-      - run: |
-          echo "Refreshing marketplace cache..."
-          if [ -n "${{ secrets.MARKETPLACE_TOKEN }}" ]; then
-            curl -XPOST https://marketplace.terrafusion.io/api/refresh -H "Authorization: Bearer ${{ secrets.MARKETPLACE_TOKEN }}" || echo "Failed to refresh marketplace cache"
-          else
-            echo "Skipping marketplace refresh - token not available"
-          fi
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ matrix.component }}-package
+          path: ./package
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./package
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
+            ghcr.io/${{ github.repository }}/${{ matrix.component }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}

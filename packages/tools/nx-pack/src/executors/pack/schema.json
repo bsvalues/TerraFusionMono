@@ -2,27 +2,64 @@
   "$schema": "http://json-schema.org/schema",
   "version": 2,
   "title": "Pack executor",
-  "description": "Creates a package for distribution",
+  "description": "Package TerraFusion components and bundles",
   "type": "object",
   "properties": {
     "outputPath": {
       "type": "string",
-      "description": "The output directory for the package.",
+      "description": "Output directory for packaged components",
       "default": "dist/pack"
     },
     "includeFiles": {
       "type": "array",
-      "description": "List of file patterns to include in the package.",
+      "description": "Files to include in the package (globs supported)",
       "items": {
         "type": "string"
       },
-      "default": ["terra.json", "README.md", "LICENSE"]
+      "default": [
+        "terra.json",
+        "README.md",
+        "LICENSE",
+        "bin/**/*",
+        "lib/**/*",
+        "scripts/**/*",
+        "charts/**/*"
+      ]
+    },
+    "excludeFiles": {
+      "type": "array",
+      "description": "Files to exclude from the package (globs supported)",
+      "items": {
+        "type": "string"
+      },
+      "default": [
+        "node_modules/**/*",
+        "**/*.test.ts",
+        "**/*.spec.ts",
+        "**/*.stories.tsx"
+      ]
     },
     "generateChecksums": {
       "type": "boolean",
-      "description": "Generate checksums for all files in the package. Creates a checksums.json file.",
+      "description": "Generate checksums for package files",
       "default": true
+    },
+    "validateSchema": {
+      "type": "boolean",
+      "description": "Validate terra.json against schema",
+      "default": true
+    },
+    "generateSBOM": {
+      "type": "boolean",
+      "description": "Generate Software Bill of Materials",
+      "default": true
+    },
+    "sbomFormat": {
+      "type": "string",
+      "description": "Format for Software Bill of Materials",
+      "enum": ["cyclonedx", "spdx"],
+      "default": "cyclonedx"
     }
   },
-  "required": ["outputPath", "includeFiles"]
+  "required": []
 }
