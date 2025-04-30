@@ -1,0 +1,15 @@
+{
+  "name": "pacs-migration-pack",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "bundles/pacs-migration-pack/src",
+  "targets": {
+    "pack": {
+      "executor": "@terrafusion/nx-pack:pack",
+      "options": {
+        "outputPath": "dist/pack"
+      }
+    }
+  },
+  "tags": []
+}

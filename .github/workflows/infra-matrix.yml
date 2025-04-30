@@ -1,0 +1,70 @@
+name: Infrastructure Matrix
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'packages/tools/**'
+      - 'services/**'
+      - 'bundles/**'
+      - '.github/workflows/infra-matrix.yml'
+  pull_request:
+    branches: [ main, develop ]
+    paths:
+      - 'packages/tools/**'
+      - 'services/**'
+      - 'bundles/**'
+      - '.github/workflows/infra-matrix.yml'
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run tests
+        run: npm test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Run linting
+        run: npm run lint
+      - name: Run type checking
+        run: npm run type-check
+
+  pack:
+    needs: [test, lint]
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '20'
+          cache: 'npm'
+      - name: Install dependencies
+        run: npm ci
+      - name: Package MCPS Agent-Mesh
+        run: npx nx run mcps-agentmesh:pack
+      - name: Package PACS Migration Pack
+        run: npx nx run pacs-migration-pack:pack
+      - name: Upload packed artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: packed-distributions
+          path: dist/pack/
