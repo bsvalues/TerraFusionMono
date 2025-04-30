@@ -1179,17 +1179,20 @@ export const migrationTypeEnum = pgEnum('migration_type', [
 export const pacsConnections = pgTable("pacs_connections", {
   id: serial("id").primaryKey(),
   name: text("name").notNull().unique(),
+  host: text("host"),
+  port: integer("port"),
+  username: text("username"),
+  password: text("password"),
+  database: text("database"),
+  api_key: text("api_key"),
+  status: text("status").default("pending").notNull(), // active, inactive, error
   description: text("description"),
-  connectionType: text("connection_type").notNull(), // database, api, file
-  connectionConfig: json("connection_config").notNull(), // store connection details
-  credentialId: text("credential_id"), // optional reference to a secure credential store
-  status: text("status").default("inactive").notNull(), // active, inactive, error
-  lastConnected: timestamp("last_connected"),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at").defaultNow().notNull(),
-  testStatus: text("test_status").default("untested"), // untested, success, failed
-  errorMessage: text("error_message"),
-  createdBy: integer("created_by").references(() => users.id),
+  source_system: sourceSystemEnum("source_system").default("pacs").notNull(),
+  test_status: text("test_status").default("pending"), // pending, success, failed
+  created_by: integer("created_by").references(() => users.id),
+  created_at: timestamp("created_at").defaultNow().notNull(),
+  updated_at: timestamp("updated_at").defaultNow().notNull(),
+  last_test_at: timestamp("last_test_at"),
 }, (table) => {
   return {
     statusIdx: index("pacs_connections_status_idx").on(table.status),
@@ -1198,9 +1201,9 @@ export const pacsConnections = pgTable("pacs_connections", {
 
 export const insertPacsConnectionSchema = createInsertSchema(pacsConnections).omit({
   id: true,
-  createdAt: true,
-  updatedAt: true,
-  lastConnected: true,
+  created_at: true,
+  updated_at: true,
+  last_test_at: true,
 });
 
 // Migration job definitions
