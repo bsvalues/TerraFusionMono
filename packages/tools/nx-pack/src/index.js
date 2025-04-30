@@ -1,9 +1,12 @@
 /**
- * @fileoverview Entry point for the @terrafusion/nx-pack plugin
+ * TerraFusion NX Pack Plugin
+ * 
+ * This plugin provides executors for packaging TerraFusion components and bundles.
+ * It includes support for validation, checksum generation, and SBOM creation.
  */
 
 module.exports = {
   executors: {
-    pack: require.resolve('./executors/pack'),
-  },
+    pack: require('./executors/pack')
+  }
 };

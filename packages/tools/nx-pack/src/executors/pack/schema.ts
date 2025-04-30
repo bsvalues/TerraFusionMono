@@ -1,47 +1,56 @@
-/**
- * Schema for the pack executor
- */
-
 export interface PackExecutorSchema {
   /**
-   * Output directory for packaged components
-   * @default "dist/pack"
+   * The output path for packaged artifacts.
    */
-  outputPath?: string;
-  
+  outputPath: string;
+
   /**
-   * Files to include in the package (globs supported)
-   * @default ["terra.json", "README.md", "LICENSE", "bin/**/*", "lib/**/*", "scripts/**/*", "charts/**/*"]
+   * List of files and folders to include in the package. Supports glob patterns.
    */
   includeFiles?: string[];
-  
+
   /**
-   * Files to exclude from the package (globs supported)
-   * @default ["node_modules/**/*", "**/*.test.ts", "**/*.spec.ts", "**/*.stories.tsx"]
+   * List of files and folders to exclude from the package. Supports glob patterns.
    */
   excludeFiles?: string[];
-  
+
   /**
-   * Generate checksums for package files
-   * @default true
+   * Generate checksums for packaged files
    */
   generateChecksums?: boolean;
-  
+
   /**
-   * Validate terra.json against schema
-   * @default true
+   * Validate terra.json against the schema
    */
   validateSchema?: boolean;
-  
+
   /**
-   * Generate Software Bill of Materials
-   * @default true
+   * Generate Software Bill of Materials (SBOM)
    */
   generateSBOM?: boolean;
-  
+
   /**
-   * Format for Software Bill of Materials
-   * @default "cyclonedx"
+   * SBOM format to generate
    */
   sbomFormat?: 'cyclonedx' | 'spdx';
+
+  /**
+   * Sign the package with a GPG key
+   */
+  signPackage?: boolean;
+
+  /**
+   * GPG key ID to use for signing
+   */
+  keyId?: string;
+
+  /**
+   * Compress the package into an archive
+   */
+  compress?: boolean;
+
+  /**
+   * Archive format to use for compression
+   */
+  compressFormat?: 'zip' | 'tar.gz' | 'tar.xz';
 }

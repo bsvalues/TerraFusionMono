@@ -1,29 +1,21 @@
 {
   "name": "mcps-agentmesh",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "sourceRoot": "services/mcps-agentmesh/src",
   "projectType": "application",
+  "sourceRoot": "services/mcps-agentmesh/src",
   "targets": {
     "build": {
-      "executor": "@nx/node:webpack",
-      "outputs": ["{options.outputPath}"],
+      "executor": "nx:run-commands",
       "options": {
-        "outputPath": "dist/services/mcps-agentmesh",
-        "main": "services/mcps-agentmesh/src/main.ts",
-        "tsConfig": "services/mcps-agentmesh/tsconfig.json"
-      },
-      "configurations": {
-        "production": {
-          "optimization": true,
-          "extractLicenses": true,
-          "inspect": false
-        }
-      }
-    },
-    "serve": {
-      "executor": "@nx/node:node",
-      "options": {
-        "buildTarget": "mcps-agentmesh:build"
+        "commands": [
+          {
+            "command": "mkdir -p dist/services/mcps-agentmesh"
+          },
+          {
+            "command": "cp -r services/mcps-agentmesh/charts dist/services/mcps-agentmesh/"
+          }
+        ],
+        "parallel": false
       }
     },
     "lint": {
@@ -35,7 +27,7 @@
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
+      "outputs": ["{workspaceRoot}/coverage/services/mcps-agentmesh"],
       "options": {
         "jestConfig": "services/mcps-agentmesh/jest.config.ts"
       }
@@ -49,15 +41,13 @@
           "terra.json",
           "README.md",
           "LICENSE",
-          "dist/**/*",
           "charts/**/*",
-          "scripts/**/*"
+          "config/**/*"
         ],
         "excludeFiles": [
           "node_modules/**/*",
           "**/*.test.ts",
-          "**/*.spec.ts",
-          "**/jest.config.ts"
+          "**/*.spec.ts"
         ],
         "generateChecksums": true,
         "validateSchema": true,

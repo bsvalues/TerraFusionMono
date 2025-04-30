@@ -3,60 +3,81 @@
   "type": "bundle",
   "name": "PACS Migration Pack",
   "version": "1.0.0",
-  "description": "Comprehensive bundle for PACS data migration to TerraFusion platform",
-  "maintainer": "TerraFusion Team <support@terrafusion.io>",
-  "license": "PROPRIETARY",
-  "docs": "https://docs.terrafusion.io/pacs-migration",
-  "tags": ["pacs", "migration", "dicom", "medical-imaging", "conversion"],
-  "contains": [
-    "mcps-agentmesh@1.0.0",
-    "dicom-converter@1.0.0",
-    "data-validator@1.0.0"
+  "description": "Comprehensive bundle for migrating legacy PACS systems to TerraFusion platform",
+  "maintainer": "TerraFusion PACS Migration Team <pacs-migration@terrafusion.org>",
+  "license": "MIT",
+  "docs": "https://docs.terrafusion.org/bundles/pacs-migration-pack",
+  "tags": [
+    "pacs",
+    "migration",
+    "healthcare",
+    "dicom",
+    "imaging"
   ],
-  "infra": {
-    "helmChart": "charts/pacs-migration-pack",
-    "requirements": {
-      "cpu": "2",
-      "memory": "4Gi",
-      "storage": "20Gi"
-    }
-  },
+  "contains": [
+    "mcps-agentmesh@1.1.0",
+    "dicom-converter@2.3.1",
+    "data-validator@1.2.0"
+  ],
+  "dependencies": [
+    "terrafusion-core@3.1.0",
+    "imaging-toolkit@2.0.0"
+  ],
   "config": {
-    "logLevel": {
+    "PACS_SOURCE_AET": {
       "type": "string",
-      "description": "Logging level for all components",
+      "description": "Source PACS Application Entity Title",
+      "required": true
+    },
+    "PACS_SOURCE_HOST": {
+      "type": "string",
+      "description": "Source PACS host address",
+      "required": true
+    },
+    "PACS_SOURCE_PORT": {
+      "type": "number",
+      "description": "Source PACS port",
+      "default": 104,
+      "minimum": 1,
+      "maximum": 65535
+    },
+    "MIGRATION_BATCH_SIZE": {
+      "type": "number",
+      "description": "Number of studies to process in a single batch",
+      "default": 50,
+      "minimum": 1,
+      "maximum": 500
+    },
+    "MIGRATION_THREADS": {
+      "type": "number",
+      "description": "Number of concurrent migration threads",
+      "default": 4,
+      "minimum": 1,
+      "maximum": 16
+    },
+    "VALIDATION_LEVEL": {
+      "type": "string",
+      "description": "Level of validation to perform on migrated data",
+      "default": "full",
+      "enum": ["minimal", "standard", "full"]
+    },
+    "AUTO_RETRY_FAILED": {
+      "type": "boolean",
+      "description": "Automatically retry failed migrations",
+      "default": true
+    },
+    "RETRY_MAX_ATTEMPTS": {
+      "type": "number",
+      "description": "Maximum number of retry attempts for failed migrations",
+      "default": 3,
+      "minimum": 1,
+      "maximum": 10
+    },
+    "MIGRATION_LOG_LEVEL": {
+      "type": "string",
+      "description": "Log level for migration process",
       "default": "info",
       "enum": ["debug", "info", "warn", "error"]
-    },
-    "sourceSystem": {
-      "type": "string",
-      "description": "Type of source PACS system",
-      "default": "generic",
-      "enum": ["generic", "orthanc", "dcm4chee", "horos", "osirix", "clearcanvas"]
-    },
-    "concurrentMigrations": {
-      "type": "number",
-      "description": "Number of concurrent migration jobs",
-      "default": 5,
-      "minimum": 1,
-      "maximum": 20
-    },
-    "retentionPeriod": {
-      "type": "string",
-      "description": "Retention period for temporary migration data",
-      "default": "7d",
-      "enum": ["1d", "3d", "7d", "14d", "30d"]
-    },
-    "validationLevel": {
-      "type": "string",
-      "description": "Level of data validation to perform",
-      "default": "standard",
-      "enum": ["minimal", "standard", "strict"]
-    },
-    "networkThrottling": {
-      "type": "boolean",
-      "description": "Enable network throttling to limit bandwidth usage",
-      "default": false
     }
   }
 }

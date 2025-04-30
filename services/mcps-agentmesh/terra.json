@@ -1,19 +1,29 @@
 {
   "id": "mcps-agentmesh",
   "type": "service",
-  "name": "MCPS Agent Mesh",
-  "version": "1.0.0",
-  "description": "Distributed agent network for medical imaging data exchange",
-  "maintainer": "TerraFusion Team <support@terrafusion.io>",
-  "license": "PROPRIETARY",
-  "docs": "https://docs.terrafusion.io/mcps-agentmesh",
-  "tags": ["mcps", "agent", "mesh", "dicom", "medical-imaging"],
+  "name": "MCPS Agent-Mesh Service",
+  "version": "1.1.0",
+  "description": "Modular Clinical Processing System Agent-Mesh Service for distributed healthcare data processing",
+  "maintainer": "TerraFusion Clinical Systems Team <clinicalsystems@terrafusion.org>",
+  "license": "MIT",
+  "docs": "https://docs.terrafusion.org/services/mcps-agentmesh",
+  "tags": [
+    "clinical",
+    "healthcare",
+    "dicom",
+    "mesh",
+    "agent"
+  ],
+  "dependencies": [
+    "dicom-toolkit@3.2.1",
+    "hl7-parser@2.1.0"
+  ],
   "infra": {
-    "helmChart": "charts/mcps-agentmesh",
+    "helmChart": "./charts/mcps-agentmesh",
     "requirements": {
-      "cpu": "1",
-      "memory": "1Gi",
-      "storage": "5Gi"
+      "cpu": "2",
+      "memory": "4Gi",
+      "storage": "20Gi"
     },
     "ports": [
       {
@@ -23,51 +33,45 @@
         "protocol": "TCP"
       },
       {
-        "name": "mesh",
+        "name": "grpc",
         "containerPort": 9090,
         "servicePort": 9090,
         "protocol": "TCP"
       }
     ]
   },
-  "dependencies": [
-    "dicom-converter",
-    "nats-server",
-    "postgresql"
-  ],
   "config": {
-    "logLevel": {
+    "DICOM_MAX_CONNECTIONS": {
+      "type": "number",
+      "description": "Maximum number of concurrent DICOM connections",
+      "default": 50,
+      "minimum": 10,
+      "maximum": 200
+    },
+    "HL7_TIMEOUT_MS": {
+      "type": "number",
+      "description": "Timeout for HL7 message processing in milliseconds",
+      "default": 5000,
+      "minimum": 1000,
+      "maximum": 30000
+    },
+    "MESH_DISCOVERY_INTERVAL": {
+      "type": "number",
+      "description": "Interval for MESH network discovery in seconds",
+      "default": 60,
+      "minimum": 10,
+      "maximum": 300
+    },
+    "LOG_LEVEL": {
       "type": "string",
-      "description": "Logging level for the service",
+      "description": "Logging level",
       "default": "info",
       "enum": ["debug", "info", "warn", "error"]
     },
-    "meshPort": {
-      "type": "number",
-      "description": "Port for mesh communication",
-      "default": 9090,
-      "minimum": 1024,
-      "maximum": 65535
-    },
-    "agentCount": {
-      "type": "number",
-      "description": "Number of agent replicas to run",
-      "default": 3,
-      "minimum": 1,
-      "maximum": 10
-    },
-    "maxConcurrentTransfers": {
-      "type": "number",
-      "description": "Maximum number of concurrent transfers",
-      "default": 5,
-      "minimum": 1,
-      "maximum": 20
-    },
-    "securityLevel": {
-      "type": "string",
-      "description": "Security level for data encryption",
-      "default": "high",
-      "enum": ["standard", "high", "extreme"]
+    "METRICS_ENABLED": {
+      "type": "boolean",
+      "description": "Enable Prometheus metrics",
+      "default": true
     }
   }
 }
