@@ -1,25 +1,27 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TerraFusion Component Schema",
+  "title": "TerraFusion Component Specification",
+  "description": "Schema for terra.json files that describe TerraFusion components and bundles",
   "type": "object",
+  "required": ["id", "type", "name", "version", "description"],
   "properties": {
     "id": {
       "type": "string",
       "description": "Unique identifier for the component",
-      "pattern": "^[a-z0-9-]+$"
+      "pattern": "^[a-z][a-z0-9-]*$"
     },
     "type": {
       "type": "string",
       "description": "Type of the component",
-      "enum": ["service", "bundle", "library", "tool"]
+      "enum": ["service", "bundle", "plugin", "library"]
     },
     "name": {
       "type": "string",
-      "description": "Display name of the component"
+      "description": "Human-readable name of the component"
     },
     "version": {
       "type": "string",
-      "description": "Semantic version of the component",
+      "description": "Version of the component",
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
     },
     "description": {
@@ -28,46 +30,47 @@
     },
     "maintainer": {
       "type": "string",
-      "description": "Maintainer name and contact information"
+      "description": "Maintainer of the component"
     },
     "license": {
       "type": "string",
-      "description": "License for the component"
+      "description": "License of the component"
     },
     "docs": {
       "type": "string",
-      "description": "URL to documentation",
+      "description": "URL to documentation for the component",
       "format": "uri"
     },
     "tags": {
       "type": "array",
-      "description": "Tags for searchability",
+      "description": "Tags for the component",
       "items": {
         "type": "string"
-      }
-    },
-    "contains": {
-      "type": "array",
-      "description": "List of components contained in a bundle",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z0-9-]+@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
       }
     },
     "dependencies": {
       "type": "array",
-      "description": "Dependencies for the component",
+      "description": "Dependencies of the component",
       "items": {
-        "type": "string"
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
+      }
+    },
+    "contains": {
+      "type": "array",
+      "description": "Components contained in the bundle (only for type: bundle)",
+      "items": {
+        "type": "string",
+        "pattern": "^[a-z][a-z0-9-]*(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
       }
     },
     "infra": {
       "type": "object",
-      "description": "Infrastructure requirements",
+      "description": "Infrastructure requirements for the component",
       "properties": {
         "helmChart": {
           "type": "string",
-          "description": "Path to Helm chart for deployment"
+          "description": "Path to Helm chart"
         },
         "requirements": {
           "type": "object",
@@ -89,13 +92,14 @@
         },
         "ports": {
           "type": "array",
-          "description": "Ports exposed by the component",
+          "description": "Ports to expose",
           "items": {
             "type": "object",
+            "required": ["name", "containerPort"],
             "properties": {
               "name": {
                 "type": "string",
-                "description": "Name of the port"
+                "description": "Port name"
               },
               "containerPort": {
                 "type": "integer",
@@ -107,64 +111,68 @@
               },
               "protocol": {
                 "type": "string",
-                "description": "Protocol used",
+                "description": "Protocol",
                 "enum": ["TCP", "UDP"]
               }
-            },
-            "required": ["name", "containerPort"]
+            }
           }
         }
       }
     },
     "config": {
       "type": "object",
-      "description": "Configuration options",
+      "description": "Configuration schema for the component",
       "additionalProperties": {
         "type": "object",
+        "required": ["type", "description"],
         "properties": {
           "type": {
             "type": "string",
-            "enum": ["string", "number", "boolean", "object", "array"]
+            "description": "Type of the configuration value",
+            "enum": ["string", "number", "boolean", "array"]
           },
           "description": {
-            "type": "string"
+            "type": "string",
+            "description": "Description of the configuration value"
           },
           "default": {
-            "oneOf": [
-              { "type": "string" },
-              { "type": "number" },
-              { "type": "boolean" },
-              { "type": "object" },
-              { "type": "array" }
-            ]
-          },
-          "enum": {
-            "type": "array"
-          },
-          "minimum": {
-            "type": "number"
-          },
-          "maximum": {
-            "type": "number"
-          },
-          "format": {
-            "type": "string"
-          },
-          "pattern": {
-            "type": "string"
-          },
-          "items": {
-            "type": "object"
+            "description": "Default value"
           },
           "required": {
-            "type": "boolean"
+            "type": "boolean",
+            "description": "Whether the configuration value is required"
+          },
+          "enum": {
+            "type": "array",
+            "description": "Enumeration of possible values",
+            "items": {}
+          },
+          "minimum": {
+            "type": "number",
+            "description": "Minimum value (for number type)"
+          },
+          "maximum": {
+            "type": "number",
+            "description": "Maximum value (for number type)"
+          },
+          "pattern": {
+            "type": "string",
+            "description": "Regular expression pattern (for string type)"
+          },
+          "items": {
+            "type": "object",
+            "description": "Schema for array items (for array type)",
+            "properties": {
+              "type": {
+                "type": "string",
+                "enum": ["string", "number", "boolean", "object"]
+              }
+            }
           }
-        },
-        "required": ["type", "description"]
+        }
       }
     }
   },
-  "required": ["id", "type", "name", "version", "description"],
   "allOf": [
     {
       "if": {
@@ -184,11 +192,8 @@
       },
       "then": {
         "properties": {
-          "infra": {
-            "required": ["requirements"]
-          }
-        },
-        "required": ["infra"]
+          "infra": { "required": ["requirements"] }
+        }
       }
     }
   ]

@@ -1,78 +1,71 @@
 {
   "$schema": "http://json-schema.org/schema",
+  "type": "object",
+  "cli": "nx",
   "title": "Pack executor",
   "description": "Package TerraFusion components and bundles",
-  "type": "object",
   "properties": {
     "outputPath": {
       "type": "string",
-      "description": "The output path for packaged artifacts.",
+      "description": "The path to output the packaged files to",
       "default": "dist/pack"
     },
     "includeFiles": {
       "type": "array",
-      "description": "List of files and folders to include in the package. Supports glob patterns.",
+      "description": "Glob patterns for files to include in the package",
       "items": {
         "type": "string"
       },
-      "default": [
-        "terra.json",
-        "README.md",
-        "LICENSE"
-      ]
+      "default": ["terra.json", "README.md", "LICENSE"]
     },
     "excludeFiles": {
       "type": "array",
-      "description": "List of files and folders to exclude from the package. Supports glob patterns.",
+      "description": "Glob patterns for files to exclude from the package",
       "items": {
         "type": "string"
       },
-      "default": [
-        "node_modules/**/*",
-        "**/*.test.*",
-        "**/*.spec.*"
-      ]
+      "default": ["node_modules/**/*", "**/*.test.ts", "**/*.spec.ts"]
+    },
+    "validateSchema": {
+      "type": "boolean",
+      "description": "Validate terra.json against schema",
+      "default": true
     },
     "generateChecksums": {
       "type": "boolean",
       "description": "Generate checksums for packaged files",
       "default": true
     },
-    "validateSchema": {
-      "type": "boolean",
-      "description": "Validate terra.json against the schema",
-      "default": true
-    },
     "generateSBOM": {
       "type": "boolean",
-      "description": "Generate Software Bill of Materials (SBOM)",
-      "default": false
+      "description": "Generate Software Bill of Materials",
+      "default": true
     },
     "sbomFormat": {
       "type": "string",
-      "description": "SBOM format to generate",
+      "description": "Format for Software Bill of Materials",
       "enum": ["cyclonedx", "spdx"],
       "default": "cyclonedx"
     },
     "signPackage": {
       "type": "boolean",
-      "description": "Sign the package with a GPG key",
+      "description": "Sign package with GPG",
       "default": false
     },
     "keyId": {
       "type": "string",
-      "description": "GPG key ID to use for signing"
+      "description": "GPG key ID to sign package with"
     },
     "compress": {
       "type": "boolean",
-      "description": "Compress the package into an archive",
+      "description": "Compress package into an archive",
       "default": false
     },
     "compressFormat": {
       "type": "string",
-      "description": "Archive format to use for compression",
-      "enum": ["zip", "tar.gz", "tar.xz"],
-      "default": "tar.gz"
+      "description": "Format for package compression",
+      "enum": ["tar", "zip", "tgz"],
+      "default": "tgz"
     }
   },
   "required": ["outputPath"]

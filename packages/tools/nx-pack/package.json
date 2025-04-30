@@ -1,22 +1,38 @@
 {
   "name": "@terrafusion/nx-pack",
-  "version": "0.1.0",
-  "description": "TerraFusion NX plugin for packaging standalone components",
+  "version": "1.0.0",
+  "description": "NX plugin for packaging TerraFusion components and bundles",
   "main": "src/index.js",
-  "executors": "./executors.json",
   "dependencies": {
-    "@nx/devkit": "^17.0.0",
-    "tslib": "^2.3.0"
+    "ajv": "^8.12.0",
+    "ajv-formats": "^2.1.1",
+    "glob": "^10.3.10"
   },
-  "publishConfig": {
-    "access": "restricted"
+  "peerDependencies": {
+    "nx": "^17.0.0"
   },
+  "executors": "./executors.json",
   "keywords": [
     "nx",
-    "plugin",
+    "nx-plugin",
     "terrafusion",
-    "packaging"
+    "bundle",
+    "package"
   ],
-  "author": "TerraFusion Dev Team",
-  "license": "PROPRIETARY"
+  "author": "TerraFusion Platform Team",
+  "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/terrafusion/nx-pack"
+  },
+  "bugs": {
+    "url": "https://github.com/terrafusion/nx-pack/issues"
+  },
+  "homepage": "https://github.com/terrafusion/nx-pack#readme",
+  "scripts": {
+    "test": "jest",
+    "build": "tsc",
+    "lint": "eslint src/**/*.{js,ts}",
+    "prepublishOnly": "npm run build"
+  }
 }

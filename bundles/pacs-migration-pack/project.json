@@ -13,6 +13,9 @@
           },
           {
             "command": "cp -r bundles/pacs-migration-pack/scripts dist/bundles/pacs-migration-pack/"
+          },
+          {
+            "command": "chmod +x dist/bundles/pacs-migration-pack/scripts/pacs_wizard.sh"
           }
         ],
         "parallel": false
@@ -22,13 +25,14 @@
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
-        "lintFilePatterns": ["bundles/pacs-migration-pack/**/*.sh"]
+        "lintFilePatterns": ["bundles/pacs-migration-pack/**/*.ts"]
       }
     },
     "test": {
-      "executor": "nx:run-commands",
+      "executor": "@nx/jest:jest",
+      "outputs": ["{workspaceRoot}/coverage/bundles/pacs-migration-pack"],
       "options": {
-        "command": "echo 'Testing PACS Migration Pack bundle'"
+        "jestConfig": "bundles/pacs-migration-pack/jest.config.ts"
       }
     },
     "pack": {
@@ -41,13 +45,13 @@
           "README.md",
           "LICENSE",
           "scripts/**/*",
-          "charts/**/*",
+          "docs/**/*",
           "config/**/*"
         ],
         "excludeFiles": [
           "node_modules/**/*",
-          "**/*.test.sh",
-          "**/*.spec.sh"
+          "**/*.test.ts",
+          "**/*.spec.ts"
         ],
         "generateChecksums": true,
         "validateSchema": true,

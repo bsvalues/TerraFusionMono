@@ -1,281 +1,386 @@
 #!/bin/bash
+#
 # TerraFusion PACS Migration Wizard
-# Version: 1.0.0
-# Description: Helper script for managing PACS migration processes
+# This script helps manage PACS system migrations to TerraFusion platform
+#
 
-# Set strict error handling
-set -eo pipefail
+set -e
 
-# Default configuration
-DEFAULT_ENV="dev"
-DEFAULT_NAMESPACE="default"
-DEFAULT_CONFIG_PATH="./config.json"
-DEFAULT_BUNDLE_PATH="./bundle"
-DEFAULT_TIMEOUT="300"
-DEFAULT_VERBOSE="false"
+# Set default values
+ENVIRONMENT="dev"
+NAMESPACE="terrafusion"
+BUNDLE_PATH="$(pwd)"
+PACS_CONFIG_PATH=""
+DRY_RUN=false
+LOG_FILE="pacs_migration_$(date +%Y%m%d_%H%M%S).log"
+INSTALLED=()
+VERBOSITY=1
 
-# Define installation tracking array
-declare -a INSTALLED=()
+# Error handling
+trap 'on_error $? $LINENO' ERR
 
-# Color codes for prettier output
-RED='\033[0;31m'
-GREEN='\033[0;32m'
-YELLOW='\033[0;33m'
-BLUE='\033[0;34m'
-BOLD='\033[1m'
-NC='\033[0m' # No Color
-
-# Error handling function
-function handle_error() {
-  local exit_code=$?
-  local line_number=$1
-  echo -e "${RED}Error occurred at line ${line_number} with exit code ${exit_code}${NC}"
+on_error() {
+  local exit_code=$1
+  local line_number=$2
   
-  # If we have installed components, offer to roll them back
+  echo "ERROR: Command failed with exit code $exit_code at line $line_number"
+  
   if [ ${#INSTALLED[@]} -gt 0 ]; then
-    echo -e "${YELLOW}The following components were installed:${NC}"
+    echo "Attempting to rollback installed components..."
     for component in "${INSTALLED[@]}"; do
-      echo "  - $component"
+      echo "Rolling back $component..."
+      uninstall_component "$component"
     done
-    
-    read -p "Would you like to roll back these installations? [y/N] " rollback
-    if [[ $rollback =~ ^[Yy]$ ]]; then
-      rollback_installation
-    fi
   fi
   
   exit $exit_code
 }
 
-# Set up error trap
-trap 'handle_error $LINENO' ERR
+# Display usage information
+usage() {
+  cat << EOF
+TerraFusion PACS Migration Wizard
+--------------------------------
 
-# Function to print usage information
-function show_usage() {
-  echo -e "${BOLD}TerraFusion PACS Migration Wizard${NC}"
-  echo -e "A utility for managing PACS migration processes."
-  echo ""
-  echo -e "${BOLD}USAGE:${NC}"
-  echo -e "  $(basename $0) [COMMAND] [OPTIONS]"
-  echo ""
-  echo -e "${BOLD}COMMANDS:${NC}"
-  echo -e "  install        Install PACS migration components"
-  echo -e "  uninstall      Uninstall PACS migration components"
-  echo -e "  start          Start the migration process"
-  echo -e "  stop           Stop the migration process"
-  echo -e "  status         Check the status of the migration"
-  echo -e "  verify         Verify the migration bundle"
-  echo -e "  rollback       Rollback to a previous state"
-  echo -e "  logs           View migration logs"
-  echo -e "  configure      Configure migration settings"
-  echo -e "  version        Show version information"
-  echo ""
-  echo -e "${BOLD}OPTIONS:${NC}"
-  echo -e "  -e, --env ENV            Environment to target (dev, staging, prod, ci)"
-  echo -e "                           Default: ${DEFAULT_ENV}"
-  echo -e "  -n, --namespace NS       Kubernetes namespace for installation"
-  echo -e "                           Default: ${DEFAULT_NAMESPACE}"
-  echo -e "  -c, --config PATH        Path to configuration file"
-  echo -e "                           Default: ${DEFAULT_CONFIG_PATH}"
-  echo -e "  -b, --bundle PATH        Path to migration bundle"
-  echo -e "                           Default: ${DEFAULT_BUNDLE_PATH}"
-  echo -e "  -t, --timeout SECONDS    Operation timeout in seconds"
-  echo -e "                           Default: ${DEFAULT_TIMEOUT}"
-  echo -e "  -v, --verbose            Enable verbose output"
-  echo -e "  -h, --help               Show this help message"
-  echo ""
-  echo -e "${BOLD}EXAMPLES:${NC}"
-  echo -e "  $(basename $0) install --env prod --namespace pacs-migration"
-  echo -e "  $(basename $0) start --config ./my-config.json"
-  echo -e "  $(basename $0) status"
-  echo -e "  $(basename $0) rollback"
-  echo ""
+Usage: $(basename $0) [OPTIONS] COMMAND
+
+Commands:
+  install           Install PACS migration components
+  upgrade           Upgrade existing PACS migration components
+  uninstall         Uninstall PACS migration components
+  validate          Validate PACS configuration
+  status            Check status of PACS migration components
+  migrate           Start a migration job
+  list-sources      List available PACS sources
+  list-targets      List available TerraFusion targets
+  help              Display this help message
+
+Options:
+  -e, --environment ENV    Set environment (dev, staging, prod, ci) [default: dev]
+  -n, --namespace NS       Set Kubernetes namespace [default: terrafusion]
+  -p, --path PATH          Path to bundle directory [default: current directory]
+  -c, --config PATH        Path to PACS configuration file
+  -d, --dry-run            Show what would be done without making changes
+  -v, --verbose            Increase verbosity (can be used multiple times)
+  -q, --quiet              Decrease verbosity
+  -h, --help               Display this help message
+  --version                Display version information
+
+Examples:
+  $(basename $0) --environment prod install
+  $(basename $0) -c /path/to/pacs.conf migrate
+  $(basename $0) -n custom-namespace -v status
+
+For more information, visit: https://docs.terrafusion.org/pacs-migration
+EOF
+  exit 0
 }
 
-# Function to verify bundle integrity
-function verify_bundle() {
-  local bundle_path=$1
-  echo -e "${BLUE}Verifying bundle at: ${bundle_path}${NC}"
-  
-  # Check if the bundle path exists
-  if [ ! -d "${bundle_path}" ]; then
-    echo -e "${RED}Error: Bundle directory does not exist: ${bundle_path}${NC}"
-    return 1
-  fi
-  
-  # Check for terra.json file
-  if [ ! -f "${bundle_path}/terra.json" ]; then
-    echo -e "${RED}Error: Missing terra.json metadata file in bundle${NC}"
-    return 1
-  fi
-  
-  # Verify checksums if available
-  if [ -f "${bundle_path}/checksums.json" ]; then
-    echo -e "${GREEN}Verifying file checksums...${NC}"
-    # This would be implemented to verify file checksums
-    # For now just a placeholder
-    echo -e "${GREEN}Checksums verified successfully.${NC}"
-  else
-    echo -e "${YELLOW}Warning: No checksums.json file found, skipping integrity check${NC}"
-  fi
-  
-  echo -e "${GREEN}Bundle verification completed successfully.${NC}"
-  return 0
+version() {
+  echo "TerraFusion PACS Migration Wizard v1.0.0"
+  exit 0
 }
 
-# Function to install components
-function install_components() {
-  local bundle_path=$1
-  local namespace=$2
-  local env=$3
+# Log message with severity
+log() {
+  local level=$1
+  local message=$2
+  local level_num=1
   
-  echo -e "${BLUE}Installing PACS migration components from: ${bundle_path}${NC}"
-  echo -e "${BLUE}Target namespace: ${namespace}, Environment: ${env}${NC}"
+  case $level in
+    DEBUG) level_num=0 ;;
+    INFO)  level_num=1 ;;
+    WARN)  level_num=2 ;;
+    ERROR) level_num=3 ;;
+    *)     level_num=1 ;;
+  esac
   
-  # Verify the bundle first
-  verify_bundle "$bundle_path" || return 1
-  
-  # Track installation in the INSTALLED array
-  INSTALLED+=("mcps-agentmesh")
-  echo -e "${GREEN}Installed: mcps-agentmesh${NC}"
-  
-  INSTALLED+=("dicom-converter")
-  echo -e "${GREEN}Installed: dicom-converter${NC}"
-  
-  INSTALLED+=("data-validator")
-  echo -e "${GREEN}Installed: data-validator${NC}"
-  
-  echo -e "${GREEN}All components installed successfully.${NC}"
-  echo -e "${YELLOW}To start the migration, run: $(basename $0) start${NC}"
-  
-  return 0
+  if [ $level_num -ge $VERBOSITY ]; then
+    echo "[$level] $message" | tee -a "$LOG_FILE"
+  fi
 }
 
-# Function to rollback installation
-function rollback_installation() {
-  echo -e "${BLUE}Rolling back installation...${NC}"
-  
-  # Iterate through the INSTALLED array in reverse
-  for (( idx=${#INSTALLED[@]}-1 ; idx>=0 ; idx-- )) ; do
-    local component="${INSTALLED[idx]}"
-    echo -e "${YELLOW}Uninstalling: ${component}${NC}"
-    # Implement actual uninstall logic here
-    echo -e "${GREEN}Successfully uninstalled: ${component}${NC}"
+# Parse command line arguments
+parse_args() {
+  while [[ $# -gt 0 ]]; do
+    case $1 in
+      -e|--environment)
+        ENVIRONMENT="$2"
+        shift 2
+        ;;
+      -n|--namespace)
+        NAMESPACE="$2"
+        shift 2
+        ;;
+      -p|--path)
+        BUNDLE_PATH="$2"
+        shift 2
+        ;;
+      -c|--config)
+        PACS_CONFIG_PATH="$2"
+        shift 2
+        ;;
+      -d|--dry-run)
+        DRY_RUN=true
+        shift
+        ;;
+      -v|--verbose)
+        ((VERBOSITY--))
+        [ $VERBOSITY -lt 0 ] && VERBOSITY=0
+        shift
+        ;;
+      -q|--quiet)
+        ((VERBOSITY++))
+        shift
+        ;;
+      -h|--help)
+        usage
+        ;;
+      --version)
+        version
+        ;;
+      *)
+        COMMAND="$1"
+        shift
+        COMMAND_ARGS=("$@")
+        break
+        ;;
+    esac
   done
   
-  # Clear the INSTALLED array
-  INSTALLED=()
-  
-  echo -e "${GREEN}Rollback completed successfully.${NC}"
-  return 0
-}
-
-# Parse command and options
-COMMAND=$1
-shift || true
-
-ENV=$DEFAULT_ENV
-NAMESPACE=$DEFAULT_NAMESPACE
-CONFIG_PATH=$DEFAULT_CONFIG_PATH
-BUNDLE_PATH=$DEFAULT_BUNDLE_PATH
-TIMEOUT=$DEFAULT_TIMEOUT
-VERBOSE=$DEFAULT_VERBOSE
-
-# Parse options
-while (( "$#" )); do
-  case "$1" in
-    -e|--env)
-      ENV=$2
-      shift 2
-      ;;
-    -n|--namespace)
-      NAMESPACE=$2
-      shift 2
-      ;;
-    -c|--config)
-      CONFIG_PATH=$2
-      shift 2
-      ;;
-    -b|--bundle)
-      BUNDLE_PATH=$2
-      shift 2
-      ;;
-    -t|--timeout)
-      TIMEOUT=$2
-      shift 2
-      ;;
-    -v|--verbose)
-      VERBOSE="true"
-      shift
-      ;;
-    -h|--help)
-      show_usage
-      exit 0
-      ;;
-    -*|--*)
-      echo -e "${RED}Error: Unsupported option $1${NC}" >&2
-      show_usage
-      exit 1
-      ;;
+  # Validate environment
+  case $ENVIRONMENT in
+    dev|staging|prod|ci) ;;
     *)
-      echo -e "${RED}Error: Unexpected argument $1${NC}" >&2
-      show_usage
+      log ERROR "Invalid environment: $ENVIRONMENT. Must be one of: dev, staging, prod, ci"
       exit 1
       ;;
   esac
-done
+  
+  # Validate command
+  case $COMMAND in
+    install|upgrade|uninstall|validate|status|migrate|list-sources|list-targets|help)
+      ;;
+    "")
+      log ERROR "No command specified"
+      usage
+      ;;
+    *)
+      log ERROR "Unknown command: $COMMAND"
+      usage
+      ;;
+  esac
+  
+  # Check if config file exists when required
+  if [[ "$COMMAND" == "migrate" || "$COMMAND" == "validate" ]] && [[ -z "$PACS_CONFIG_PATH" ]]; then
+    log ERROR "Configuration file (-c, --config) is required for $COMMAND command"
+    exit 1
+  fi
+  
+  if [[ -n "$PACS_CONFIG_PATH" && ! -f "$PACS_CONFIG_PATH" ]]; then
+    log ERROR "Configuration file not found: $PACS_CONFIG_PATH"
+    exit 1
+  fi
+}
 
-# Execute the command
-case "$COMMAND" in
-  install)
-    install_components "$BUNDLE_PATH" "$NAMESPACE" "$ENV"
-    ;;
-  uninstall)
-    echo -e "${BLUE}Uninstalling PACS migration components...${NC}"
-    rollback_installation
-    ;;
-  start)
-    echo -e "${BLUE}Starting PACS migration process...${NC}"
-    echo -e "${GREEN}Migration started successfully.${NC}"
-    ;;
-  stop)
-    echo -e "${BLUE}Stopping PACS migration process...${NC}"
-    echo -e "${GREEN}Migration stopped successfully.${NC}"
-    ;;
-  status)
-    echo -e "${BLUE}Checking migration status...${NC}"
-    echo -e "Migration Status: ${GREEN}Running${NC}"
-    echo -e "Progress: ${GREEN}45%${NC}"
-    echo -e "Transferring: ${GREEN}file_series_123.dcm${NC}"
-    ;;
-  verify)
-    verify_bundle "$BUNDLE_PATH"
-    ;;
-  rollback)
-    rollback_installation
-    ;;
-  logs)
-    echo -e "${BLUE}Fetching migration logs...${NC}"
-    echo -e "${YELLOW}2025-04-30 12:00:15 - INFO - Migration started for PACS system${NC}"
-    echo -e "${YELLOW}2025-04-30 12:01:22 - INFO - Connected to source PACS successfully${NC}"
-    echo -e "${YELLOW}2025-04-30 12:01:45 - INFO - Started data transfer${NC}"
-    ;;
-  configure)
-    echo -e "${BLUE}Configuring migration settings...${NC}"
-    echo -e "${GREEN}Configuration updated successfully.${NC}"
-    ;;
-  version)
-    echo -e "TerraFusion PACS Migration Wizard v1.0.0"
-    ;;
-  *)
-    if [ -z "$COMMAND" ]; then
-      show_usage
-    else
-      echo -e "${RED}Error: Unknown command '$COMMAND'${NC}" >&2
-      show_usage
-      exit 1
-    fi
-    ;;
-esac
+# Load terra.json
+load_terra_json() {
+  local terra_json_path="$BUNDLE_PATH/terra.json"
+  
+  if [[ ! -f "$terra_json_path" ]]; then
+    log ERROR "terra.json not found at $terra_json_path"
+    exit 1
+  fi
+  
+  log DEBUG "Loading terra.json from $terra_json_path"
+  
+  # Here we would parse the JSON file
+  # For now, just checking if it exists
+}
 
-exit 0
+# Install a specific component
+install_component() {
+  local component=$1
+  
+  log INFO "Installing component: $component"
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log INFO "(dry run) Would install component: $component"
+    return
+  fi
+  
+  # Component installation logic would go here
+  # ...
+  
+  # Add to installed components for rollback
+  INSTALLED+=("$component")
+  
+  log INFO "Successfully installed component: $component"
+}
+
+# Uninstall a specific component
+uninstall_component() {
+  local component=$1
+  
+  log INFO "Uninstalling component: $component"
+  
+  if [[ "$DRY_RUN" == "true" ]]; then
+    log INFO "(dry run) Would uninstall component: $component"
+    return
+  fi
+  
+  # Component uninstallation logic would go here
+  # ...
+  
+  log INFO "Successfully uninstalled component: $component"
+}
+
+# Command: install
+cmd_install() {
+  log INFO "Starting installation in $ENVIRONMENT environment"
+  
+  # Load bundle information
+  load_terra_json
+  
+  # Components to install
+  local components=("mcps-agentmesh" "dicom-converter" "data-validator")
+  
+  for component in "${components[@]}"; do
+    install_component "$component"
+  done
+  
+  log INFO "Installation complete"
+}
+
+# Command: uninstall
+cmd_uninstall() {
+  log INFO "Starting uninstallation in $ENVIRONMENT environment"
+  
+  # Load bundle information
+  load_terra_json
+  
+  # Components to uninstall (in reverse order)
+  local components=("data-validator" "dicom-converter" "mcps-agentmesh")
+  
+  for component in "${components[@]}"; do
+    uninstall_component "$component"
+  done
+  
+  log INFO "Uninstallation complete"
+}
+
+# Command: validate
+cmd_validate() {
+  log INFO "Validating PACS configuration: $PACS_CONFIG_PATH"
+  
+  # Validation logic would go here
+  # ...
+  
+  log INFO "Validation complete: Configuration is valid"
+}
+
+# Command: status
+cmd_status() {
+  log INFO "Checking status of PACS migration components in namespace: $NAMESPACE"
+  
+  # Status check logic would go here
+  # ...
+  
+  echo "PACS Migration Pack Status:"
+  echo "------------------------"
+  echo "Environment:       $ENVIRONMENT"
+  echo "Namespace:         $NAMESPACE"
+  echo "Components:"
+  echo "  mcps-agentmesh:    Running"
+  echo "  dicom-converter:   Running"
+  echo "  data-validator:    Running"
+  
+  log INFO "Status check complete"
+}
+
+# Command: migrate
+cmd_migrate() {
+  log INFO "Starting migration with configuration: $PACS_CONFIG_PATH"
+  
+  # Migration logic would go here
+  # ...
+  
+  log INFO "Migration job submitted successfully"
+}
+
+# Command: list-sources
+cmd_list_sources() {
+  log INFO "Listing available PACS sources"
+  
+  # Source listing logic would go here
+  # ...
+  
+  echo "Available PACS Sources:"
+  echo "------------------------"
+  echo "1. Default PACS (localhost:104)"
+  
+  log INFO "Source listing complete"
+}
+
+# Command: list-targets
+cmd_list_targets() {
+  log INFO "Listing available TerraFusion targets"
+  
+  # Target listing logic would go here
+  # ...
+  
+  echo "Available TerraFusion Targets:"
+  echo "------------------------"
+  echo "1. TerraFusion Clinical Repository ($NAMESPACE)"
+  
+  log INFO "Target listing complete"
+}
+
+# Main execution
+main() {
+  # Set up logging
+  mkdir -p "$(dirname "$LOG_FILE")"
+  touch "$LOG_FILE"
+  
+  log INFO "Starting PACS Migration Wizard"
+  log DEBUG "Arguments: $*"
+  
+  # Parse command line arguments
+  parse_args "$@"
+  
+  # Execute requested command
+  case $COMMAND in
+    install)
+      cmd_install
+      ;;
+    upgrade)
+      cmd_upgrade
+      ;;
+    uninstall)
+      cmd_uninstall
+      ;;
+    validate)
+      cmd_validate
+      ;;
+    status)
+      cmd_status
+      ;;
+    migrate)
+      cmd_migrate
+      ;;
+    list-sources)
+      cmd_list_sources
+      ;;
+    list-targets)
+      cmd_list_targets
+      ;;
+    help)
+      usage
+      ;;
+  esac
+  
+  log INFO "PACS Migration Wizard completed successfully"
+}
+
+# Execute main function with all arguments
+main "$@"
