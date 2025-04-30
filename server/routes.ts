@@ -1022,7 +1022,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Collaboration routes for real-time editing features
   app.use('/api/collaboration', collaborationRoutes);
   
-  // PACS Migration routes - adding test endpoint without authentication
+  // PACS Migration routes - adding test endpoints without authentication
   app.get('/api/pacs-migration/test', (req, res) => {
     res.json({
       success: true,
@@ -1035,6 +1035,64 @@ export async function registerRoutes(app: Express): Promise<Server> {
         executions: '/api/pacs-migration/jobs/:jobId/executions'
       }
     });
+  });
+  
+  // Test endpoint to create a PACS connection (for testing without auth)
+  app.post('/api/pacs-migration/test/connection', async (req, res) => {
+    try {
+      const connection = {
+        name: req.body.name || 'Test PACS Connection',
+        host: req.body.host || 'test-pacs-server.example.com',
+        port: req.body.port || 5000,
+        username: req.body.username || 'test-user',
+        password: req.body.password || 'test-password',
+        database: req.body.database || 'test_pacs_db',
+        apiKey: req.body.apiKey || 'test-api-key',
+        status: 'active',
+        description: req.body.description || 'Test connection created for verification purposes',
+        sourceSystem: req.body.sourceSystem || 'pacs',
+        createdBy: 1, // Default test user
+        testStatus: 'pending'
+      };
+      
+      const result = await storage.createPacsConnection(connection);
+      
+      await storage.createLog({
+        level: 'INFO',
+        service: 'pacs-migration',
+        message: `Test PACS connection '${result.name}' created`
+      });
+      
+      res.status(201).json({
+        success: true,
+        message: 'Test PACS connection created successfully',
+        connection: result
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(400).json({ 
+        success: false,
+        message: `Error creating test connection: ${message}`
+      });
+    }
+  });
+  
+  // Test endpoint to get PACS connections (for testing without auth)
+  app.get('/api/pacs-migration/test/connections', async (req, res) => {
+    try {
+      const connections = await storage.getPacsConnections();
+      res.json({
+        success: true,
+        count: connections.length,
+        connections
+      });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      res.status(500).json({ 
+        success: false,
+        message: `Error retrieving connections: ${message}`
+      });
+    }
   });
   
   // Main PACS Migration routes with authentication
