@@ -1047,12 +1047,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         username: req.body.username || 'test-user',
         password: req.body.password || 'test-password',
         database: req.body.database || 'test_pacs_db',
-        apiKey: req.body.apiKey || 'test-api-key',
+        api_key: req.body.api_key || 'test-api-key',
         status: 'active',
         description: req.body.description || 'Test connection created for verification purposes',
-        sourceSystem: req.body.sourceSystem || 'pacs',
-        createdBy: 1, // Default test user
-        testStatus: 'pending'
+        source_system: req.body.source_system || 'pacs',
+        created_by: 1, // Default test user
+        test_status: 'pending'
       };
       
       const result = await storage.createPacsConnection(connection);
