@@ -1,9 +1,13 @@
 /**
- * Atomic Design - Atoms
+ * TerraFusion UI Atoms
  * 
- * Atoms are the basic building blocks of matter. Applied to web interfaces,
- * atoms are our HTML tags, such as a form label, an input, or a button.
+ * Atoms are the smallest building blocks of the UI system.
+ * They are the fundamental UI elements that can't be broken down further.
+ * 
+ * Examples: buttons, inputs, icons, labels, etc.
  */
 
-// Re-export atom components here
-// Example: export * from './Button';
+export * from './Button';
+export * from './Input';
+export * from './Text';
+export * from './Icon';
