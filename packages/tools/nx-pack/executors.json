@@ -1,0 +1,9 @@
+{
+  "executors": {
+    "pack": {
+      "implementation": "./src/executors/pack/executor",
+      "schema": "./src/executors/pack/schema.json",
+      "description": "Packages a project for distribution"
+    }
+  }
+}

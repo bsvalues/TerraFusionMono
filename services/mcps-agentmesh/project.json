@@ -1,0 +1,31 @@
+{
+  "name": "mcps-agentmesh",
+  "$schema": "../../node_modules/nx/schemas/project-schema.json",
+  "projectType": "application",
+  "sourceRoot": "services/mcps-agentmesh/src",
+  "targets": {
+    "build": {
+      "executor": "@nx/node:webpack",
+      "outputs": ["{options.outputPath}"],
+      "options": {
+        "outputPath": "dist/services/mcps-agentmesh",
+        "main": "services/mcps-agentmesh/src/main.ts",
+        "tsConfig": "services/mcps-agentmesh/tsconfig.app.json"
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "extractLicenses": true,
+          "inspect": false
+        }
+      }
+    },
+    "pack": {
+      "executor": "@terrafusion/nx-pack:pack",
+      "options": {
+        "outputPath": "dist/pack"
+      }
+    }
+  },
+  "tags": []
+}

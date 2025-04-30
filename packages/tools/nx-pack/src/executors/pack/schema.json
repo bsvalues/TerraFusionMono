@@ -1,0 +1,20 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "version": 2,
+  "title": "Pack executor",
+  "description": "Packages a project for distribution",
+  "type": "object",
+  "properties": {
+    "outputPath": {
+      "type": "string",
+      "description": "The output path of the generated distribution package.",
+      "default": "dist/pack"
+    },
+    "generateHash": {
+      "type": "boolean",
+      "description": "Whether to generate SHA256 hash of the build output",
+      "default": true
+    }
+  },
+  "required": []
+}
