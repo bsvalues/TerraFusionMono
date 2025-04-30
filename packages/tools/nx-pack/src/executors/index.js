@@ -1,3 +1,5 @@
+const pack = require('./pack');
+
 module.exports = {
-  pack: require('./pack')
+  pack
 };

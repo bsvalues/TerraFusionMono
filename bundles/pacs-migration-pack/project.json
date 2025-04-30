@@ -1,64 +1,67 @@
 {
   "name": "pacs-migration-pack",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "projectType": "application",
   "sourceRoot": "bundles/pacs-migration-pack/src",
+  "projectType": "application",
   "targets": {
     "build": {
-      "executor": "nx:run-commands",
+      "executor": "@nx/node:webpack",
+      "outputs": ["{options.outputPath}"],
       "options": {
-        "commands": [
-          {
-            "command": "mkdir -p dist/bundles/pacs-migration-pack"
-          },
-          {
-            "command": "cp -r bundles/pacs-migration-pack/scripts dist/bundles/pacs-migration-pack/"
-          },
-          {
-            "command": "chmod +x dist/bundles/pacs-migration-pack/scripts/pacs_wizard.sh"
-          }
-        ],
-        "parallel": false
+        "outputPath": "dist/bundles/pacs-migration-pack",
+        "main": "bundles/pacs-migration-pack/src/main.js",
+        "tsConfig": "bundles/pacs-migration-pack/tsconfig.json",
+        "assets": ["bundles/pacs-migration-pack/src/assets"]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "extractLicenses": true,
+          "inspect": false
+        }
       }
     },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
-        "lintFilePatterns": ["bundles/pacs-migration-pack/**/*.ts"]
+        "lintFilePatterns": ["bundles/pacs-migration-pack/**/*.{ts,js}"]
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/bundles/pacs-migration-pack"],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "bundles/pacs-migration-pack/jest.config.ts"
+        "jestConfig": "bundles/pacs-migration-pack/jest.config.js"
       }
     },
     "pack": {
       "executor": "@terrafusion/nx-pack:pack",
-      "outputs": ["{options.outputPath}/pacs-migration-pack"],
       "options": {
         "outputPath": "dist/pack",
         "includeFiles": [
           "terra.json",
           "README.md",
           "LICENSE",
+          "src/**/*",
           "scripts/**/*",
-          "docs/**/*",
-          "config/**/*"
+          "config/**/*",
+          "templates/**/*"
         ],
         "excludeFiles": [
-          "node_modules/**/*",
-          "**/*.test.ts",
-          "**/*.spec.ts"
+          "**/*.test.js",
+          "**/*.spec.js",
+          "**/__tests__/**/*",
+          "**/*.d.ts"
         ],
-        "generateChecksums": true,
         "validateSchema": true,
+        "generateChecksums": true,
         "generateSBOM": true,
-        "sbomFormat": "cyclonedx"
+        "sbomFormat": "cyclonedx",
+        "compress": true,
+        "compressFormat": "tgz"
       }
     }
   },
-  "tags": []
+  "tags": ["bundle", "pacs", "migration"]
 }

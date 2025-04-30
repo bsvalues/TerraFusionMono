@@ -1,43 +1,25 @@
-# TerraFusion NX-Pack
+# TerraFusion NX Pack
 
-A custom NX plugin for packaging TerraFusion components into standalone distributable bundles.
+A custom NX executor for packaging TerraFusion components and bundles.
+
+## Features
+
+- Package components and bundles for distribution
+- Validate against terra.json schema
+- Generate checksums for package verification
+- Generate Software Bill of Materials (SBOM)
+- Sign packages with GPG
+- Compress packages in various formats
 
 ## Installation
 
-The `@terrafusion/nx-pack` plugin is already included in the TerraFusion monorepo and is registered in the NX workspace.
-
-## Usage
-
-### Packaging a Component
-
-To package a component using the `nx-pack` plugin, run the following command:
-
 ```bash
-nx run <component-name>:pack
+npm install @terrafusion/nx-pack --save-dev
 ```
 
-For example, to package the MCPS Agent Mesh:
+## Configuration
 
-```bash
-nx run mcps-agentmesh:pack
-```
-
-Or to package the PACS Migration Pack:
-
-```bash
-nx run pacs-migration-pack:pack
-```
-
-### Output
-
-The packaged components will be available in the `dist/pack/<component-name>` directory. For example:
-
-- MCPS Agent Mesh: `dist/pack/mcps-agentmesh`
-- PACS Migration Pack: `dist/pack/pacs-migration-pack`
-
-### Configuration
-
-The packaging executor can be configured in the component's `project.json` file:
+Add the pack target to your project.json:
 
 ```json
 {
@@ -46,55 +28,97 @@ The packaging executor can be configured in the component's `project.json` file:
       "executor": "@terrafusion/nx-pack:pack",
       "options": {
         "outputPath": "dist/pack",
-        "includeFiles": ["terra.json", "README.md", "LICENSE"],
-        "excludeFiles": ["node_modules", ".git", "dist"],
-        "generateChecksums": true
+        "includeFiles": [
+          "terra.json",
+          "README.md",
+          "LICENSE",
+          "src/**/*"
+        ],
+        "excludeFiles": [
+          "**/*.test.js",
+          "**/*.spec.js",
+          "**/__tests__/**/*"
+        ],
+        "validateSchema": true,
+        "generateChecksums": true,
+        "generateSBOM": true,
+        "sbomFormat": "cyclonedx"
       }
     }
   }
 }
 ```
 
-#### Options
+## Usage
 
-- `outputPath`: The directory where packaged files will be placed (default: `dist/pack`)
-- `includeFiles`: List of files to include in the package (default: `["terra.json", "README.md", "LICENSE"]`)
-- `excludeFiles`: List of patterns to exclude from the package (default: `["node_modules", ".git", "dist"]`)
-- `generateChecksums`: Whether to generate SHA256 checksums for packaged files (default: `true`)
+Run the executor with NX:
 
-## Adding Pack Support to a New Component
+```bash
+nx run your-project:pack
+```
 
-1. Create a `terra.json` file in the component's root directory:
+Or run it for multiple projects:
+
+```bash
+nx run-many --target=pack --projects=mcps-agentmesh,pacs-migration-pack
+```
+
+## Options
+
+| Option | Type | Default | Description |
+|--------|------|---------|-------------|
+| outputPath | string | 'dist/pack' | The path to output the packaged files to |
+| includeFiles | string[] | ['terra.json', 'README.md', 'LICENSE'] | Glob patterns for files to include in the package |
+| excludeFiles | string[] | ['node_modules/**/*', '**/*.test.ts', '**/*.spec.ts'] | Glob patterns for files to exclude from the package |
+| validateSchema | boolean | true | Validate terra.json against schema |
+| generateChecksums | boolean | true | Generate checksums for packaged files |
+| generateSBOM | boolean | false | Generate Software Bill of Materials |
+| sbomFormat | string | 'cyclonedx' | Format for Software Bill of Materials ('cyclonedx' or 'spdx') |
+| signPackage | boolean | false | Sign package with GPG |
+| keyId | string | | GPG key ID to sign package with |
+| compress | boolean | false | Compress package into an archive |
+| compressFormat | string | 'tgz' | Format for package compression ('tar', 'zip', or 'tgz') |
+
+## Terra.json Schema
+
+Each TerraFusion component or bundle requires a valid terra.json file with the following structure:
 
 ```json
 {
   "id": "component-id",
-  "type": "service|bundle",
+  "type": "service",
   "name": "Component Name",
-  "version": "0.1.0"
-}
-```
-
-2. Add the pack target to the component's `project.json`:
-
-```json
-{
-  "targets": {
-    "pack": {
-      "executor": "@terrafusion/nx-pack:pack",
-      "options": {
-        "outputPath": "dist/pack"
-      }
+  "version": "1.0.0",
+  "description": "Component description",
+  "license": "MIT",
+  "author": "TerraFusion Team",
+  "homepage": "https://example.com",
+  "repository": "https://github.com/example/repo",
+  "dependencies": [
+    "other-component@1.0.0"
+  ],
+  "settings": {
+    "key": "value"
+  },
+  "requirements": {
+    "memory": "1Gi",
+    "cpu": "0.5",
+    "storage": "2Gi"
+  },
+  "ports": [
+    {
+      "name": "http",
+      "port": 8080,
+      "protocol": "TCP"
     }
+  ],
+  "metadata": {
+    "category": "processing",
+    "tags": ["tag1", "tag2"]
   }
 }
 ```
 
-## CI Integration
+## License
 
-The packaging process is integrated with the CI pipeline in `.github/workflows/infra-matrix.yml`. When changes are pushed to the repository, the CI pipeline will automatically:
-
-1. Run tests
-2. Perform linting
-3. Package the components
-4. Upload the packaged artifacts
+MIT

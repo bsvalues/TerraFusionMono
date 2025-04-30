@@ -1,60 +1,69 @@
 {
   "name": "mcps-agentmesh",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "projectType": "application",
   "sourceRoot": "services/mcps-agentmesh/src",
+  "projectType": "application",
   "targets": {
     "build": {
-      "executor": "nx:run-commands",
+      "executor": "@nx/node:webpack",
+      "outputs": ["{options.outputPath}"],
       "options": {
-        "commands": [
-          {
-            "command": "mkdir -p dist/services/mcps-agentmesh"
-          },
-          {
-            "command": "cp -r services/mcps-agentmesh/charts dist/services/mcps-agentmesh/"
-          }
-        ],
-        "parallel": false
+        "outputPath": "dist/services/mcps-agentmesh",
+        "main": "services/mcps-agentmesh/src/main.js",
+        "tsConfig": "services/mcps-agentmesh/tsconfig.json",
+        "assets": ["services/mcps-agentmesh/src/assets"]
+      },
+      "configurations": {
+        "production": {
+          "optimization": true,
+          "extractLicenses": true,
+          "inspect": false
+        }
+      }
+    },
+    "serve": {
+      "executor": "@nx/node:node",
+      "options": {
+        "buildTarget": "mcps-agentmesh:build"
       }
     },
     "lint": {
       "executor": "@nx/eslint:lint",
       "outputs": ["{options.outputFile}"],
       "options": {
-        "lintFilePatterns": ["services/mcps-agentmesh/**/*.ts"]
+        "lintFilePatterns": ["services/mcps-agentmesh/**/*.{ts,js}"]
       }
     },
     "test": {
       "executor": "@nx/jest:jest",
-      "outputs": ["{workspaceRoot}/coverage/services/mcps-agentmesh"],
+      "outputs": ["{workspaceRoot}/coverage/{projectRoot}"],
       "options": {
-        "jestConfig": "services/mcps-agentmesh/jest.config.ts"
+        "jestConfig": "services/mcps-agentmesh/jest.config.js"
       }
     },
     "pack": {
       "executor": "@terrafusion/nx-pack:pack",
-      "outputs": ["{options.outputPath}/mcps-agentmesh"],
       "options": {
         "outputPath": "dist/pack",
         "includeFiles": [
           "terra.json",
           "README.md",
           "LICENSE",
-          "charts/**/*",
+          "src/**/*",
           "config/**/*"
         ],
         "excludeFiles": [
-          "node_modules/**/*",
-          "**/*.test.ts",
-          "**/*.spec.ts"
+          "**/*.test.js",
+          "**/*.spec.js",
+          "**/__tests__/**/*",
+          "**/*.d.ts"
         ],
-        "generateChecksums": true,
         "validateSchema": true,
+        "generateChecksums": true,
         "generateSBOM": true,
         "sbomFormat": "cyclonedx"
       }
     }
   },
-  "tags": []
+  "tags": ["service", "mcps", "agentmesh"]
 }
