@@ -1,10 +1,12 @@
 /**
- * Atomic Design - Molecules
+ * TerraFusion UI Molecules
  * 
- * Molecules are groups of atoms bonded together and are the smallest fundamental
- * units of a compound. These molecules take on their own properties and serve as
- * the backbone of our design system.
+ * Molecules are combinations of atoms that form more complex UI components.
+ * They represent common UI patterns that are reused throughout the application.
+ * 
+ * Examples: form fields, cards, alerts, etc.
  */
 
-// Re-export molecule components here
-// Example: export * from './FormField';
+export * from './FormField';
+export * from './Card';
+export * from './Alert';
