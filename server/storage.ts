@@ -1433,7 +1433,7 @@ export class DatabaseStorage implements IStorage {
       query = query.limit(options.limit);
     }
     
-    return await query.orderBy(desc(pacsConnections.updatedAt));
+    return await query.orderBy(desc(pacsConnections.updated_at));
   }
   
   async getPacsConnection(id: number): Promise<PacsConnection | undefined> {
@@ -1459,7 +1459,7 @@ export class DatabaseStorage implements IStorage {
       .update(pacsConnections)
       .set({
         ...updates,
-        updatedAt: new Date()
+        updated_at: new Date()
       })
       .where(eq(pacsConnections.id, id))
       .returning();
@@ -1473,10 +1473,10 @@ export class DatabaseStorage implements IStorage {
         return { success: false, message: "Connection not found" };
       }
       
-      // Update lastConnected timestamp
+      // Update last_test_at timestamp
       await this.updatePacsConnection(id, { 
-        lastConnected: new Date(),
-        testStatus: "success"
+        last_test_at: new Date(),
+        test_status: "success"
       });
       
       return { success: true, message: "Connection test successful" };
@@ -1485,8 +1485,8 @@ export class DatabaseStorage implements IStorage {
       
       // Update error message
       await this.updatePacsConnection(id, { 
-        testStatus: "failed",
-        errorMessage
+        test_status: "failed",
+        error_message: errorMessage
       });
       
       return { success: false, message: errorMessage };
