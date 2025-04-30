@@ -1,109 +1,128 @@
 const fs = require('fs');
 const path = require('path');
-const glob = require('glob');
 const crypto = require('crypto');
+const { glob } = require('glob');
 const Ajv = require('ajv');
 const addFormats = require('ajv-formats');
 
 /**
- * TerraFusion Pack Executor
+ * NX Pack Executor
  * 
- * This executor packages TerraFusion components and bundles according to the specification
- * in terra.json. It includes validation, checksums, and SBOM generation.
+ * This executor handles the packaging of TerraFusion components and bundles
+ * including validation, file copying, checksum generation, and SBOM creation.
  */
-
-async function executor(options, context) {
-  console.log('Executing Pack Executor...');
-  console.log(`Project: ${context.projectName}`);
+async function packExecutor(options, context) {
+  console.log('Executing TerraFusion Pack Executor');
   
   try {
     const projectRoot = context.workspace.projects[context.projectName].root;
-    const terraJsonPath = path.join(projectRoot, 'terra.json');
+    const projectName = context.projectName;
     
-    // Validate terra.json exists
-    if (!fs.existsSync(terraJsonPath)) {
-      console.error(`Error: terra.json not found in project root: ${projectRoot}`);
-      return { success: false };
-    }
+    // Process and validate options
+    const normalizedOptions = normalizeOptions(options, context);
+    console.log(`Packaging ${projectName} with options:`, normalizedOptions);
     
-    // Load terra.json
-    const terraJson = JSON.parse(fs.readFileSync(terraJsonPath, 'utf8'));
-    console.log(`Component ID: ${terraJson.id}, Type: ${terraJson.type}, Version: ${terraJson.version}`);
-    
-    // Validate terra.json against schema if enabled
-    if (options.validateSchema) {
-      const isValid = await validateTerraJson(terraJson);
-      if (!isValid) {
-        console.error('Error: terra.json validation failed');
+    // Validate terra.json if required
+    if (normalizedOptions.validateSchema) {
+      const valid = await validateTerraJson(projectRoot);
+      if (!valid) {
+        console.error('Terra.json validation failed');
         return { success: false };
       }
-      console.log('terra.json validation passed');
     }
     
-    // Create output directory
-    const outputDir = path.join(options.outputPath, terraJson.id);
-    if (!fs.existsSync(outputDir)) {
-      fs.mkdirSync(outputDir, { recursive: true });
+    // Create output directory if it doesn't exist
+    const outputDir = path.join(normalizedOptions.outputPath, projectName);
+    ensureDirExists(outputDir);
+    
+    // Collect files to package
+    const files = await collectFiles(projectRoot, normalizedOptions);
+    console.log(`Found ${files.length} files to package`);
+    
+    // Copy files to output directory
+    await copyFiles(files, projectRoot, outputDir);
+    
+    // Generate checksums if required
+    if (normalizedOptions.generateChecksums) {
+      await generateChecksums(outputDir);
     }
     
-    // Copy files
-    const copiedFiles = await copyFiles(projectRoot, outputDir, options.includeFiles, options.excludeFiles);
-    console.log(`Copied ${copiedFiles.length} files to ${outputDir}`);
-    
-    // Generate checksums if enabled
-    if (options.generateChecksums) {
-      await generateChecksums(outputDir, copiedFiles);
-      console.log('Checksums generated');
+    // Generate SBOM if required
+    if (normalizedOptions.generateSBOM) {
+      await generateSBOM(outputDir, normalizedOptions.sbomFormat, projectRoot);
     }
     
-    // Generate SBOM if enabled
-    if (options.generateSBOM) {
-      await generateSBOM(outputDir, terraJson, options.sbomFormat);
-      console.log(`SBOM generated in ${options.sbomFormat} format`);
+    // Sign package if required
+    if (normalizedOptions.signPackage && normalizedOptions.keyId) {
+      await signPackage(outputDir, normalizedOptions.keyId);
     }
     
-    // Sign package if enabled
-    if (options.signPackage && options.keyId) {
-      await signPackage(outputDir, options.keyId);
-      console.log(`Package signed with key ID: ${options.keyId}`);
+    // Compress package if required
+    if (normalizedOptions.compress) {
+      await compressPackage(outputDir, normalizedOptions.compressFormat);
     }
     
-    // Compress package if enabled
-    if (options.compress) {
-      await compressPackage(outputDir, options.compressFormat);
-      console.log(`Package compressed in ${options.compressFormat} format`);
-    }
-    
-    console.log(`Packaging completed successfully: ${outputDir}`);
+    console.log(`Successfully packaged ${projectName} to ${outputDir}`);
     return { success: true };
   } catch (error) {
-    console.error('Error executing pack:', error);
+    console.error('Error during packaging:', error);
     return { success: false, error: error.message };
   }
 }
 
 /**
+ * Normalize options with defaults
+ */
+function normalizeOptions(options, context) {
+  return {
+    outputPath: options.outputPath || 'dist/pack',
+    includeFiles: options.includeFiles || ['terra.json', 'README.md', 'LICENSE'],
+    excludeFiles: options.excludeFiles || ['node_modules/**/*', '**/*.test.ts', '**/*.spec.ts'],
+    validateSchema: options.validateSchema !== false,
+    generateChecksums: options.generateChecksums !== false,
+    generateSBOM: options.generateSBOM !== false,
+    sbomFormat: options.sbomFormat || 'cyclonedx',
+    signPackage: options.signPackage || false,
+    keyId: options.keyId || '',
+    compress: options.compress || false,
+    compressFormat: options.compressFormat || 'tgz'
+  };
+}
+
+/**
  * Validate terra.json against schema
  */
-async function validateTerraJson(terraJson) {
+async function validateTerraJson(projectRoot) {
+  const terraJsonPath = path.join(projectRoot, 'terra.json');
+  const schemaPath = path.join(__dirname, '../../schemas/terra.json');
+  
+  if (!fs.existsSync(terraJsonPath)) {
+    console.error(`Terra.json not found at ${terraJsonPath}`);
+    return false;
+  }
+  
+  if (!fs.existsSync(schemaPath)) {
+    console.error(`Schema not found at ${schemaPath}`);
+    return false;
+  }
+  
   try {
-    const schemaPath = path.join(__dirname, '../../schemas/terra.json');
+    const terraJson = JSON.parse(fs.readFileSync(terraJsonPath, 'utf8'));
     const schema = JSON.parse(fs.readFileSync(schemaPath, 'utf8'));
     
     const ajv = new Ajv({ allErrors: true });
     addFormats(ajv);
-    
     const validate = ajv.compile(schema);
+    
     const valid = validate(terraJson);
     
     if (!valid) {
-      console.error('terra.json validation errors:');
-      validate.errors.forEach(error => {
-        console.error(`  ${error.instancePath} ${error.message}`);
-      });
+      console.error('Terra.json validation errors:');
+      console.error(validate.errors);
       return false;
     }
     
+    console.log('Terra.json validation successful');
     return true;
   } catch (error) {
     console.error('Error validating terra.json:', error);
@@ -112,143 +131,166 @@ async function validateTerraJson(terraJson) {
 }
 
 /**
- * Copy files from project to output directory
+ * Ensure directory exists
  */
-async function copyFiles(projectRoot, outputDir, includePatterns, excludePatterns) {
-  const copiedFiles = [];
-  
-  // Convert exclude patterns to a function that tests if a file should be excluded
-  const excludeFiles = (filePath) => {
-    return excludePatterns?.some(pattern => {
-      const fullPattern = path.join(projectRoot, pattern);
-      return glob.sync(fullPattern).includes(filePath);
-    }) || false;
-  };
-  
-  // Process each include pattern
-  for (const pattern of includePatterns || []) {
-    const fullPattern = path.join(projectRoot, pattern);
-    const files = glob.sync(fullPattern);
-    
-    for (const file of files) {
-      if (excludeFiles(file)) {
-        continue;
-      }
-      
-      const relativeFilePath = path.relative(projectRoot, file);
-      const destPath = path.join(outputDir, relativeFilePath);
-      
-      // Create directories if they don't exist
-      const destDir = path.dirname(destPath);
-      if (!fs.existsSync(destDir)) {
-        fs.mkdirSync(destDir, { recursive: true });
-      }
-      
-      // Copy the file
-      fs.copyFileSync(file, destPath);
-      copiedFiles.push(relativeFilePath);
-    }
+function ensureDirExists(dir) {
+  if (!fs.existsSync(dir)) {
+    fs.mkdirSync(dir, { recursive: true });
+    console.log(`Created directory: ${dir}`);
   }
-  
-  return copiedFiles;
 }
 
 /**
- * Generate checksums for packaged files
+ * Collect files to package based on include/exclude patterns
  */
-async function generateChecksums(outputDir, files) {
+async function collectFiles(projectRoot, options) {
+  const includePatterns = options.includeFiles.map(pattern => 
+    path.join(projectRoot, pattern)
+  );
+  
+  const excludePatterns = options.excludeFiles.map(pattern => 
+    path.join(projectRoot, pattern)
+  );
+  
+  const files = await glob(includePatterns, {
+    ignore: excludePatterns,
+    nodir: false,
+    dot: true
+  });
+  
+  return files;
+}
+
+/**
+ * Copy files to output directory
+ */
+async function copyFiles(files, projectRoot, outputDir) {
+  for (const file of files) {
+    const relativePath = path.relative(projectRoot, file);
+    const targetPath = path.join(outputDir, relativePath);
+    
+    // Create directory if it doesn't exist
+    const targetDir = path.dirname(targetPath);
+    ensureDirExists(targetDir);
+    
+    // Check if the file is a directory
+    const stats = fs.statSync(file);
+    if (stats.isDirectory()) {
+      ensureDirExists(targetPath);
+    } else {
+      // Copy file
+      fs.copyFileSync(file, targetPath);
+      console.log(`Copied: ${relativePath}`);
+    }
+  }
+}
+
+/**
+ * Generate checksums for all files in the output directory
+ */
+async function generateChecksums(outputDir) {
+  console.log('Generating checksums...');
+  
+  const files = await glob(`${outputDir}/**/*`, {
+    nodir: true,
+    dot: true
+  });
+  
   const checksums = {};
   
   for (const file of files) {
-    const filePath = path.join(outputDir, file);
-    const fileContent = fs.readFileSync(filePath);
+    // Skip the checksum file itself
+    if (file.endsWith('checksums.json')) {
+      continue;
+    }
     
-    // Calculate checksums
-    const md5sum = crypto.createHash('md5').update(fileContent).digest('hex');
-    const sha256sum = crypto.createHash('sha256').update(fileContent).digest('hex');
+    const relativePath = path.relative(outputDir, file);
+    const fileBuffer = fs.readFileSync(file);
+    const hashSum = crypto.createHash('sha256');
+    hashSum.update(fileBuffer);
+    const hex = hashSum.digest('hex');
     
-    checksums[file] = {
-      md5: md5sum,
-      sha256: sha256sum
-    };
+    checksums[relativePath] = hex;
   }
   
-  // Write checksums to file
-  fs.writeFileSync(
-    path.join(outputDir, 'checksums.json'),
-    JSON.stringify(checksums, null, 2)
-  );
+  const checksumFile = path.join(outputDir, 'checksums.json');
+  fs.writeFileSync(checksumFile, JSON.stringify(checksums, null, 2));
+  
+  console.log(`Generated checksums for ${Object.keys(checksums).length} files`);
 }
 
 /**
  * Generate Software Bill of Materials (SBOM)
  */
-async function generateSBOM(outputDir, terraJson, format) {
-  // Create a simple SBOM file for now
-  // In a real implementation, we would use a proper SBOM generation library
+async function generateSBOM(outputDir, format, projectRoot) {
+  console.log(`Generating SBOM in ${format} format...`);
+  
+  // Read terra.json for component info
+  const terraJsonPath = path.join(projectRoot, 'terra.json');
+  const terraJson = JSON.parse(fs.readFileSync(terraJsonPath, 'utf8'));
+  
+  // Create a simple SBOM structure
   const sbom = {
-    name: terraJson.name,
-    version: terraJson.version,
-    description: terraJson.description,
+    bomFormat: format,
+    specVersion: "1.4",
+    serialNumber: `urn:uuid:${crypto.randomUUID()}`,
+    version: 1,
     metadata: {
       timestamp: new Date().toISOString(),
-      format: format
+      tools: [
+        {
+          vendor: "TerraFusion",
+          name: "nx-pack",
+          version: "1.0.0"
+        }
+      ],
+      component: {
+        type: "application",
+        name: terraJson.name,
+        version: terraJson.version,
+        description: terraJson.description,
+        licenses: terraJson.license ? [{ license: { id: terraJson.license } }] : []
+      }
     },
     components: []
   };
   
-  // Add dependencies as components
-  if (terraJson.dependencies) {
+  // Add dependencies if available
+  if (terraJson.dependencies && Array.isArray(terraJson.dependencies)) {
     terraJson.dependencies.forEach(dep => {
       const parts = dep.split('@');
+      const name = parts[0];
+      const version = parts[1] || 'latest';
       
       sbom.components.push({
-        name: parts[0],
-        version: parts[1] || 'unknown',
-        supplier: terraJson.maintainer || 'unknown'
-      });
-    });
-  }
-  
-  // Add contained components if this is a bundle
-  if (terraJson.type === 'bundle' && terraJson.contains) {
-    terraJson.contains.forEach(comp => {
-      const parts = comp.split('@');
-      
-      sbom.components.push({
-        name: parts[0],
-        version: parts[1] || 'unknown',
-        supplier: terraJson.maintainer || 'unknown',
-        bundled: true
+        type: "library",
+        name,
+        version
       });
     });
   }
   
   // Write SBOM to file
-  fs.writeFileSync(
-    path.join(outputDir, `sbom.${format === 'cyclonedx' ? 'json' : 'spdx'}`),
-    JSON.stringify(sbom, null, 2)
-  );
+  const sbomFile = path.join(outputDir, `sbom.${format === 'cyclonedx' ? 'json' : 'spdx'}`);
+  fs.writeFileSync(sbomFile, JSON.stringify(sbom, null, 2));
+  
+  console.log(`Generated SBOM at ${sbomFile}`);
 }
 
 /**
- * Sign package with GPG (placeholder implementation)
+ * Sign package with GPG
  */
 async function signPackage(outputDir, keyId) {
-  // In a real implementation, we would use a GPG library or spawn a process
-  // For now, just create a signature file
-  const message = `Package signed with key ${keyId} at ${new Date().toISOString()}`;
-  fs.writeFileSync(path.join(outputDir, 'signature.txt'), message);
+  console.log('Package signing not yet implemented');
+  // This would use child_process.exec to call GPG for signing
 }
 
 /**
- * Compress package into an archive (placeholder implementation)
+ * Compress package into an archive
  */
 async function compressPackage(outputDir, format) {
-  // In a real implementation, we would use a compression library
-  // For now, just create a note
-  const message = `Package would be compressed in ${format} format at ${new Date().toISOString()}`;
-  fs.writeFileSync(path.join(outputDir, 'compressed.txt'), message);
+  console.log('Package compression not yet implemented');
+  // This would use a library like tar or archiver to create the archive
 }
 
-module.exports = executor;
+module.exports = packExecutor;

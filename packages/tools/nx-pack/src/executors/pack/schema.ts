@@ -1,56 +1,56 @@
 export interface PackExecutorSchema {
   /**
-   * The output path for packaged artifacts.
+   * The path to output the packaged files to
    */
   outputPath: string;
-
+  
   /**
-   * List of files and folders to include in the package. Supports glob patterns.
+   * Glob patterns for files to include in the package
    */
   includeFiles?: string[];
-
+  
   /**
-   * List of files and folders to exclude from the package. Supports glob patterns.
+   * Glob patterns for files to exclude from the package
    */
   excludeFiles?: string[];
-
+  
+  /**
+   * Validate terra.json against schema
+   */
+  validateSchema?: boolean;
+  
   /**
    * Generate checksums for packaged files
    */
   generateChecksums?: boolean;
-
+  
   /**
-   * Validate terra.json against the schema
-   */
-  validateSchema?: boolean;
-
-  /**
-   * Generate Software Bill of Materials (SBOM)
+   * Generate Software Bill of Materials
    */
   generateSBOM?: boolean;
-
+  
   /**
-   * SBOM format to generate
+   * Format for Software Bill of Materials
    */
   sbomFormat?: 'cyclonedx' | 'spdx';
-
+  
   /**
-   * Sign the package with a GPG key
+   * Sign package with GPG
    */
   signPackage?: boolean;
-
+  
   /**
-   * GPG key ID to use for signing
+   * GPG key ID to sign package with
    */
   keyId?: string;
-
+  
   /**
-   * Compress the package into an archive
+   * Compress package into an archive
    */
   compress?: boolean;
-
+  
   /**
-   * Archive format to use for compression
+   * Format for package compression
    */
-  compressFormat?: 'zip' | 'tar.gz' | 'tar.xz';
+  compressFormat?: 'tar' | 'zip' | 'tgz';
 }

@@ -1,9 +1,9 @@
 {
   "executors": {
     "pack": {
-      "implementation": "./src/executors/pack/executor",
+      "implementation": "./src/executors/pack/index.js",
       "schema": "./src/executors/pack/schema.json",
-      "description": "Package the project into a distributable format."
+      "description": "Package TerraFusion components and bundles"
     }
   }
 }

@@ -1,200 +1,113 @@
 {
   "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TerraFusion Component Specification",
-  "description": "Schema for terra.json files that describe TerraFusion components and bundles",
+  "title": "TerraFusion Terra Schema",
+  "description": "Schema for terra.json files in TerraFusion components and bundles",
   "type": "object",
   "required": ["id", "type", "name", "version", "description"],
   "properties": {
     "id": {
       "type": "string",
-      "description": "Unique identifier for the component",
-      "pattern": "^[a-z][a-z0-9-]*$"
+      "description": "Unique identifier for the component or bundle",
+      "pattern": "^[a-z0-9-]+$"
     },
     "type": {
       "type": "string",
-      "description": "Type of the component",
+      "description": "Type of the component or bundle",
       "enum": ["service", "bundle", "plugin", "library"]
     },
     "name": {
       "type": "string",
-      "description": "Human-readable name of the component"
+      "description": "Human-readable name for the component or bundle"
     },
     "version": {
       "type": "string",
-      "description": "Version of the component",
+      "description": "Semantic version in the format x.y.z",
       "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
     },
     "description": {
       "type": "string",
-      "description": "Description of the component"
-    },
-    "maintainer": {
-      "type": "string",
-      "description": "Maintainer of the component"
+      "description": "Description of the component or bundle"
     },
     "license": {
       "type": "string",
-      "description": "License of the component"
+      "description": "License identifier (e.g., MIT, Apache-2.0)"
     },
-    "docs": {
+    "author": {
       "type": "string",
-      "description": "URL to documentation for the component",
+      "description": "Author of the component or bundle"
+    },
+    "homepage": {
+      "type": "string",
+      "description": "URL to the homepage or documentation",
       "format": "uri"
     },
-    "tags": {
-      "type": "array",
-      "description": "Tags for the component",
-      "items": {
-        "type": "string"
-      }
+    "repository": {
+      "type": "string",
+      "description": "URL to the source code repository",
+      "format": "uri"
     },
     "dependencies": {
       "type": "array",
-      "description": "Dependencies of the component",
+      "description": "List of dependencies in the format name@version",
       "items": {
         "type": "string",
-        "pattern": "^[a-z][a-z0-9-]*(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
+        "pattern": "^[a-z0-9-]+(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
       }
     },
-    "contains": {
-      "type": "array",
-      "description": "Components contained in the bundle (only for type: bundle)",
-      "items": {
-        "type": "string",
-        "pattern": "^[a-z][a-z0-9-]*(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
-      }
-    },
-    "infra": {
+    "settings": {
       "type": "object",
-      "description": "Infrastructure requirements for the component",
+      "description": "Component-specific settings",
+      "additionalProperties": true
+    },
+    "requirements": {
+      "type": "object",
+      "description": "System requirements",
       "properties": {
-        "helmChart": {
+        "memory": {
           "type": "string",
-          "description": "Path to Helm chart"
+          "description": "Memory requirement (e.g., 512Mi, 2Gi)",
+          "pattern": "^\\d+[KMGT]i?$"
         },
-        "requirements": {
-          "type": "object",
-          "description": "Resource requirements",
-          "properties": {
-            "cpu": {
-              "type": "string",
-              "description": "CPU requirements"
-            },
-            "memory": {
-              "type": "string",
-              "description": "Memory requirements"
-            },
-            "storage": {
-              "type": "string",
-              "description": "Storage requirements"
-            }
-          }
+        "cpu": {
+          "type": "string",
+          "description": "CPU requirement (e.g., 0.5, 1)",
+          "pattern": "^\\d+(\\.\\d+)?$"
         },
-        "ports": {
-          "type": "array",
-          "description": "Ports to expose",
-          "items": {
-            "type": "object",
-            "required": ["name", "containerPort"],
-            "properties": {
-              "name": {
-                "type": "string",
-                "description": "Port name"
-              },
-              "containerPort": {
-                "type": "integer",
-                "description": "Container port"
-              },
-              "servicePort": {
-                "type": "integer",
-                "description": "Service port"
-              },
-              "protocol": {
-                "type": "string",
-                "description": "Protocol",
-                "enum": ["TCP", "UDP"]
-              }
-            }
-          }
+        "storage": {
+          "type": "string",
+          "description": "Storage requirement (e.g., 1Gi, 10Gi)",
+          "pattern": "^\\d+[KMGT]i?$"
         }
       }
     },
-    "config": {
-      "type": "object",
-      "description": "Configuration schema for the component",
-      "additionalProperties": {
+    "ports": {
+      "type": "array",
+      "description": "List of network ports",
+      "items": {
         "type": "object",
-        "required": ["type", "description"],
+        "required": ["name", "port"],
         "properties": {
-          "type": {
+          "name": {
             "type": "string",
-            "description": "Type of the configuration value",
-            "enum": ["string", "number", "boolean", "array"]
+            "description": "Port name"
           },
-          "description": {
+          "port": {
+            "type": "integer",
+            "description": "Port number"
+          },
+          "protocol": {
             "type": "string",
-            "description": "Description of the configuration value"
-          },
-          "default": {
-            "description": "Default value"
-          },
-          "required": {
-            "type": "boolean",
-            "description": "Whether the configuration value is required"
-          },
-          "enum": {
-            "type": "array",
-            "description": "Enumeration of possible values",
-            "items": {}
-          },
-          "minimum": {
-            "type": "number",
-            "description": "Minimum value (for number type)"
-          },
-          "maximum": {
-            "type": "number",
-            "description": "Maximum value (for number type)"
-          },
-          "pattern": {
-            "type": "string",
-            "description": "Regular expression pattern (for string type)"
-          },
-          "items": {
-            "type": "object",
-            "description": "Schema for array items (for array type)",
-            "properties": {
-              "type": {
-                "type": "string",
-                "enum": ["string", "number", "boolean", "object"]
-              }
-            }
+            "description": "Network protocol",
+            "enum": ["TCP", "UDP"],
+            "default": "TCP"
           }
         }
       }
-    }
-  },
-  "allOf": [
-    {
-      "if": {
-        "properties": {
-          "type": { "enum": ["bundle"] }
-        }
-      },
-      "then": {
-        "required": ["contains"]
-      }
     },
-    {
-      "if": {
-        "properties": {
-          "type": { "enum": ["service"] }
-        }
-      },
-      "then": {
-        "properties": {
-          "infra": { "required": ["requirements"] }
-        }
-      }
+    "metadata": {
+      "type": "object",
+      "description": "Additional metadata",
+      "additionalProperties": true
     }
-  ]
+  }
 }

@@ -1,9 +1,8 @@
 {
   "$schema": "http://json-schema.org/schema",
-  "type": "object",
-  "cli": "nx",
-  "title": "Pack executor",
+  "title": "Pack executor schema",
   "description": "Package TerraFusion components and bundles",
+  "type": "object",
   "properties": {
     "outputPath": {
       "type": "string",
@@ -39,7 +38,7 @@
     "generateSBOM": {
       "type": "boolean",
       "description": "Generate Software Bill of Materials",
-      "default": true
+      "default": false
     },
     "sbomFormat": {
       "type": "string",

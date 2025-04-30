@@ -1,95 +1,214 @@
-const executor = require('../src/executors/pack/executor');
+const { test, expect, describe, jest: jestObj } = require('@jest/globals');
 const fs = require('fs');
 const path = require('path');
+const packExecutor = require('../src/executors/pack/executor');
 
 // Mock dependencies
-jest.mock('fs');
-jest.mock('path');
-jest.mock('glob');
-jest.mock('crypto');
-jest.mock('ajv');
-jest.mock('ajv-formats');
+jest.mock('fs', () => ({
+  existsSync: jest.fn(),
+  readFileSync: jest.fn(),
+  writeFileSync: jest.fn(),
+  mkdirSync: jest.fn(),
+  statSync: jest.fn(),
+  copyFileSync: jest.fn()
+}));
+
+jest.mock('glob', () => ({
+  glob: jest.fn()
+}));
+
+jest.mock('crypto', () => ({
+  createHash: jest.fn(() => ({
+    update: jest.fn().mockReturnThis(),
+    digest: jest.fn().mockReturnValue('mockhash')
+  })),
+  randomUUID: jest.fn().mockReturnValue('mocked-uuid')
+}));
+
+// Setup mocks for each test
+beforeEach(() => {
+  // Reset all mocks
+  jest.clearAllMocks();
+  
+  // Default mock implementations
+  fs.existsSync.mockReturnValue(true);
+  fs.readFileSync.mockImplementation((filePath) => {
+    if (filePath.endsWith('terra.json')) {
+      return JSON.stringify({
+        id: 'test-component',
+        type: 'service',
+        name: 'Test Component',
+        version: '1.0.0',
+        description: 'Test component for testing',
+        license: 'MIT',
+        dependencies: ['dep1@1.0.0', 'dep2@2.0.0']
+      });
+    } else if (filePath.endsWith('schema.json')) {
+      return JSON.stringify({
+        type: 'object',
+        required: ['id', 'type', 'name', 'version', 'description'],
+        properties: {
+          id: { type: 'string' },
+          type: { type: 'string', enum: ['service', 'bundle', 'plugin', 'library'] },
+          name: { type: 'string' },
+          version: { type: 'string' },
+          description: { type: 'string' }
+        }
+      });
+    }
+    return '';
+  });
+  
+  fs.statSync.mockReturnValue({
+    isDirectory: () => false
+  });
+  
+  require('glob').glob.mockResolvedValue([
+    '/project/test-project/terra.json',
+    '/project/test-project/README.md',
+    '/project/test-project/src/index.js'
+  ]);
+});
 
 describe('Pack Executor', () => {
-  beforeEach(() => {
-    // Reset mocks
-    jest.resetAllMocks();
+  test('should validate terra.json successfully', async () => {
+    // Setup test context
+    const options = {
+      outputPath: 'dist/pack',
+      validateSchema: true
+    };
     
-    // Setup common mock behaviors
-    path.join.mockImplementation((...args) => args.join('/'));
-    path.relative.mockImplementation((from, to) => {
-      return to.replace(from, '').replace(/^\//, '');
-    });
-    path.dirname.mockImplementation((p) => p.split('/').slice(0, -1).join('/'));
+    const context = {
+      projectName: 'test-project',
+      workspace: {
+        projects: {
+          'test-project': {
+            root: '/project/test-project'
+          }
+        }
+      }
+    };
     
-    fs.existsSync.mockReturnValue(true);
+    // Execute the executor
+    const result = await packExecutor(options, context);
+    
+    // Assertions
+    expect(result.success).toBe(true);
+    expect(fs.existsSync).toHaveBeenCalledWith('/project/test-project/terra.json');
+    expect(fs.readFileSync).toHaveBeenCalledWith('/project/test-project/terra.json', 'utf8');
+  });
+  
+  test('should fail if terra.json is invalid', async () => {
+    // Setup invalid terra.json
     fs.readFileSync.mockImplementation((filePath) => {
       if (filePath.endsWith('terra.json')) {
         return JSON.stringify({
+          // Missing required fields
           id: 'test-component',
-          type: 'service',
-          name: 'Test Component',
-          version: '1.0.0',
-          description: 'Test component for unit tests',
-          maintainer: 'Test Team <test@example.com>',
-          license: 'MIT',
-          dependencies: ['dep1@1.0.0', 'dep2@2.0.0'],
-          infra: {
-            requirements: {
-              cpu: '1',
-              memory: '1Gi'
-            }
+          type: 'invalid-type'
+        });
+      } else if (filePath.endsWith('schema.json')) {
+        return JSON.stringify({
+          type: 'object',
+          required: ['id', 'type', 'name', 'version', 'description'],
+          properties: {
+            id: { type: 'string' },
+            type: { type: 'string', enum: ['service', 'bundle', 'plugin', 'library'] },
+            name: { type: 'string' },
+            version: { type: 'string' },
+            description: { type: 'string' }
           }
         });
       }
       return '';
     });
     
-    // Mock workspace context
-    global.context = {
+    const options = {
+      outputPath: 'dist/pack',
+      validateSchema: true
+    };
+    
+    const context = {
       projectName: 'test-project',
       workspace: {
         projects: {
           'test-project': {
-            root: '/project/root'
+            root: '/project/test-project'
           }
         }
       }
     };
-  });
-  
-  it('should execute successfully with default options', async () => {
-    const options = {
-      outputPath: 'dist/pack'
-    };
     
-    const result = await executor(options, global.context);
+    // Execute the executor
+    const result = await packExecutor(options, context);
     
-    expect(result.success).toBe(true);
-    expect(fs.mkdirSync).toHaveBeenCalledWith(expect.stringContaining('test-component'), expect.any(Object));
-  });
-  
-  it('should fail if terra.json is missing', async () => {
-    fs.existsSync.mockReturnValueOnce(false);
-    
-    const options = {
-      outputPath: 'dist/pack'
-    };
-    
-    const result = await executor(options, global.context);
-    
+    // Assertions
     expect(result.success).toBe(false);
   });
   
-  it('should generate checksums when enabled', async () => {
+  test('should collect and copy files', async () => {
     const options = {
       outputPath: 'dist/pack',
-      generateChecksums: true,
-      includeFiles: ['terra.json', 'README.md']
+      includeFiles: ['terra.json', 'README.md', 'src/**/*.js'],
+      excludeFiles: ['**/*.test.js']
     };
     
-    const result = await executor(options, global.context);
+    const context = {
+      projectName: 'test-project',
+      workspace: {
+        projects: {
+          'test-project': {
+            root: '/project/test-project'
+          }
+        }
+      }
+    };
     
+    // Execute the executor
+    const result = await packExecutor(options, context);
+    
+    // Assertions
+    expect(result.success).toBe(true);
+    expect(require('glob').glob).toHaveBeenCalled();
+    expect(fs.copyFileSync).toHaveBeenCalledTimes(3); // 3 files from the mock glob result
+  });
+  
+  test('should generate checksums', async () => {
+    const options = {
+      outputPath: 'dist/pack',
+      generateChecksums: true
+    };
+    
+    const context = {
+      projectName: 'test-project',
+      workspace: {
+        projects: {
+          'test-project': {
+            root: '/project/test-project'
+          }
+        }
+      }
+    };
+    
+    require('glob').glob.mockImplementation((pattern) => {
+      if (pattern.includes('dist/pack/test-project/**/*')) {
+        return Promise.resolve([
+          'dist/pack/test-project/terra.json',
+          'dist/pack/test-project/README.md',
+          'dist/pack/test-project/src/index.js'
+        ]);
+      }
+      return Promise.resolve([
+        '/project/test-project/terra.json',
+        '/project/test-project/README.md',
+        '/project/test-project/src/index.js'
+      ]);
+    });
+    
+    // Execute the executor
+    const result = await packExecutor(options, context);
+    
+    // Assertions
     expect(result.success).toBe(true);
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       expect.stringContaining('checksums.json'),
@@ -97,15 +216,28 @@ describe('Pack Executor', () => {
     );
   });
   
-  it('should generate SBOM when enabled', async () => {
+  test('should generate SBOM', async () => {
     const options = {
       outputPath: 'dist/pack',
       generateSBOM: true,
       sbomFormat: 'cyclonedx'
     };
     
-    const result = await executor(options, global.context);
+    const context = {
+      projectName: 'test-project',
+      workspace: {
+        projects: {
+          'test-project': {
+            root: '/project/test-project'
+          }
+        }
+      }
+    };
     
+    // Execute the executor
+    const result = await packExecutor(options, context);
+    
+    // Assertions
     expect(result.success).toBe(true);
     expect(fs.writeFileSync).toHaveBeenCalledWith(
       expect.stringContaining('sbom.json'),
@@ -113,18 +245,32 @@ describe('Pack Executor', () => {
     );
   });
   
-  it('should handle errors gracefully', async () => {
-    fs.readFileSync.mockImplementationOnce(() => {
-      throw new Error('Test error');
+  test('should handle errors gracefully', async () => {
+    // Simulate an error
+    fs.existsSync.mockImplementation(() => {
+      throw new Error('Simulated error');
     });
     
     const options = {
       outputPath: 'dist/pack'
     };
     
-    const result = await executor(options, global.context);
+    const context = {
+      projectName: 'test-project',
+      workspace: {
+        projects: {
+          'test-project': {
+            root: '/project/test-project'
+          }
+        }
+      }
+    };
     
+    // Execute the executor
+    const result = await packExecutor(options, context);
+    
+    // Assertions
     expect(result.success).toBe(false);
-    expect(result.error).toBeDefined();
+    expect(result.error).toBe('Simulated error');
   });
 });
