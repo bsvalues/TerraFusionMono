@@ -2,17 +2,53 @@
   "id": "mcps-agentmesh",
   "type": "service",
   "name": "MCPS Agent Mesh",
-  "version": "0.1.0",
-  "requires": [
-    "core@>=1.0.0"
-  ],
-  "provides": [
-    "agentmesh@0.1.0"
+  "version": "1.0.0",
+  "description": "Agent Mesh component for TerraFusion's Medical Content Provider System",
+  "maintainer": "TerraFusion Core Team <support@terrafusion.io>",
+  "license": "Proprietary",
+  "docs": "https://docs.terrafusion.io/mcps",
+  "tags": ["mcps", "agent", "mesh", "healthcare"],
+  "infra": {
+    "helmChart": "charts/mcps-agentmesh",
+    "requirements": {
+      "cpu": "1",
+      "memory": "1Gi",
+      "storage": "2Gi"
+    },
+    "ports": [
+      {
+        "name": "http",
+        "containerPort": 8080,
+        "servicePort": 80,
+        "protocol": "TCP"
+      },
+      {
+        "name": "metrics",
+        "containerPort": 9090,
+        "servicePort": 9090,
+        "protocol": "TCP"
+      }
+    ]
+  },
+  "dependencies": [
+    "postgresql:14",
+    "redis:7"
   ],
   "config": {
-    "port": 4000,
-    "maxConnections": 100,
-    "logLevel": "info"
-  },
-  "license": "EULA-commercial"
+    "logLevel": {
+      "type": "string",
+      "default": "info",
+      "enum": ["debug", "info", "warn", "error"]
+    },
+    "maxAgents": {
+      "type": "number",
+      "default": 5,
+      "minimum": 1,
+      "maximum": 20
+    },
+    "enableTLS": {
+      "type": "boolean",
+      "default": true
+    }
+  }
 }

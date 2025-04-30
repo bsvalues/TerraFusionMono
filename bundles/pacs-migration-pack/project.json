@@ -1,15 +1,32 @@
 {
   "name": "pacs-migration-pack",
   "$schema": "../../node_modules/nx/schemas/project-schema.json",
-  "projectType": "application",
   "sourceRoot": "bundles/pacs-migration-pack/src",
+  "projectType": "application",
   "targets": {
+    "validate-deps": {
+      "executor": "@nx/js:node",
+      "options": {
+        "buildTarget": "pacs-migration-pack:validate-deps",
+        "script": "bundles/pacs-migration-pack/scripts/validate-dependencies.js"
+      }
+    },
     "pack": {
       "executor": "@terrafusion/nx-pack:pack",
+      "dependsOn": ["validate-deps"],
       "options": {
-        "outputPath": "dist/pack"
+        "outputPath": "dist/pack",
+        "includeFiles": [
+          "terra.json", 
+          "README.md", 
+          "LICENSE", 
+          "charts/**/*", 
+          "scripts/**/*",
+          "config/**/*"
+        ],
+        "generateChecksums": true
       }
     }
   },
-  "tags": []
+  "tags": ["bundle", "pacs", "migration"]
 }

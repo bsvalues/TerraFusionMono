@@ -2,12 +2,49 @@
   "id": "pacs-migration-pack",
   "type": "bundle",
   "name": "PACS Migration Pack",
+  "version": "1.0.0",
+  "description": "A comprehensive bundle for migrating from legacy PACS systems to TerraFusion",
+  "maintainer": "TerraFusion Core Team <support@terrafusion.io>",
+  "license": "Proprietary",
+  "docs": "https://docs.terrafusion.io/pacs-migration",
+  "tags": ["pacs", "migration", "healthcare", "bundle"],
   "contains": [
-    "cdc-etl@>=0.1.0",
-    "agentmesh@>=0.1.0",
-    "levy-service@>=0.1.0",
-    "levy-ui@>=0.1.0"
+    "mcps-agentmesh@1.0.0",
+    "dicom-converter@1.2.0",
+    "data-validator@0.9.5"
   ],
-  "postInstall": "scripts/pacs_wizard.sh",
-  "license": "EULA-commercial"
+  "infra": {
+    "helmChart": "charts/pacs-migration",
+    "requirements": {
+      "cpu": "2",
+      "memory": "4Gi",
+      "storage": "10Gi"
+    }
+  },
+  "config": {
+    "sourceSystem": {
+      "type": "string",
+      "description": "Legacy PACS system type",
+      "enum": ["gchart", "epic", "cerner", "allscripts", "other"],
+      "default": "other"
+    },
+    "parallelism": {
+      "type": "number",
+      "description": "Number of parallel migration threads",
+      "default": 4,
+      "minimum": 1,
+      "maximum": 16
+    },
+    "resumable": {
+      "type": "boolean",
+      "description": "Enable resumable migrations",
+      "default": true
+    },
+    "validationLevel": {
+      "type": "string",
+      "description": "Data validation strictness",
+      "enum": ["strict", "normal", "relaxed"],
+      "default": "normal"
+    }
+  }
 }

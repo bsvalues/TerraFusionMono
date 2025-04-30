@@ -2,6 +2,12 @@
 # PACS Migration Wizard
 # This script helps with setting up and managing PACS migrations
 
+# Array to track installed Helm releases for rollback
+INSTALLED=()
+
+# Error handling with rollback capability
+trap 'echo "⚠️ Error occurred – rolling back"; for rel in "${INSTALLED[@]}"; do helm uninstall "$rel" -n "$NAMESPACE"; done' ERR
+
 set -e
 
 VERSION="1.0.0"
@@ -24,21 +30,25 @@ show_usage() {
   echo "Usage: $(basename "$0") [OPTIONS]"
   echo ""
   echo "Options:"
-  echo "  -h, --help               Show this help message"
-  echo "  -c, --configure          Configure the PACS migration settings"
-  echo "  -s, --start-migration    Start the migration process"
-  echo "  --status                 Show the current migration status"
-  echo "  --verify                 Verify the connection to PACS system"
-  echo "  --reset                  Reset the migration configuration"
-  echo "  --dry-run                Test the migration without making changes"
-  echo "  --log-level LEVEL        Set logging level (debug|info|warn|error)"
-  echo "  --batch-size SIZE        Set the batch size for data processing"
+  echo "  -h, --help                       Show this help message"
+  echo "  -c, --configure                  Configure the PACS migration settings"
+  echo "  -s, --start-migration            Start the migration process"
+  echo "  --status                         Show the current migration status"
+  echo "  --verify                         Verify the connection to PACS system"
+  echo "  --reset                          Reset the migration configuration"
+  echo "  --dry-run                        Test the migration without making changes"
+  echo "  --log-level LEVEL                Set logging level (debug|info|warn|error)"
+  echo "  --batch-size SIZE                Set the batch size for data processing"
+  echo "  --bundle BUNDLE_NAME             Specify the bundle to install"
+  echo "  --namespace NAMESPACE            Specify the Kubernetes namespace"
+  echo "  --env ENVIRONMENT                Specify the environment (dev|staging|prod|ci)"
   echo ""
   echo "Examples:"
-  echo "  $(basename "$0") --configure             # Interactive configuration"
-  echo "  $(basename "$0") --start-migration       # Start the migration"
-  echo "  $(basename "$0") --status                # Check migration status"
-  echo "  $(basename "$0") --verify                # Test connection"
+  echo "  $(basename "$0") --configure                                # Interactive configuration"
+  echo "  $(basename "$0") --start-migration                          # Start the migration"
+  echo "  $(basename "$0") --status                                   # Check migration status"
+  echo "  $(basename "$0") --verify                                   # Test connection"
+  echo "  $(basename "$0") --bundle pacs-migration-pack --namespace tf-dev  # Install bundle in namespace"
   echo ""
 }
 
@@ -103,6 +113,43 @@ start_migration() {
   echo "- Database name: $DB_NAME"
   echo "- Batch size: $BATCH_SIZE"
   echo "- Log level: $LOG_LEVEL"
+  
+  # Set default namespace if not provided
+  NAMESPACE=${NAMESPACE:-"terrafusion"}
+  
+  # Install required components
+  echo "Installing required components in namespace $NAMESPACE..."
+  
+  # Install database component first
+  echo "Installing PACS database connector..."
+  if helm upgrade --install pacs-db ./charts/pacs-db \
+    --set dbType="$DB_TYPE" \
+    --set dbHost="$DB_HOST" \
+    --set dbPort="$DB_PORT" \
+    --set dbName="$DB_NAME" \
+    --namespace "$NAMESPACE" \
+    --create-namespace; then
+    # Track the installed release for potential rollback
+    INSTALLED+=("pacs-db")
+    echo "✓ PACS database connector installed successfully"
+  else
+    echo "✗ Failed to install PACS database connector"
+    exit 1
+  fi
+  
+  # Install migration service
+  echo "Installing PACS migration service..."
+  if helm upgrade --install pacs-migration ./charts/pacs-migration \
+    --set batchSize="$BATCH_SIZE" \
+    --set logLevel="$LOG_LEVEL" \
+    --namespace "$NAMESPACE"; then
+    # Track the installed release for potential rollback
+    INSTALLED+=("pacs-migration")
+    echo "✓ PACS migration service installed successfully"
+  else
+    echo "✗ Failed to install PACS migration service"
+    exit 1
+  fi
   
   # In a real implementation, this would call into the agent mesh
   # and initiate the migration process.
@@ -224,6 +271,44 @@ while [ $# -gt 0 ]; do
         exit 1
       fi
       ;;
+    --bundle)
+      if [ -n "$2" ]; then
+        BUNDLE="$2"
+        echo "Using bundle: $BUNDLE"
+        shift 2
+      else
+        echo "Error: Bundle name not specified"
+        exit 1
+      fi
+      ;;
+    --namespace)
+      if [ -n "$2" ]; then
+        NAMESPACE="$2"
+        echo "Using namespace: $NAMESPACE"
+        shift 2
+      else
+        echo "Error: Namespace not specified"
+        exit 1
+      fi
+      ;;
+    --env)
+      if [ -n "$2" ]; then
+        case "$2" in
+          dev|staging|prod|ci)
+            ENVIRONMENT="$2"
+            echo "Using environment: $ENVIRONMENT"
+            ;;
+          *)
+            echo "Error: Invalid environment. Must be one of: dev, staging, prod, ci"
+            exit 1
+            ;;
+        esac
+        shift 2
+      else
+        echo "Error: Environment not specified"
+        exit 1
+      fi
+      ;;
     *)
       echo "Error: Unknown option: $1"
       show_usage
@@ -231,5 +316,43 @@ while [ $# -gt 0 ]; do
       ;;
   esac
 done
+
+# If bundle is specified, install it
+if [ -n "$BUNDLE" ]; then
+  # Set default namespace if not provided
+  NAMESPACE=${NAMESPACE:-"terrafusion"}
+  echo "Installing bundle $BUNDLE in namespace $NAMESPACE..."
+  
+  # Determine the bundle path
+  BUNDLE_PATH="./dist/pack/$BUNDLE"
+  if [ ! -d "$BUNDLE_PATH" ]; then
+    echo "Error: Bundle $BUNDLE not found at $BUNDLE_PATH"
+    exit 1
+  fi
+  
+  # Read terra.json to get bundle information
+  TERRA_JSON="$BUNDLE_PATH/terra.json"
+  if [ ! -f "$TERRA_JSON" ]; then
+    echo "Error: terra.json not found in bundle $BUNDLE"
+    exit 1
+  fi
+  
+  # Install the bundle components based on terra.json
+  echo "Installing bundle components from $TERRA_JSON..."
+  
+  # Example Helm install
+  if helm upgrade --install "$BUNDLE" "$BUNDLE_PATH/chart" \
+    --namespace "$NAMESPACE" \
+    --create-namespace; then
+    # Track the installed release for potential rollback
+    INSTALLED+=("$BUNDLE")
+    echo "✓ Bundle $BUNDLE installed successfully"
+  else
+    echo "✗ Failed to install bundle $BUNDLE"
+    exit 1
+  fi
+  
+  echo "Bundle $BUNDLE installed successfully in namespace $NAMESPACE"
+fi
 
 exit 0
