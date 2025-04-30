@@ -1,8 +1,8 @@
 {
-  "$schema": "http://json-schema.org/draft-07/schema#",
-  "title": "TerraFusion Terra Schema",
-  "description": "Schema for terra.json files in TerraFusion components and bundles",
+  "$schema": "http://json-schema.org/schema",
   "type": "object",
+  "title": "TerraFusion Component/Bundle Schema",
+  "description": "Schema for terra.json file that describes a TerraFusion component or bundle",
   "required": ["id", "type", "name", "version", "description"],
   "properties": {
     "id": {
@@ -12,8 +12,8 @@
     },
     "type": {
       "type": "string",
-      "description": "Type of the component or bundle",
-      "enum": ["service", "bundle", "plugin", "library"]
+      "description": "Type of package (service, bundle, plugin, etc.)",
+      "enum": ["service", "bundle", "plugin", "library", "tool", "template"]
     },
     "name": {
       "type": "string",
@@ -21,8 +21,8 @@
     },
     "version": {
       "type": "string",
-      "description": "Semantic version in the format x.y.z",
-      "pattern": "^\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?$"
+      "description": "Version of the component or bundle",
+      "pattern": "^(0|[1-9]\\d*)\\.(0|[1-9]\\d*)\\.(0|[1-9]\\d*)(?:-((?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*)(?:\\.(?:0|[1-9]\\d*|\\d*[a-zA-Z-][0-9a-zA-Z-]*))*))?(?:\\+([0-9a-zA-Z-]+(?:\\.[0-9a-zA-Z-]+)*))?$"
     },
     "description": {
       "type": "string",
@@ -30,7 +30,7 @@
     },
     "license": {
       "type": "string",
-      "description": "License identifier (e.g., MIT, Apache-2.0)"
+      "description": "License of the component or bundle"
     },
     "author": {
       "type": "string",
@@ -38,76 +38,148 @@
     },
     "homepage": {
       "type": "string",
-      "description": "URL to the homepage or documentation",
+      "description": "Homepage URL for the component or bundle",
       "format": "uri"
     },
     "repository": {
       "type": "string",
-      "description": "URL to the source code repository",
+      "description": "Repository URL for the component or bundle",
       "format": "uri"
     },
     "dependencies": {
       "type": "array",
-      "description": "List of dependencies in the format name@version",
+      "description": "Dependencies of the component or bundle",
       "items": {
         "type": "string",
-        "pattern": "^[a-z0-9-]+(@\\d+\\.\\d+\\.\\d+(-[a-zA-Z0-9\\.]+)?)?$"
+        "pattern": "^[a-z0-9-]+@[0-9]+(\\.[0-9]+)*(\\.[0-9]+)*$"
       }
     },
     "settings": {
       "type": "object",
-      "description": "Component-specific settings",
+      "description": "Settings for the component or bundle",
       "additionalProperties": true
     },
     "requirements": {
       "type": "object",
-      "description": "System requirements",
+      "description": "Resource requirements for the component or bundle",
       "properties": {
         "memory": {
           "type": "string",
-          "description": "Memory requirement (e.g., 512Mi, 2Gi)",
-          "pattern": "^\\d+[KMGT]i?$"
+          "description": "Memory requirements",
+          "pattern": "^[0-9]+(Mi|Gi)$"
         },
         "cpu": {
           "type": "string",
-          "description": "CPU requirement (e.g., 0.5, 1)",
-          "pattern": "^\\d+(\\.\\d+)?$"
+          "description": "CPU requirements",
+          "pattern": "^[0-9]+(\\.[0-9]+)?$"
         },
         "storage": {
           "type": "string",
-          "description": "Storage requirement (e.g., 1Gi, 10Gi)",
-          "pattern": "^\\d+[KMGT]i?$"
+          "description": "Storage requirements",
+          "pattern": "^[0-9]+(Mi|Gi)$"
         }
-      }
+      },
+      "additionalProperties": false
     },
     "ports": {
       "type": "array",
-      "description": "List of network ports",
+      "description": "Ports exposed by the component or bundle",
       "items": {
         "type": "object",
-        "required": ["name", "port"],
+        "required": ["name", "port", "protocol"],
         "properties": {
           "name": {
             "type": "string",
-            "description": "Port name"
+            "description": "Name of the port"
           },
           "port": {
             "type": "integer",
-            "description": "Port number"
+            "description": "Port number",
+            "minimum": 1,
+            "maximum": 65535
           },
           "protocol": {
             "type": "string",
-            "description": "Network protocol",
-            "enum": ["TCP", "UDP"],
-            "default": "TCP"
+            "description": "Protocol used by the port",
+            "enum": ["TCP", "UDP"]
           }
-        }
+        },
+        "additionalProperties": false
       }
     },
     "metadata": {
       "type": "object",
-      "description": "Additional metadata",
+      "description": "Additional metadata for the component or bundle",
+      "properties": {
+        "category": {
+          "type": "string",
+          "description": "Category of the component or bundle"
+        },
+        "tags": {
+          "type": "array",
+          "description": "Tags for the component or bundle",
+          "items": {
+            "type": "string"
+          }
+        },
+        "icons": {
+          "type": "array",
+          "description": "Icons for the component or bundle",
+          "items": {
+            "type": "object",
+            "required": ["src", "sizes", "type"],
+            "properties": {
+              "src": {
+                "type": "string",
+                "description": "Source URL for the icon"
+              },
+              "sizes": {
+                "type": "string",
+                "description": "Sizes of the icon",
+                "pattern": "^[0-9]+x[0-9]+$"
+              },
+              "type": {
+                "type": "string",
+                "description": "MIME type of the icon"
+              }
+            },
+            "additionalProperties": false
+          }
+        }
+      },
       "additionalProperties": true
+    },
+    "scripts": {
+      "type": "object",
+      "description": "Scripts for the component or bundle",
+      "properties": {
+        "preinstall": {
+          "type": "string",
+          "description": "Script to run before installation"
+        },
+        "install": {
+          "type": "string",
+          "description": "Script to run during installation"
+        },
+        "postinstall": {
+          "type": "string",
+          "description": "Script to run after installation"
+        },
+        "uninstall": {
+          "type": "string",
+          "description": "Script to run during uninstallation"
+        },
+        "start": {
+          "type": "string",
+          "description": "Script to start the component or bundle"
+        },
+        "stop": {
+          "type": "string",
+          "description": "Script to stop the component or bundle"
+        }
+      },
+      "additionalProperties": false
     }
-  }
+  },
+  "additionalProperties": false
 }

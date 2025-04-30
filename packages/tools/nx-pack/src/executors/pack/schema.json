@@ -1,8 +1,9 @@
 {
   "$schema": "http://json-schema.org/schema",
-  "title": "Pack executor schema",
-  "description": "Package TerraFusion components and bundles",
   "type": "object",
+  "cli": "nx",
+  "title": "TerraFusion Pack executor",
+  "description": "Packages TerraFusion components and bundles for distribution",
   "properties": {
     "outputPath": {
       "type": "string",
@@ -12,18 +13,18 @@
     "includeFiles": {
       "type": "array",
       "description": "Glob patterns for files to include in the package",
+      "default": ["terra.json", "README.md", "LICENSE"],
       "items": {
         "type": "string"
-      },
-      "default": ["terra.json", "README.md", "LICENSE"]
+      }
     },
     "excludeFiles": {
       "type": "array",
       "description": "Glob patterns for files to exclude from the package",
+      "default": ["node_modules/**/*", "**/*.test.ts", "**/*.spec.ts"],
       "items": {
         "type": "string"
-      },
-      "default": ["node_modules/**/*", "**/*.test.ts", "**/*.spec.ts"]
+      }
     },
     "validateSchema": {
       "type": "boolean",
@@ -67,5 +68,6 @@
       "default": "tgz"
     }
   },
-  "required": ["outputPath"]
+  "additionalProperties": false,
+  "required": []
 }

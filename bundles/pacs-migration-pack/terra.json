@@ -3,40 +3,32 @@
   "type": "bundle",
   "name": "PACS Migration Pack",
   "version": "1.0.0",
-  "description": "Complete toolkit for migrating from legacy PACS systems to TerraFusion",
+  "description": "Picture Archiving and Communication System (PACS) migration tools and utilities for TerraFusion platform",
   "license": "MIT",
   "author": "TerraFusion Team",
-  "homepage": "https://terrafusion.io/bundles/pacs-migration-pack",
-  "repository": "https://github.com/terrafusion/pacs-migration-pack",
   "dependencies": [
-    "terrafusion-core@1.0.0",
-    "dicom-parser@3.0.1",
-    "image-converter@2.1.0"
+    "terrafusion-core@1.0.0"
   ],
   "settings": {
-    "maxConcurrentJobs": 5,
-    "batchSize": 100,
-    "logLevel": "info",
-    "cleanupPolicy": {
-      "preserveOriginals": true,
-      "tempFilesRetentionDays": 7
-    }
+    "batchSize": 500,
+    "concurrency": 5,
+    "retryDelay": 30,
+    "maxRetries": 3,
+    "logLevel": "info"
   },
   "requirements": {
-    "memory": "2Gi",
+    "memory": "4Gi",
     "cpu": "1.0",
-    "storage": "10Gi"
+    "storage": "20Gi"
   },
   "metadata": {
     "category": "migration",
-    "priority": "high",
-    "tags": ["pacs", "migration", "dicom", "healthcare"],
-    "supportedSystems": [
-      "ClearCanvas",
-      "Horos",
-      "OsiriX",
-      "DCM4CHEE",
-      "Orthanc"
-    ]
+    "tags": ["pacs", "migration", "dicom", "imaging"]
+  },
+  "scripts": {
+    "install": "./scripts/pacs_wizard.sh --install",
+    "uninstall": "./scripts/pacs_wizard.sh --uninstall",
+    "start": "./scripts/pacs_wizard.sh --start",
+    "stop": "./scripts/pacs_wizard.sh --stop"
   }
 }
