@@ -1,77 +1,47 @@
 {
   "id": "mcps-agentmesh",
   "type": "service",
-  "name": "MCPS Agent-Mesh Service",
-  "version": "1.1.0",
-  "description": "Modular Clinical Processing System Agent-Mesh Service for distributed healthcare data processing",
-  "maintainer": "TerraFusion Clinical Systems Team <clinicalsystems@terrafusion.org>",
+  "name": "MCPS Agent-Mesh",
+  "version": "1.0.0",
+  "description": "Multi-Core Processing System Agent-Mesh Service for TerraFusion",
   "license": "MIT",
-  "docs": "https://docs.terrafusion.org/services/mcps-agentmesh",
-  "tags": [
-    "clinical",
-    "healthcare",
-    "dicom",
-    "mesh",
-    "agent"
-  ],
+  "author": "TerraFusion Team",
+  "homepage": "https://terrafusion.io/services/mcps-agentmesh",
+  "repository": "https://github.com/terrafusion/mcps-agentmesh",
   "dependencies": [
-    "dicom-toolkit@3.2.1",
-    "hl7-parser@2.1.0"
+    "terrafusion-core@1.0.0",
+    "mesh-agent@2.1.0",
+    "processor-core@3.0.0"
   ],
-  "infra": {
-    "helmChart": "./charts/mcps-agentmesh",
-    "requirements": {
-      "cpu": "2",
-      "memory": "4Gi",
-      "storage": "20Gi"
-    },
-    "ports": [
-      {
-        "name": "http",
-        "containerPort": 8080,
-        "servicePort": 80,
-        "protocol": "TCP"
-      },
-      {
-        "name": "grpc",
-        "containerPort": 9090,
-        "servicePort": 9090,
-        "protocol": "TCP"
-      }
-    ]
-  },
-  "config": {
-    "DICOM_MAX_CONNECTIONS": {
-      "type": "number",
-      "description": "Maximum number of concurrent DICOM connections",
-      "default": 50,
-      "minimum": 10,
-      "maximum": 200
-    },
-    "HL7_TIMEOUT_MS": {
-      "type": "number",
-      "description": "Timeout for HL7 message processing in milliseconds",
-      "default": 5000,
-      "minimum": 1000,
-      "maximum": 30000
-    },
-    "MESH_DISCOVERY_INTERVAL": {
-      "type": "number",
-      "description": "Interval for MESH network discovery in seconds",
-      "default": 60,
-      "minimum": 10,
-      "maximum": 300
-    },
-    "LOG_LEVEL": {
-      "type": "string",
-      "description": "Logging level",
-      "default": "info",
-      "enum": ["debug", "info", "warn", "error"]
-    },
-    "METRICS_ENABLED": {
-      "type": "boolean",
-      "description": "Enable Prometheus metrics",
-      "default": true
+  "settings": {
+    "maxAgents": 12,
+    "meshTopology": "distributed",
+    "messageRateLimit": 1000,
+    "retryPolicy": {
+      "maxRetries": 3,
+      "backoffFactor": 1.5
     }
+  },
+  "requirements": {
+    "memory": "1Gi",
+    "cpu": "0.5",
+    "storage": "2Gi"
+  },
+  "ports": [
+    {
+      "name": "http",
+      "port": 8080,
+      "protocol": "TCP"
+    },
+    {
+      "name": "mesh",
+      "port": 9090,
+      "protocol": "TCP"
+    }
+  ],
+  "metadata": {
+    "category": "processing",
+    "priority": "high",
+    "tags": ["agent", "mesh", "processing", "distributed"]
   }
 }

@@ -3,81 +3,40 @@
   "type": "bundle",
   "name": "PACS Migration Pack",
   "version": "1.0.0",
-  "description": "Comprehensive bundle for migrating legacy PACS systems to TerraFusion platform",
-  "maintainer": "TerraFusion PACS Migration Team <pacs-migration@terrafusion.org>",
+  "description": "Complete toolkit for migrating from legacy PACS systems to TerraFusion",
   "license": "MIT",
-  "docs": "https://docs.terrafusion.org/bundles/pacs-migration-pack",
-  "tags": [
-    "pacs",
-    "migration",
-    "healthcare",
-    "dicom",
-    "imaging"
-  ],
-  "contains": [
-    "mcps-agentmesh@1.1.0",
-    "dicom-converter@2.3.1",
-    "data-validator@1.2.0"
-  ],
+  "author": "TerraFusion Team",
+  "homepage": "https://terrafusion.io/bundles/pacs-migration-pack",
+  "repository": "https://github.com/terrafusion/pacs-migration-pack",
   "dependencies": [
-    "terrafusion-core@3.1.0",
-    "imaging-toolkit@2.0.0"
+    "terrafusion-core@1.0.0",
+    "dicom-parser@3.0.1",
+    "image-converter@2.1.0"
   ],
-  "config": {
-    "PACS_SOURCE_AET": {
-      "type": "string",
-      "description": "Source PACS Application Entity Title",
-      "required": true
-    },
-    "PACS_SOURCE_HOST": {
-      "type": "string",
-      "description": "Source PACS host address",
-      "required": true
-    },
-    "PACS_SOURCE_PORT": {
-      "type": "number",
-      "description": "Source PACS port",
-      "default": 104,
-      "minimum": 1,
-      "maximum": 65535
-    },
-    "MIGRATION_BATCH_SIZE": {
-      "type": "number",
-      "description": "Number of studies to process in a single batch",
-      "default": 50,
-      "minimum": 1,
-      "maximum": 500
-    },
-    "MIGRATION_THREADS": {
-      "type": "number",
-      "description": "Number of concurrent migration threads",
-      "default": 4,
-      "minimum": 1,
-      "maximum": 16
-    },
-    "VALIDATION_LEVEL": {
-      "type": "string",
-      "description": "Level of validation to perform on migrated data",
-      "default": "full",
-      "enum": ["minimal", "standard", "full"]
-    },
-    "AUTO_RETRY_FAILED": {
-      "type": "boolean",
-      "description": "Automatically retry failed migrations",
-      "default": true
-    },
-    "RETRY_MAX_ATTEMPTS": {
-      "type": "number",
-      "description": "Maximum number of retry attempts for failed migrations",
-      "default": 3,
-      "minimum": 1,
-      "maximum": 10
-    },
-    "MIGRATION_LOG_LEVEL": {
-      "type": "string",
-      "description": "Log level for migration process",
-      "default": "info",
-      "enum": ["debug", "info", "warn", "error"]
+  "settings": {
+    "maxConcurrentJobs": 5,
+    "batchSize": 100,
+    "logLevel": "info",
+    "cleanupPolicy": {
+      "preserveOriginals": true,
+      "tempFilesRetentionDays": 7
     }
+  },
+  "requirements": {
+    "memory": "2Gi",
+    "cpu": "1.0",
+    "storage": "10Gi"
+  },
+  "metadata": {
+    "category": "migration",
+    "priority": "high",
+    "tags": ["pacs", "migration", "dicom", "healthcare"],
+    "supportedSystems": [
+      "ClearCanvas",
+      "Horos",
+      "OsiriX",
+      "DCM4CHEE",
+      "Orthanc"
+    ]
   }
 }
