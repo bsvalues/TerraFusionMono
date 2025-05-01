@@ -29,6 +29,7 @@ import fieldReportRoutes from "./routes/field-reports";
 import pacsMigrationRoutes from "./routes/pacs-migration";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
+import mcpRoutes from "./routes/mcp";
 
 // Initialize Stripe if key is available
 const stripe = process.env.STRIPE_SECRET_KEY ? new Stripe(process.env.STRIPE_SECRET_KEY) : undefined;
@@ -1097,6 +1098,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Main PACS Migration routes with authentication
   app.use('/api/pacs-migration', isAuthenticated, pacsMigrationRoutes);
+  
+  // MCP Agent routes
+  app.use('/api/mcp', mcpRoutes);
   
   // WebSocket monitoring endpoints
   app.get('/api/websocket/connections', async (req, res) => {
