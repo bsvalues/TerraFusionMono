@@ -1356,4 +1356,40 @@ export type InsertPluginCategory = z.infer<typeof insertPluginCategorySchema>;
 export type PluginCategoryRelation = typeof pluginCategoryRelations.$inferSelect;
 export type InsertPluginCategoryRelation = z.infer<typeof insertPluginCategoryRelationSchema>;
 
+// Cost Matrix for property valuations
+export const costMatrices = pgTable("cost_matrices", {
+  matrixId: text("matrix_id").primaryKey().notNull(),
+  name: text("name").notNull(),
+  baseCost: decimal("base_cost", { precision: 10, scale: 2 }).notNull(),
+  modifiers: json("modifiers").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const insertCostMatrixSchema = createInsertSchema(costMatrices).omit({
+  updatedAt: true,
+});
+
+// Income Schedules for property valuations
+export const incomeSchedules = pgTable("income_schedules", {
+  scheduleId: text("schedule_id").primaryKey().notNull(),
+  propertyType: text("property_type").notNull(),
+  grossIncome: decimal("gross_income", { precision: 12, scale: 2 }).notNull(),
+  vacancyRate: decimal("vacancy_rate", { precision: 5, scale: 4 }).notNull(),
+  operatingExpenses: decimal("operating_expenses", { precision: 12, scale: 2 }).notNull(),
+  capRate: decimal("cap_rate", { precision: 5, scale: 4 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const insertIncomeScheduleSchema = createInsertSchema(incomeSchedules).omit({
+  updatedAt: true,
+});
+
+export type CostMatrix = typeof costMatrices.$inferSelect;
+export type InsertCostMatrix = z.infer<typeof insertCostMatrixSchema>;
+
+export type IncomeSchedule = typeof incomeSchedules.$inferSelect;
+export type InsertIncomeSchedule = z.infer<typeof insertIncomeScheduleSchema>;
+
 // Type exports are already defined above
