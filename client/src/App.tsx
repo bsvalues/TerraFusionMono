@@ -26,6 +26,7 @@ import AdvancedCropAnalysisPage from "@/pages/AdvancedCropAnalysisPage";
 import YieldPredictionPage from "@/pages/YieldPredictionPage";
 import CollaborationDemo from "@/pages/CollaborationDemo";
 import FieldDataPage from "@/pages/FieldDataPage";
+import ImportPage from "@/pages/import";
 
 function Router() {
   return (
@@ -54,6 +55,7 @@ function Router() {
         <Route path="/yield-prediction" component={YieldPredictionPage} />
         <Route path="/collaboration" component={CollaborationDemo} />
         <Route path="/field-data" component={FieldDataPage} />
+        <Route path="/import" component={ImportPage} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />
