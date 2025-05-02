@@ -12,3 +12,13 @@ variable "wizard_image" {
   description = "Docker image for Valuation Wizard"
   type        = string
 }
+
+variable "environment" {
+  description = "Environment name (e.g., production, staging, preview-123)"
+  type        = string
+  default     = "staging"
+}
+
+locals {
+  release_suffix = var.environment == "production" ? "" : "-${var.environment}"
+}

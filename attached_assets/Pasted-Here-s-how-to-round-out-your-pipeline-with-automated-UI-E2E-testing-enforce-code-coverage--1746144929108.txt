@@ -1,0 +1,219 @@
+Here’s how to round out your pipeline with **automated UI (E2E) testing**, enforce **code-coverage**, and further **streamline DevOps**.
+
+---
+
+## 1. Automated UI Testing with Cypress
+
+### 1.1 Install & Scaffold
+
+In `packages/ui` (or your web app folder):
+
+```bash
+npm install --save-dev cypress @cypress/testing-library
+npx cypress open   # generates cypress/ folder
+```
+
+Your structure will look like:
+```
+packages/ui/
+ ├─ cypress/
+ │   ├─ fixtures/
+ │   ├─ integration/
+ │   │   └─ valuation-wizard.spec.ts
+ │   ├─ plugins/
+ │   └─ support/
+ └─ cypress.json
+```
+
+### 1.2 Write an E2E Test
+
+**cypress/integration/valuation-wizard.spec.ts**
+```ts
+describe('Valuation Wizard Flow', () => {
+  beforeEach(() => {
+    cy.visit('/wizard');
+  });
+
+  it('lets me search for a parcel, select comps, run valuation, and see results', () => {
+    // Step 1: Search parcel
+    cy.get('input[placeholder="Enter address"]').type('123 Main St');
+    cy.contains('Search').click();
+    cy.contains('123 Main St').click();
+
+    // Step 2: Auto-suggest comps
+    cy.get('input[type="checkbox"]').should('have.length.greaterThan', 0);
+    cy.get('input[type="checkbox"]').first().check();
+
+    // Step 3: Preview weightings
+    cy.contains('Next').click();
+    cy.get('input[type="number"]').first().should('exist');
+
+    // Step 4: Run valuation
+    cy.contains('Next').click();
+    cy.contains('Run Valuation').click();
+
+    // Step 5: Review
+    cy.contains('Estimated Value').should('exist');
+    cy.contains('Confidence').should('exist');
+  });
+});
+```
+
+### 1.3 CI Integration
+
+Add to `.github/workflows/ci-cd.yaml` under the `build` job:
+
+```yaml
+  e2e:
+    runs-on: ubuntu-latest
+    needs: build
+    steps:
+      - uses: actions/checkout@v3
+      - name: Start web server
+        run: |
+          cd packages/ui
+          npm ci
+          npm run build
+          npm install -g serve
+          serve -s build -l 5000 &
+      - name: Run Cypress tests
+        run: |
+          npx cypress run --config baseUrl=http://localhost:5000
+```
+
+This will launch your built UI on port 5000 and exercise the wizard end-to-end.
+
+---
+
+## 2. Enforce Code Coverage Everywhere
+
+### 2.1 UI Coverage with Cypress
+
+In `cypress/plugins/index.js`, instrument coverage:
+
+```js
+module.exports = (on, config) => {
+  require('@cypress/code-coverage/task')(on, config);
+  return config;
+};
+```
+
+In `cypress/support/index.js`:
+```js
+import '@cypress/code-coverage/support';
+```
+
+Add to `packages/ui/package.json`:
+```json
+"scripts": {
+  "cy:open": "cypress open",
+  "cy:run": "cypress run",
+  "coverage:ci": "nyc npm test && nyc report --reporter=text-lcov | coveralls"
+}
+```
+
+### 2.2 CI Coverage Gate
+
+In your CI job, after E2E:
+
+```yaml
+      - name: Upload coverage
+        if: success()
+        uses: coverallsapp/github-action@v2
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          path-to-lcov: packages/ui/coverage/lcov.info
+```
+
+Set a coverage threshold in `.nycrc`:
+
+```json
+{
+  "all": true,
+  "check-coverage": true,
+  "branches": 80,
+  "lines": 80,
+  "functions": 80,
+  "statements": 80
+}
+```
+
+---
+
+## 3. Streamline DevOps
+
+### 3.1 PR Preview Environments
+
+Use GitHub Actions and Helm to spin up ephemeral preview per PR:
+
+```yaml
+on:
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Setup kubectl & helm
+        run: |
+          # install tools...
+      - name: Deploy preview helm release
+        run: |
+          helm upgrade --install preview-${{ github.event.pull_request.number }} \
+            devops/helm/valuation-wizard \
+            --set image.tag=${{ github.sha }}
+```
+
+Tear down in `pull_request.closed` with `helm uninstall preview-<PR>`.
+
+### 3.2 Parameterize Terraform
+
+Refactor `variables.tf` to read from environment:
+
+```hcl
+variable "environment" {
+  type    = string
+  default = "staging"
+}
+
+locals {
+  release_suffix = var.environment == "prod" ? "" : "-${var.environment}"
+}
+
+resource "helm_release" "valuation_wizard" {
+  name = "valuation-wizard${local.release_suffix}"
+  # …
+}
+```
+
+Then in CI specify `-var="environment=preview-${{ github.event.number }}"`.
+
+### 3.3 Centralize Logging & Alerts
+
+Add to your Helm values:
+
+```yaml
+observability:
+  enabled: true
+  prometheus:
+    scrape: true
+  opentelemetry:
+    enabled: true
+    endpoint: "${OTEL_COLLECTOR_URL}"
+```
+
+And inject sidecar containers via your chart’s `deployment.yaml`.
+
+---
+
+## 4. Summary
+
+1. **Cypress** for robust UI/E2E tests—wired into CI  
+2. **Coverage** for both unit and E2E—gated in GH Actions  
+3. **PR Previews**: ephemeral helm releases for every PR  
+4. **Terraform Parametrization**: deploy per-environment with suffixes  
+5. **Observability Hooks**: enable Prometheus/OpenTelemetry sidecars  
+
+This completes our automated testing, coverage, and DevOps-streamlining trifecta. 🚀
