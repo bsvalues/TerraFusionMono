@@ -1,79 +1,132 @@
 // Database schema for TerraFusion
-// Generated from Drizzle ORM migration files
+// Updated with schema reorganization
 
 Project TerraFusion {
   database_type: 'PostgreSQL'
   Note: 'TerraFusion Geospatial and Agricultural Management Platform'
 }
 
-// Core Tables
-Table property {
+// Schema Definitions
+Schema appraisal {
+  Note: 'Contains property valuation and physical characteristics'
+}
+
+Schema billing {
+  Note: 'Contains tax levy and payment records'
+}
+
+Schema master {
+  Note: 'Contains integrated views across schemas'
+}
+
+// Appraisal Schema Tables
+Table appraisal.property {
   id uuid [pk]
+  created_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  updated_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  created_by varchar(50)
+  updated_by varchar(50)
   // Other property fields inferred from migration files
   note: 'Core property record containing main property information'
 }
 
-Table levy {
+Table appraisal.land_parcel {
+  id uuid [pk]
+  property_id uuid [ref: > appraisal.property.id, not null]
+  type_code char(10)
+  acreage numeric(10,3)
+  valuation numeric(14,2)
+  created_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  updated_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  created_by varchar(50)
+  updated_by varchar(50)
+  note: 'Land parcel information tied to a property'
+}
+
+Table appraisal.improvement {
+  id uuid [pk]
+  property_id uuid [ref: > appraisal.property.id, not null]
+  type_code char(5)
+  year_built integer
+  replacement_cost numeric(14,2)
+  created_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  updated_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  created_by varchar(50)
+  updated_by varchar(50)
+  note: 'Property improvements like buildings and structures'
+}
+
+// Billing Schema Tables
+Table billing.levy {
   id uuid [pk]
   // Other levy fields inferred from migration files
   note: 'Tax levy information'
 }
 
-// Land & Improvement Tables
-Table land_parcel {
+Table billing.levy_bill {
   id uuid [pk]
-  property_id uuid [ref: > property.id, not null]
-  type_code char(10)
-  acreage numeric(10,3)
-  valuation numeric(14,2)
-  note: 'Land parcel information tied to a property'
-}
-
-Table improvement {
-  id uuid [pk]
-  property_id uuid [ref: > property.id, not null]
-  type_code char(5)
-  year_built integer
-  replacement_cost numeric(14,2)
-  note: 'Property improvements like buildings and structures'
-}
-
-// Billing & Payment Tables
-Table levy_bill {
-  id uuid [pk]
-  property_id uuid [ref: > property.id]
-  levy_id uuid [ref: > levy.id]
+  property_id uuid [ref: > appraisal.property.id]
+  levy_id uuid [ref: > billing.levy.id]
   billed_amount numeric(14,2)
   due_date date
   status varchar(20) [default: 'UNPAID']
+  created_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  updated_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  created_by varchar(50)
+  updated_by varchar(50)
   note: 'Property tax bill records'
 }
 
-Table payment {
+Table billing.payment {
   id uuid [pk]
-  bill_id uuid [ref: > levy_bill.id]
+  bill_id uuid [ref: > billing.levy_bill.id]
   tender_date date
   amount numeric(14,2)
   note: 'Payment records for levy bills'
 }
 
-// Collections & Assessments Tables
-Table collection_transaction {
+Table billing.collection_transaction {
   id uuid [pk]
-  property_id uuid [ref: > property.id]
+  property_id uuid [ref: > appraisal.property.id]
   tx_type varchar(20)
   tx_date date
   amount numeric(14,2)
   note: 'Collection transactions for properties'
 }
 
-Table special_assessment {
+Table billing.special_assessment {
   id uuid [pk]
-  property_id uuid [ref: > property.id]
+  property_id uuid [ref: > appraisal.property.id]
   agency_code varchar(10)
   description varchar(100)
   assessment_amount numeric(14,2)
   start_year integer
   end_year integer
+  created_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  updated_at timestamptz [default: 'CURRENT_TIMESTAMP']
+  created_by varchar(50)
+  updated_by varchar(50)
   note: 'Special assessment records for properties'
+}
+
+// Master Schema Views
+View master.property_comprehensive {
+  property_id uuid [ref: > appraisal.property.id]
+  total_land_value numeric(14,2)
+  total_improvement_value numeric(14,2)
+  total_property_value numeric(14,2)
+  land_parcel_count integer
+  improvement_count integer
+  total_billed numeric(14,2)
+  total_paid numeric(14,2)
+  balance_due numeric(14,2)
+  bill_count integer
+  payment_count integer
+  last_payment_date date
+  assessment_count integer
+  total_assessment_amount numeric(14,2)
+  earliest_assessment_year integer
+  latest_assessment_year integer
+  assessment_agencies varchar
+  note: 'Comprehensive view of property with valuation and billing data'
 }
