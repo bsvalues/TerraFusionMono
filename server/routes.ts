@@ -29,6 +29,7 @@ import fieldReportRoutes from "./routes/field-reports";
 import pacsMigrationRoutes from "./routes/pacs-migration";
 import importRoutes from "./routes/import";
 import valuationRoutes from "./routes/valuation";
+import gisRoutes from "./routes/gis.routes";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 
@@ -1105,6 +1106,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Valuation routes
   app.use('/api/valuation', valuationRoutes);
+
+  // GIS and spatial data routes
+  app.use('/api/gis', gisRoutes);
   
   // WebSocket monitoring endpoints
   app.get('/api/websocket/connections', async (req, res) => {
