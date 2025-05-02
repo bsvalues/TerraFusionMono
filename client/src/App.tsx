@@ -28,6 +28,7 @@ import CollaborationDemo from "@/pages/CollaborationDemo";
 import FieldDataPage from "@/pages/FieldDataPage";
 import ImportPage from "@/pages/import";
 import ValuationPage from "@/pages/valuation";
+import GISExplorerPage from "@/pages/gis/GISExplorerPage";
 
 function Router() {
   return (
@@ -49,6 +50,7 @@ function Router() {
         {/* Field management routes */}
         <Route path="/parcels" component={ParcelsPage} />
         <Route path="/geocode" component={GeocodePage} />
+        <Route path="/gis-explorer" component={GISExplorerPage} />
         <Route path="/crop-health" component={CropHealthDashboard} />
         <Route path="/crop-identifier" component={CropIdentifierPage} />
         <Route path="/crop-analysis" component={CropAnalysisPage} />

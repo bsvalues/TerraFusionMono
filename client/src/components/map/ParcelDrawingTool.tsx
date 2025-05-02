@@ -1,15 +1,10 @@
 import { useEffect, useRef, useState } from 'react';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
-import { EditControl } from 'react-leaflet-draw';
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useToast } from '@/hooks/use-toast';
 import 'leaflet/dist/leaflet.css';
-import 'leaflet-draw/dist/leaflet.draw.css';
-
-// This makes TypeScript aware of the Leaflet Draw module
 import L from 'leaflet';
-import 'leaflet-draw';
 
 interface ParcelDrawingToolProps {
   onGeometryChange?: (geojson: any) => void; 
@@ -20,20 +15,26 @@ interface ParcelDrawingToolProps {
   zoom?: number;
 }
 
-const LeafletDrawController = ({ 
+const MapInteractionController = ({ 
   featureGroupRef, 
   initialGeometry,
-  onReady
+  onReady,
+  onGeometryChange
 }: { 
   featureGroupRef: React.RefObject<L.FeatureGroup>,
   initialGeometry?: any,
-  onReady?: () => void
+  onReady?: () => void,
+  onGeometryChange?: (geojson: any) => void
 }) => {
   const map = useMap();
+  const { toast } = useToast();
   
   // Initialize the map with the initial geometry and set bounds
   useEffect(() => {
-    if (initialGeometry && featureGroupRef.current) {
+    if (!featureGroupRef.current) return;
+    
+    // Initialize with initial geometry if provided
+    if (initialGeometry) {
       try {
         // Clear existing layers
         featureGroupRef.current.clearLayers();
@@ -54,10 +55,159 @@ const LeafletDrawController = ({
       }
     }
     
+    // Add a click handler to create polygon vertices
+    const markers: L.Marker[] = [];
+    let polyline: L.Polyline | null = null;
+    let polygon: L.Polygon | null = null;
+    
+    const handleMapClick = (e: L.LeafletMouseEvent) => {
+      const latlng = e.latlng;
+      
+      // Add a marker at the clicked location
+      const marker = L.marker(latlng, {
+        draggable: true,
+      }).addTo(featureGroupRef.current!);
+      
+      marker.on('dragend', () => updatePolyline());
+      markers.push(marker);
+      
+      // Update the polyline connecting the markers
+      updatePolyline();
+    };
+    
+    const updatePolyline = () => {
+      // Remove existing polyline/polygon
+      if (polyline) {
+        featureGroupRef.current?.removeLayer(polyline);
+      }
+      if (polygon) {
+        featureGroupRef.current?.removeLayer(polygon);
+      }
+      
+      if (markers.length > 0) {
+        const latlngs = markers.map(marker => marker.getLatLng());
+        
+        // If we have at least 3 points, create a polygon
+        if (latlngs.length >= 3) {
+          polygon = L.polygon(latlngs, { color: '#ff4500' })
+            .addTo(featureGroupRef.current!);
+          
+          // Store the GeoJSON for the polygon
+          if (onGeometryChange) {
+            const geojson = polygon.toGeoJSON();
+            onGeometryChange(geojson);
+          }
+        } else {
+          // Otherwise, just create a line
+          polyline = L.polyline(latlngs, { color: '#3388ff' })
+            .addTo(featureGroupRef.current!);
+        }
+      }
+    };
+    
+    map.on('click', handleMapClick);
+    
+    // Add custom UI elements using DOM instead of Leaflet Controls
+    const controlsDiv = document.createElement('div');
+    controlsDiv.className = 'leaflet-top leaflet-right';
+    controlsDiv.style.zIndex = '1000';
+    controlsDiv.innerHTML = `
+      <div class="leaflet-control leaflet-bar" style="margin-top: 10px; margin-right: 10px;">
+        <a 
+          href="#" 
+          id="complete-polygon-btn"
+          title="Complete Polygon" 
+          style="display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; background: white; width: 30px; height: 30px; text-decoration: none;"
+        >
+          ✓
+        </a>
+        <a 
+          href="#" 
+          id="clear-polygon-btn"
+          title="Clear All" 
+          style="display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; background: white; width: 30px; height: 30px; text-decoration: none; border-top: 1px solid #ccc;"
+        >
+          ×
+        </a>
+      </div>
+    `;
+    
+    map.getContainer().appendChild(controlsDiv);
+    
+    // Add event listeners to the buttons
+    const completeBtn = document.getElementById('complete-polygon-btn');
+    const clearBtn = document.getElementById('clear-polygon-btn');
+    
+    if (completeBtn) {
+      completeBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        if (markers.length >= 3) {
+          // Finalize the polygon
+          if (polygon) {
+            const geojson = polygon.toGeoJSON();
+            if (onGeometryChange) {
+              onGeometryChange(geojson);
+            }
+            
+            toast({
+              title: "Polygon completed",
+              description: "Your polygon has been created. You can edit it by dragging the points.",
+            });
+          }
+        } else {
+          toast({
+            title: "Not enough points",
+            description: "You need at least 3 points to create a polygon. Click on the map to add more points.",
+            variant: "destructive",
+          });
+        }
+      });
+    }
+    
+    if (clearBtn) {
+      clearBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        
+        // Remove all markers, polylines, and polygons
+        markers.forEach(marker => {
+          featureGroupRef.current?.removeLayer(marker);
+        });
+        
+        if (polyline) {
+          featureGroupRef.current?.removeLayer(polyline);
+          polyline = null;
+        }
+        
+        if (polygon) {
+          featureGroupRef.current?.removeLayer(polygon);
+          polygon = null;
+        }
+        
+        // Clear the markers array
+        markers.length = 0;
+        
+        // Notify that no geometry exists
+        if (onGeometryChange) {
+          onGeometryChange(null);
+        }
+        
+        toast({
+          title: "Cleared",
+          description: "All points have been cleared from the map.",
+        });
+      });
+    }
+    
     if (onReady) {
       onReady();
     }
-  }, [featureGroupRef, initialGeometry, map, onReady]);
+    
+    // Cleanup function
+    return () => {
+      map.off('click', handleMapClick);
+      map.getContainer().removeChild(controlsDiv);
+    };
+  }, [featureGroupRef, initialGeometry, map, onReady, onGeometryChange, toast]);
   
   return null;
 };
@@ -72,26 +222,18 @@ export default function ParcelDrawingTool({
 }: ParcelDrawingToolProps) {
   const { toast } = useToast();
   const featureGroupRef = useRef<L.FeatureGroup>(null);
-  const [mapReady, setMapReady] = useState(false);
-  const [geometryExists, setGeometryExists] = useState(!!initialGeometry);
   const [currentGeometry, setCurrentGeometry] = useState<any>(initialGeometry);
   
-  // Extract and convert the geometry to GeoJSON 
-  const extractGeoJSON = () => {
-    if (!featureGroupRef.current) return null;
+  // Handle changes from the map controller
+  const handleInternalGeometryChange = (geojson: any) => {
+    setCurrentGeometry(geojson);
     
-    const layers = featureGroupRef.current.getLayers();
-    if (layers.length === 0) return null;
-    
-    // Create GeoJSON representation of the drawn shapes
-    const geojson = featureGroupRef.current.toGeoJSON();
-    return geojson;
+    // Only call the external handler when the save button is clicked
   };
   
-  // Handle exporting the geometry
-  const handleExportGeometry = () => {
-    const geojson = extractGeoJSON();
-    if (!geojson) {
+  // Handle the save button click
+  const handleSaveGeometry = () => {
+    if (!currentGeometry) {
       toast({
         title: "No geometry drawn",
         description: "Please draw a shape on the map first.",
@@ -100,50 +242,15 @@ export default function ParcelDrawingTool({
       return;
     }
     
-    // Emit the geometry via the callback
+    // Call the external handler with the current geometry
     if (onGeometryChange) {
-      onGeometryChange(geojson);
+      onGeometryChange(currentGeometry);
     }
     
-    // Save a copy in the current state
-    setCurrentGeometry(geojson);
-    
     toast({
-      title: "Geometry captured",
-      description: "The drawn geometry has been successfully captured.",
+      title: "Geometry saved",
+      description: "The drawn geometry has been successfully saved.",
     });
-  };
-  
-  // Handle created event from the draw control
-  const handleCreated = (e: any) => {
-    setGeometryExists(true);
-    
-    toast({
-      title: "Shape created",
-      description: `${e.layerType} has been drawn. Click save to use this geometry.`,
-    });
-  };
-  
-  // Handle edited event from the draw control
-  const handleEdited = (e: any) => {
-    toast({
-      title: "Shape edited",
-      description: `${e.layers.getLayers().length} layers edited. Click save to update.`,
-    });
-  };
-  
-  // Handle deleted event from the draw control
-  const handleDeleted = (e: any) => {
-    // Check if any layers remain after deletion
-    if (featureGroupRef.current) {
-      const layersCount = featureGroupRef.current.getLayers().length;
-      setGeometryExists(layersCount > 0);
-      
-      toast({
-        title: "Shape deleted",
-        description: `${e.layers.getLayers().length} layers removed.`,
-      });
-    }
   };
   
   return (
@@ -151,7 +258,7 @@ export default function ParcelDrawingTool({
       <CardHeader>
         <CardTitle>Parcel Geometry Editor</CardTitle>
         <CardDescription>
-          Use the drawing tools to create or edit parcel boundaries
+          Click on the map to add points. Drag points to adjust the shape.
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -167,28 +274,13 @@ export default function ParcelDrawingTool({
             />
             
             <FeatureGroup ref={featureGroupRef}>
-              {mapReady && (
-                <EditControl
-                  position="topright"
-                  draw={{
-                    rectangle: true,
-                    polygon: true,
-                    circle: false, // Circle isn't supported by many GIS systems
-                    circlemarker: false,
-                    marker: false,
-                    polyline: false,
-                  }}
-                  onCreated={handleCreated}
-                  onEdited={handleEdited}
-                  onDeleted={handleDeleted}
-                />
-              )}
+              {/* The layers will be added programmatically */}
             </FeatureGroup>
             
-            <LeafletDrawController 
+            <MapInteractionController 
               featureGroupRef={featureGroupRef} 
               initialGeometry={initialGeometry}
-              onReady={() => setMapReady(true)}
+              onGeometryChange={handleInternalGeometryChange}
             />
           </MapContainer>
         </div>
@@ -199,7 +291,7 @@ export default function ParcelDrawingTool({
           onClick={() => {
             if (featureGroupRef.current) {
               featureGroupRef.current.clearLayers();
-              setGeometryExists(false);
+              setCurrentGeometry(null);
               toast({
                 title: "Cleared",
                 description: "All shapes have been cleared from the map.",
@@ -207,11 +299,11 @@ export default function ParcelDrawingTool({
             }
           }}
         >
-          Clear
+          Clear Map
         </Button>
         <Button
-          onClick={handleExportGeometry}
-          disabled={!geometryExists}
+          onClick={handleSaveGeometry}
+          disabled={!currentGeometry}
         >
           Save Geometry
         </Button>
