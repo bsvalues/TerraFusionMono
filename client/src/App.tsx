@@ -28,7 +28,7 @@ import CollaborationDemo from "@/pages/CollaborationDemo";
 import FieldDataPage from "@/pages/FieldDataPage";
 import ImportPage from "@/pages/import";
 import ValuationPage from "@/pages/valuation";
-import GISExplorerPage from "@/pages/gis/GISExplorerPage";
+import GISExplorerPage from "@/pages/GISExplorerPage";
 
 function Router() {
   return (

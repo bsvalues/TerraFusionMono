@@ -55,6 +55,7 @@ export default function Sidebar() {
   // Define field management entries
   const fieldTools = [
     { name: "Parcels", icon: LayersIcon, path: "/parcels" },
+    { name: "GIS Explorer", icon: MapIcon, path: "/gis-explorer" },
     { name: "Field Map", icon: MapIcon, path: "/map" },
     { name: "Crop Health", icon: SproutIcon, path: "/crop-health" },
     { name: "Crop Identifier", icon: ScanLine, path: "/crop-identifier" },

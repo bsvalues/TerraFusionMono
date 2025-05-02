@@ -111,10 +111,17 @@ export default function ParcelMap({
     setHighlightGeometry(null);
   };
   
-  // Function to handle map load
-  const handleMapLoad = useCallback((e: { target: L.Map }) => {
-    setMap(e.target);
-  }, []);
+  // Function to get reference to the map
+  const SetMapRef = () => {
+    const map = useMap();
+    
+    // Effect runs once when component mounts
+    useEffect(() => {
+      setMap(map);
+    }, [map]);
+    
+    return null;
+  };
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -129,13 +136,13 @@ export default function ParcelMap({
                 center={center}
                 zoom={zoom}
                 style={{ height: '100%', width: '100%' }}
-                whenReady={handleMapLoad}
               >
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
                   url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                 />
                 <ChangeMapView center={center} zoom={zoom} />
+                <SetMapRef />
 
                 {parcelsQuery.data?.parcels && (
                   <GeoJSON

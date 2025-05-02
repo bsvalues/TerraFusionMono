@@ -1,11 +1,19 @@
 import React, { useState } from 'react';
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { useQuery } from '@tanstack/react-query';
-import { Loader2 } from 'lucide-react';
+import { Alert, AlertDescription } from '@/components/ui/alert';
+import { useToast } from '@/hooks/use-toast';
+import { AlertCircle } from 'lucide-react';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
 
 interface SpatialAnalysisControlsProps {
   selectedParcelId: string | null;
@@ -18,317 +26,296 @@ export default function SpatialAnalysisControls({
   onHighlightGeometry,
   onClearHighlight
 }: SpatialAnalysisControlsProps) {
-  const [analysisType, setAnalysisType] = useState<string>('buffer');
-  const [bufferDistance, setBufferDistance] = useState<number>(100);
-  const [bufferUnit, setBufferUnit] = useState<string>('METERS');
-  const [targetParcelId, setTargetParcelId] = useState<string>('');
-  const [relationshipType, setRelationshipType] = useState<string>('intersects');
-  const [nearestLimit, setNearestLimit] = useState<number>(3);
-  
-  // Buffer Analysis
-  const bufferQuery = useQuery({
-    queryKey: ['gis', 'buffer', selectedParcelId, bufferDistance, bufferUnit],
-    queryFn: async () => {
-      if (!selectedParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/buffer?distance=${bufferDistance}&unit=${bufferUnit}`);
-      if (!response.ok) throw new Error('Failed to fetch buffer data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Intersection Analysis
-  const intersectionQuery = useQuery({
-    queryKey: ['gis', 'intersects', selectedParcelId],
-    queryFn: async () => {
-      if (!selectedParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/intersects`);
-      if (!response.ok) throw new Error('Failed to fetch intersection data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Convex Hull
-  const convexHullQuery = useQuery({
-    queryKey: ['gis', 'convexhull', selectedParcelId],
-    queryFn: async () => {
-      if (!selectedParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/convexhull`);
-      if (!response.ok) throw new Error('Failed to fetch convex hull data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Spatial Relationship
-  const relationshipQuery = useQuery({
-    queryKey: ['gis', 'relation', selectedParcelId, targetParcelId, relationshipType],
-    queryFn: async () => {
-      if (!selectedParcelId || !targetParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/relation/${targetParcelId}?relation=${relationshipType}`);
-      if (!response.ok) throw new Error('Failed to fetch spatial relationship data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Topology Validation
-  const validationQuery = useQuery({
-    queryKey: ['gis', 'validate', selectedParcelId],
-    queryFn: async () => {
-      if (!selectedParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/validate`);
-      if (!response.ok) throw new Error('Failed to fetch validation data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Nearest Neighbors
-  const nearestQuery = useQuery({
-    queryKey: ['gis', 'nearest', selectedParcelId, nearestLimit],
-    queryFn: async () => {
-      if (!selectedParcelId) return null;
-      const response = await fetch(`/api/gis/parcels/${selectedParcelId}/nearest?limit=${nearestLimit}&unit=METERS`);
-      if (!response.ok) throw new Error('Failed to fetch nearest neighbors data');
-      return response.json();
-    },
-    enabled: false,
-  });
-  
-  // Function to run analysis based on selected type
-  const runAnalysis = () => {
-    // Clear previous highlights
-    onClearHighlight();
-    
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [distance, setDistance] = useState('100');
+  const [relationshipType, setRelationshipType] = useState('contains');
+  const [neighbors, setNeighbors] = useState('5');
+  const [analysisError, setAnalysisError] = useState<string | null>(null);
+  const [analysisResult, setAnalysisResult] = useState<any>(null);
+
+  // Function to call the various GIS endpoints
+  const performAnalysis = async (operation: string) => {
     if (!selectedParcelId) {
-      alert('Please select a parcel first');
+      toast({
+        title: "No parcel selected",
+        description: "Please select a parcel on the map first.",
+        variant: "destructive"
+      });
       return;
     }
-    
-    switch (analysisType) {
-      case 'buffer':
-        bufferQuery.refetch().then(result => {
-          if (result.data?.buffer_geom) {
-            onHighlightGeometry(result.data.buffer_geom);
-          }
-        });
-        break;
-      case 'intersect':
-        intersectionQuery.refetch();
-        break;
-      case 'convexhull':
-        convexHullQuery.refetch().then(result => {
-          if (result.data?.convex_hull) {
-            onHighlightGeometry(result.data.convex_hull);
-          }
-        });
-        break;
-      case 'relation':
-        if (!targetParcelId) {
-          alert('Please enter a target parcel ID');
-          return;
-        }
-        relationshipQuery.refetch();
-        break;
-      case 'validate':
-        validationQuery.refetch();
-        break;
-      case 'nearest':
-        nearestQuery.refetch().then(result => {
-          if (result.data?.nearest_neighbors) {
-            // Highlight all the nearest parcels
-            const nearestGeoms = result.data.nearest_neighbors.map((n: any) => n.geom);
-            onHighlightGeometry(nearestGeoms);
-          }
-        });
-        break;
+
+    setLoading(true);
+    setAnalysisError(null);
+    setAnalysisResult(null);
+    onClearHighlight();
+
+    try {
+      let url = '';
+      let params = new URLSearchParams();
+      params.append('parcelId', selectedParcelId);
+
+      switch (operation) {
+        case 'buffer':
+          url = `/api/gis/buffer?${params.toString()}&distance=${distance}`;
+          break;
+        case 'convexHull':
+          url = `/api/gis/convex-hull?${params.toString()}`;
+          break;
+        case 'validate':
+          url = `/api/gis/validate-topology?${params.toString()}`;
+          break;
+        case 'relationship':
+          url = `/api/gis/relationship?${params.toString()}&type=${relationshipType}`;
+          break;
+        case 'neighbors':
+          url = `/api/gis/nearest-neighbors?${params.toString()}&count=${neighbors}`;
+          break;
+        case 'boundaries':
+          url = `/api/gis/shared-boundaries?${params.toString()}`;
+          break;
+        case 'intersection':
+          // This would require a second parcel ID, which we don't have in this UI yet
+          url = `/api/gis/intersection?${params.toString()}`;
+          break;
+        case 'distance':
+          // This would require a second parcel ID, which we don't have in this UI yet
+          url = `/api/gis/distance?${params.toString()}`;
+          break;
+        default:
+          throw new Error(`Unsupported operation: ${operation}`);
+      }
+
+      const response = await fetch(url);
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.message || 'An error occurred with the GIS analysis');
+      }
+
+      setAnalysisResult(data);
+
+      // For operations that return geometries, highlight them on the map
+      if (data.geometry || data.buffer || data.convexHull || data.validatedGeometry) {
+        const geometry = data.geometry || data.buffer || data.convexHull || data.validatedGeometry;
+        onHighlightGeometry(geometry);
+      } else if (data.parcels && Array.isArray(data.parcels) && data.parcels.length > 0) {
+        // If we have multiple parcels (like in nearest neighbors), highlight the first one
+        // or create a feature collection of all parcels
+        const geometry = {
+          type: 'FeatureCollection',
+          features: data.parcels.map((p: any) => ({
+            type: 'Feature',
+            properties: { id: p.id },
+            geometry: p.geometry
+          }))
+        };
+        onHighlightGeometry(geometry);
+      }
+
+      toast({
+        title: "Analysis Complete",
+        description: `${operation} analysis completed successfully.`,
+      });
+    } catch (error) {
+      console.error("GIS Analysis error:", error);
+      setAnalysisError(error instanceof Error ? error.message : 'An unknown error occurred');
+      toast({
+        title: "Analysis Failed",
+        description: error instanceof Error ? error.message : 'An unknown error occurred',
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
     }
   };
-  
-  const resetAnalysis = () => {
-    onClearHighlight();
+
+  // Helper function to render analysis results
+  const renderResults = () => {
+    if (!analysisResult) return null;
+
+    return (
+      <div className="mt-4 p-3 bg-gray-50 rounded border">
+        <h4 className="font-medium mb-2">Analysis Results:</h4>
+        <div className="text-sm">
+          {analysisResult.message && (
+            <p className="mb-2">{analysisResult.message}</p>
+          )}
+          
+          {analysisResult.isValid !== undefined && (
+            <p className="mb-2">Topology Valid: {analysisResult.isValid ? 'Yes' : 'No'}</p>
+          )}
+          
+          {analysisResult.distance !== undefined && (
+            <p className="mb-2">Distance: {analysisResult.distance} meters</p>
+          )}
+          
+          {analysisResult.area !== undefined && (
+            <p className="mb-2">Area: {Math.round(analysisResult.area)} square meters</p>
+          )}
+          
+          {analysisResult.length !== undefined && (
+            <p className="mb-2">Length: {Math.round(analysisResult.length)} meters</p>
+          )}
+          
+          {analysisResult.relationshipResult !== undefined && (
+            <p className="mb-2">Relationship Result: {analysisResult.relationshipResult.toString()}</p>
+          )}
+          
+          {analysisResult.parcels && Array.isArray(analysisResult.parcels) && (
+            <div className="mb-2">
+              <p className="font-medium">Matching Parcels:</p>
+              <ul className="list-disc pl-5 mt-1">
+                {analysisResult.parcels.map((parcel: any) => (
+                  <li key={parcel.id || parcel.prop_id}>
+                    {parcel.address || parcel.prop_id || parcel.id}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+        </div>
+      </div>
+    );
   };
-  
-  const isLoading = 
-    bufferQuery.isFetching || 
-    intersectionQuery.isFetching || 
-    convexHullQuery.isFetching || 
-    relationshipQuery.isFetching || 
-    validationQuery.isFetching || 
-    nearestQuery.isFetching;
-  
+
   return (
-    <Card className="w-full max-w-md">
+    <Card className="h-full">
       <CardHeader>
         <CardTitle>Spatial Analysis</CardTitle>
+        <CardDescription>
+          Select a parcel and perform GIS analysis.
+        </CardDescription>
       </CardHeader>
       <CardContent>
-        {!selectedParcelId ? (
-          <div className="text-center p-4 text-sm text-gray-500">
-            Select a parcel on the map to enable analysis tools
+        {selectedParcelId ? (
+          <div className="mb-4">
+            <p className="text-sm font-medium">Selected Parcel: {selectedParcelId}</p>
           </div>
         ) : (
-          <>
-            <div className="mb-4">
-              <p className="text-sm font-medium mb-2">Selected Parcel: {selectedParcelId}</p>
-              <Select value={analysisType} onValueChange={setAnalysisType}>
-                <SelectTrigger>
-                  <SelectValue placeholder="Select analysis type" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="buffer">Buffer Analysis</SelectItem>
-                  <SelectItem value="intersect">Intersection Analysis</SelectItem>
-                  <SelectItem value="convexhull">Convex Hull</SelectItem>
-                  <SelectItem value="relation">Spatial Relationship</SelectItem>
-                  <SelectItem value="validate">Topology Validation</SelectItem>
-                  <SelectItem value="nearest">Nearest Neighbors</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            
-            <Tabs value={analysisType} className="w-full">
-              <TabsContent value="buffer" className="space-y-4">
-                <div className="grid grid-cols-2 gap-2">
-                  <div>
-                    <p className="text-sm font-medium mb-1">Distance</p>
-                    <Input 
-                      type="number" 
-                      value={bufferDistance} 
-                      onChange={e => setBufferDistance(Number(e.target.value))} 
-                    />
-                  </div>
-                  <div>
-                    <p className="text-sm font-medium mb-1">Unit</p>
-                    <Select value={bufferUnit} onValueChange={setBufferUnit}>
-                      <SelectTrigger>
-                        <SelectValue placeholder="Unit" />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="METERS">Meters</SelectItem>
-                        <SelectItem value="KILOMETERS">Kilometers</SelectItem>
-                        <SelectItem value="FEET">Feet</SelectItem>
-                        <SelectItem value="MILES">Miles</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  </div>
-                </div>
-                {bufferQuery.data && (
-                  <div className="text-sm mt-4 p-2 bg-gray-50 rounded">
-                    <p>Buffer created: {bufferDistance} {bufferUnit.toLowerCase()}</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="intersect">
-                {intersectionQuery.data && (
-                  <div className="text-sm p-2 bg-gray-50 rounded">
-                    <p>Intersecting parcels: {intersectionQuery.data.intersecting_count}</p>
-                    {intersectionQuery.data.intersecting_parcels?.map((p: any) => (
-                      <div key={p.parcel_id} className="text-xs mt-1">{p.parcel_id}</div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="convexhull">
-                {convexHullQuery.data && (
-                  <div className="text-sm p-2 bg-gray-50 rounded">
-                    <p>Convexity ratio: {convexHullQuery.data.convexity_ratio.toFixed(2)}</p>
-                    <p>Assessment: {convexHullQuery.data.complexity_assessment}</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="relation" className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium mb-1">Target Parcel ID</p>
-                  <Input 
-                    value={targetParcelId} 
-                    onChange={e => setTargetParcelId(e.target.value)} 
-                    placeholder="Enter target parcel ID"
-                  />
-                </div>
-                <div>
-                  <p className="text-sm font-medium mb-1">Relationship Type</p>
-                  <Select value={relationshipType} onValueChange={setRelationshipType}>
-                    <SelectTrigger>
-                      <SelectValue placeholder="Relationship" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="intersects">Intersects</SelectItem>
-                      <SelectItem value="contains">Contains</SelectItem>
-                      <SelectItem value="within">Within</SelectItem>
-                      <SelectItem value="touches">Touches</SelectItem>
-                      <SelectItem value="overlaps">Overlaps</SelectItem>
-                      <SelectItem value="disjoint">Disjoint</SelectItem>
-                    </SelectContent>
-                  </Select>
-                </div>
-                {relationshipQuery.data && (
-                  <div className="text-sm p-2 bg-gray-50 rounded">
-                    <p>Result: {relationshipQuery.data.result ? 'True' : 'False'}</p>
-                    {relationshipQuery.data.intersection_area_m2 && (
-                      <p>Intersection area: {relationshipQuery.data.intersection_area_m2.toFixed(2)} m²</p>
-                    )}
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="validate">
-                {validationQuery.data && (
-                  <div className="text-sm p-2 bg-gray-50 rounded">
-                    <p>Valid: {validationQuery.data.validation.is_valid ? 'Yes' : 'No'}</p>
-                    <p>Simple: {validationQuery.data.validation.is_simple ? 'Yes' : 'No'}</p>
-                    <p>Vertices: {validationQuery.data.validation.num_vertices}</p>
-                    <p>Message: {validationQuery.data.validation.validation_message}</p>
-                  </div>
-                )}
-              </TabsContent>
-              
-              <TabsContent value="nearest" className="space-y-4">
-                <div>
-                  <p className="text-sm font-medium mb-1">Number of neighbors</p>
-                  <Input 
-                    type="number" 
-                    value={nearestLimit} 
-                    onChange={e => setNearestLimit(Number(e.target.value))} 
-                    min={1}
-                    max={10}
-                  />
-                </div>
-                {nearestQuery.data && (
-                  <div className="text-sm p-2 bg-gray-50 rounded">
-                    <p>Found {nearestQuery.data.count} nearest parcels:</p>
-                    {nearestQuery.data.nearest_neighbors?.map((n: any) => (
-                      <div key={n.parcel_id} className="text-xs mt-1">
-                        {n.parcel_id} - {n.distance.toFixed(2)} meters
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
-            
-            <div className="flex gap-2 mt-4">
-              <Button 
-                onClick={runAnalysis} 
-                disabled={isLoading}
-                className="flex-1"
-              >
-                {isLoading && <Loader2 className="mr-2 h-4 w-4 animate-spin" />}
-                Run Analysis
-              </Button>
-              <Button 
-                onClick={resetAnalysis} 
-                variant="outline"
-              >
-                Reset
-              </Button>
-            </div>
-          </>
+          <Alert className="mb-4" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>
+              No parcel selected. Click a parcel on the map to select it.
+            </AlertDescription>
+          </Alert>
         )}
+
+        <Tabs defaultValue="buffer" className="mt-2">
+          <TabsList className="grid grid-cols-3 mb-4">
+            <TabsTrigger value="buffer">Buffer</TabsTrigger>
+            <TabsTrigger value="topology">Topology</TabsTrigger>
+            <TabsTrigger value="relationships">Relationships</TabsTrigger>
+          </TabsList>
+          
+          <TabsContent value="buffer" className="space-y-4">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="distance">Buffer Distance (meters)</Label>
+                <Input
+                  id="distance"
+                  type="number"
+                  value={distance}
+                  onChange={(e) => setDistance(e.target.value)}
+                  min="1"
+                  max="10000"
+                />
+              </div>
+              <Button 
+                className="w-full" 
+                onClick={() => performAnalysis('buffer')}
+                disabled={loading || !selectedParcelId}
+              >
+                {loading ? 'Processing...' : 'Create Buffer'}
+              </Button>
+              
+              <Button
+                className="w-full"
+                onClick={() => performAnalysis('convexHull')}
+                variant="outline"
+                disabled={loading || !selectedParcelId}
+              >
+                Create Convex Hull
+              </Button>
+            </div>
+          </TabsContent>
+          
+          <TabsContent value="topology" className="space-y-4">
+            <Button
+              className="w-full"
+              onClick={() => performAnalysis('validate')}
+              disabled={loading || !selectedParcelId}
+            >
+              Validate Topology
+            </Button>
+          </TabsContent>
+          
+          <TabsContent value="relationships" className="space-y-4">
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="relationship-type">Relationship Type</Label>
+                <Select
+                  value={relationshipType}
+                  onValueChange={setRelationshipType}
+                >
+                  <SelectTrigger>
+                    <SelectValue placeholder="Select relationship" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="contains">Contains</SelectItem>
+                    <SelectItem value="intersects">Intersects</SelectItem>
+                    <SelectItem value="touches">Touches</SelectItem>
+                    <SelectItem value="within">Within</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => performAnalysis('relationship')}
+                disabled={loading || !selectedParcelId}
+              >
+                Check Relationship
+              </Button>
+              
+              <div>
+                <Label htmlFor="neighbors">Number of Neighbors</Label>
+                <Input
+                  id="neighbors"
+                  type="number"
+                  value={neighbors}
+                  onChange={(e) => setNeighbors(e.target.value)}
+                  min="1"
+                  max="20"
+                />
+              </div>
+              <Button
+                className="w-full"
+                onClick={() => performAnalysis('neighbors')}
+                disabled={loading || !selectedParcelId}
+              >
+                Find Nearest Neighbors
+              </Button>
+              
+              <Button
+                className="w-full"
+                onClick={() => performAnalysis('boundaries')}
+                variant="outline"
+                disabled={loading || !selectedParcelId}
+              >
+                Find Shared Boundaries
+              </Button>
+            </div>
+          </TabsContent>
+        </Tabs>
+        
+        {analysisError && (
+          <Alert className="mt-4" variant="destructive">
+            <AlertCircle className="h-4 w-4" />
+            <AlertDescription>{analysisError}</AlertDescription>
+          </Alert>
+        )}
+        
+        {renderResults()}
       </CardContent>
     </Card>
   );
