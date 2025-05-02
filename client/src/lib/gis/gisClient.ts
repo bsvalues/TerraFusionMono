@@ -1,6 +1,6 @@
-import { queryClient } from "../queryClient";
+import axios from 'axios';
 
-// Define types for GIS data
+// Types
 export interface Parcel {
   id: string;
   parcel_id: string;
@@ -22,197 +22,77 @@ export interface ParcelArea {
 
 export type AreaUnit = 'SQUARE_METERS' | 'SQUARE_FEET' | 'ACRES' | 'HECTARES';
 
-// GIS Client API
+// Client for GIS API
 export const gisClient = {
-  // Fetch parcels within a bounding box
+  // Fetch parcels within a bounding box (west, south, east, north)
   fetchParcelsInBBox: async (bbox: [number, number, number, number]): Promise<Parcel[]> => {
-    const query = `
-      query ParcelsInBBox($bbox: [Float!]!) {
-        parcelsInBBox(bbox: $bbox) {
-          id
-          parcel_id
-          address
-          owner_name
-          county
-          state_code
-          geom
-          centroid
+    try {
+      const response = await axios.get(`/api/gis/parcels/bbox`, {
+        params: {
+          west: bbox[0],
+          south: bbox[1],
+          east: bbox[2],
+          north: bbox[3]
         }
-      }
-    `;
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching parcels in bounding box:', error);
+      return [];
+    }
+  },
 
-    const response = await queryClient.fetchQuery({
-      queryKey: ['gis', 'parcelsInBBox', bbox],
-      queryFn: async () => {
-        const result = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query,
-            variables: { bbox },
-          }),
-        });
-        
-        if (!result.ok) {
-          throw new Error('Failed to fetch parcels in bounding box');
-        }
-        
-        const data = await result.json();
-        return data.data.parcelsInBBox;
-      },
-    });
-    
-    return response;
-  },
-  
   // Fetch parcels near a point
-  fetchParcelsNear: async (lat: number, lon: number, radiusMeters: number = 500): Promise<Parcel[]> => {
-    const query = `
-      query ParcelsNear($lat: Float!, $lon: Float!, $radiusMeters: Float!) {
-        parcelsNear(lat: $lat, lon: $lon, radiusMeters: $radiusMeters) {
-          id
-          parcel_id
-          address
-          owner_name
-          geom
-          centroid
+  fetchParcelsNear: async (lat: number, lon: number, radiusMeters: number = 1000): Promise<Parcel[]> => {
+    try {
+      const response = await axios.get(`/api/gis/parcels/near`, {
+        params: {
+          lat,
+          lon,
+          radius: radiusMeters
         }
-      }
-    `;
-    
-    const response = await queryClient.fetchQuery({
-      queryKey: ['gis', 'parcelsNear', lat, lon, radiusMeters],
-      queryFn: async () => {
-        const result = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query,
-            variables: { lat, lon, radiusMeters },
-          }),
-        });
-        
-        if (!result.ok) {
-          throw new Error('Failed to fetch parcels near point');
-        }
-        
-        const data = await result.json();
-        return data.data.parcelsNear;
-      },
-    });
-    
-    return response;
+      });
+      return response.data;
+    } catch (error) {
+      console.error('Error fetching parcels near point:', error);
+      return [];
+    }
   },
-  
-  // Get a single parcel by ID
-  fetchParcel: async (id: string): Promise<Parcel | null> => {
-    const query = `
-      query Parcel($id: String!) {
-        parcel(id: $id) {
-          id
-          parcel_id
-          address
-          owner_name
-          county
-          state_code
-          geom
-          centroid
-          created_at
-          updated_at
-        }
-      }
-    `;
-    
-    const response = await queryClient.fetchQuery({
-      queryKey: ['gis', 'parcel', id],
-      queryFn: async () => {
-        const result = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query,
-            variables: { id },
-          }),
-        });
-        
-        if (!result.ok) {
-          throw new Error('Failed to fetch parcel');
-        }
-        
-        const data = await result.json();
-        return data.data.parcel;
-      },
-    });
-    
-    return response;
+
+  // Fetch a single parcel by ID
+  fetchParcel: async (id: string): Promise<Parcel> => {
+    try {
+      const response = await axios.get(`/api/gis/parcels/${id}`);
+      return response.data;
+    } catch (error) {
+      console.error(`Error fetching parcel ${id}:`, error);
+      throw error;
+    }
   },
-  
+
   // Calculate the area of a parcel
   calculateParcelArea: async (id: string, unit: AreaUnit = 'SQUARE_METERS'): Promise<ParcelArea> => {
-    const query = `
-      query ParcelArea($id: String!, $unit: AreaUnit!) {
-        parcelArea(id: $id, unit: $unit) {
-          parcel_id
-          area
-          unit
-        }
-      }
-    `;
-    
-    const response = await queryClient.fetchQuery({
-      queryKey: ['gis', 'parcelArea', id, unit],
-      queryFn: async () => {
-        const result = await fetch('/api/graphql', {
-          method: 'POST',
-          headers: {
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            query,
-            variables: { id, unit },
-          }),
-        });
-        
-        if (!result.ok) {
-          throw new Error('Failed to calculate parcel area');
-        }
-        
-        const data = await result.json();
-        return data.data.parcelArea;
-      },
-    });
-    
-    return response;
-  },
-  
-  // Update a parcel's geometry
-  updateParcelGeometry: async (parcelId: string, geojson: any): Promise<boolean> => {
-    // This would typically be a mutation, but for this example we'll use a REST endpoint
-    const response = await fetch(`/api/parcels/${parcelId}/geometry`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({ geojson }),
-    });
-    
-    if (!response.ok) {
-      throw new Error('Failed to update parcel geometry');
+    try {
+      const response = await axios.get(`/api/gis/parcels/${id}/area`, {
+        params: { unit }
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error calculating area for parcel ${id}:`, error);
+      throw error;
     }
-    
-    // Invalidate related queries to refresh data
-    queryClient.invalidateQueries({ queryKey: ['gis', 'parcel', parcelId] });
-    queryClient.invalidateQueries({ queryKey: ['gis', 'parcelsInBBox'] });
-    queryClient.invalidateQueries({ queryKey: ['gis', 'parcelsNear'] });
-    
-    return true;
   },
-};
 
-export default gisClient;
+  // Update a parcel's geometry
+  updateParcelGeometry: async (parcelId: string, geojson: any): Promise<Parcel> => {
+    try {
+      const response = await axios.put(`/api/gis/parcels/${parcelId}/geometry`, {
+        geometry: geojson
+      });
+      return response.data;
+    } catch (error) {
+      console.error(`Error updating geometry for parcel ${parcelId}:`, error);
+      throw error;
+    }
+  }
+};

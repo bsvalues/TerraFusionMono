@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { MapContainer, TileLayer, GeoJSON, Marker, Popup, useMapEvents } from 'react-leaflet';
+import React, { useEffect, useRef } from 'react';
+import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
 
@@ -16,8 +16,8 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Define the Parcel type
-interface Parcel {
+// Interface for a parcel
+export interface Parcel {
   id: string;
   parcel_id: string;
   address?: string;
@@ -33,106 +33,88 @@ interface ParcelMapProps {
   zoom?: number;
   height?: string;
   onBoundsChanged?: (bounds: L.LatLngBounds) => void;
+  onParcelClick?: (parcel: Parcel) => void;
 }
 
-// MapEvents component to handle map interactions
-const MapEvents = ({ onBoundsChanged }: { onBoundsChanged?: (bounds: L.LatLngBounds) => void }) => {
-  const map = useMapEvents({
-    moveend: () => {
-      if (onBoundsChanged) {
-        onBoundsChanged(map.getBounds());
-      }
-    },
-    zoomend: () => {
-      if (onBoundsChanged) {
-        onBoundsChanged(map.getBounds());
-      }
-    }
-  });
+// Component to handle the map bounds changes
+const MapBoundsHandler: React.FC<{ onBoundsChanged?: (bounds: L.LatLngBounds) => void }> = ({ 
+  onBoundsChanged 
+}) => {
+  const map = useMap();
+  
+  useEffect(() => {
+    if (!onBoundsChanged) return;
+    
+    // Handler for bounds change
+    const handleBoundsChange = () => {
+      const bounds = map.getBounds();
+      onBoundsChanged(bounds);
+    };
+    
+    // Add event listeners
+    map.on('moveend', handleBoundsChange);
+    map.on('zoomend', handleBoundsChange);
+    
+    // Initial bounds
+    handleBoundsChange();
+    
+    // Remove event listeners on cleanup
+    return () => {
+      map.off('moveend', handleBoundsChange);
+      map.off('zoomend', handleBoundsChange);
+    };
+  }, [map, onBoundsChanged]);
+  
   return null;
 };
 
-// Main ParcelMap component
+// The main component
 const ParcelMap: React.FC<ParcelMapProps> = ({
   parcels,
   center = [40.7128, -74.0060], // Default to NYC
   zoom = 12,
   height = '500px',
-  onBoundsChanged
+  onBoundsChanged,
+  onParcelClick
 }) => {
-  const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
-
-  // Style for the GeoJSON parcels
-  const parcelStyle = {
-    color: '#3388ff',
-    weight: 2,
-    opacity: 0.7,
-    fillColor: '#3388ff',
-    fillOpacity: 0.2
-  };
-
-  // Style for the selected parcel
-  const selectedParcelStyle = {
-    color: '#ff4500',
-    weight: 3,
-    opacity: 1,
-    fillColor: '#ff4500',
-    fillOpacity: 0.3
-  };
-
-  // Zoom to a specific parcel when it's clicked
-  const onEachFeature = (feature: any, layer: L.Layer) => {
-    const parcelId = feature.properties.parcel_id;
-    const address = feature.properties.address || 'No address';
-    const owner = feature.properties.owner_name || 'Unknown owner';
-    
-    layer.bindPopup(`
-      <div>
-        <h3>Parcel: ${parcelId}</h3>
-        <p><strong>Address:</strong> ${address}</p>
-        <p><strong>Owner:</strong> ${owner}</p>
-      </div>
-    `);
-    
-    layer.on({
-      click: (e) => {
-        // Reset styles for all layers
-        if (geoJsonLayerRef.current) {
-          geoJsonLayerRef.current.resetStyle();
-        }
-        
-        // Set style for the clicked layer if it's a path (like polygon or polyline)
-        if ('setStyle' in layer) {
-          (layer as L.Path).setStyle(selectedParcelStyle);
-        }
-      }
-    });
-  };
-
-  // Convert parcels to GeoJSON features
-  const parcelFeatures = parcels.map(parcel => {
-    // If the geom is a string, parse it; otherwise use it directly
-    const geometry = typeof parcel.geom === 'string' 
-      ? JSON.parse(parcel.geom) 
-      : parcel.geom;
-    
+  // Style function for parcels
+  const parcelStyle = (feature?: any) => {
     return {
-      type: 'Feature',
-      geometry,
-      properties: {
-        id: parcel.id,
-        parcel_id: parcel.parcel_id,
-        address: parcel.address,
-        owner_name: parcel.owner_name
-      }
+      color: '#3388ff',
+      weight: 2,
+      opacity: 0.8,
+      fillColor: '#3388ff',
+      fillOpacity: 0.2
     };
-  });
-
-  const geoJsonData = {
-    type: 'FeatureCollection',
-    features: parcelFeatures
   };
-
+  
+  // Click handler for parcels
+  const onEachFeature = (feature: any, layer: L.Layer) => {
+    if (onParcelClick && feature.properties) {
+      layer.on({
+        click: () => {
+          const parcel = parcels.find(p => p.id === feature.properties.id);
+          if (parcel) {
+            onParcelClick(parcel);
+          }
+        }
+      });
+    }
+    
+    // Add a popup with basic info
+    if (feature.properties) {
+      const { parcel_id, address, owner_name } = feature.properties;
+      const popupContent = `
+        <div>
+          <strong>Parcel ID:</strong> ${parcel_id || 'N/A'}<br>
+          ${address ? `<strong>Address:</strong> ${address}<br>` : ''}
+          ${owner_name ? `<strong>Owner:</strong> ${owner_name}` : ''}
+        </div>
+      `;
+      layer.bindPopup(popupContent);
+    }
+  };
+  
   return (
     <div style={{ height, width: '100%' }}>
       <MapContainer
@@ -145,15 +127,32 @@ const ParcelMap: React.FC<ParcelMapProps> = ({
           url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
         />
         
-        <MapEvents onBoundsChanged={onBoundsChanged} />
+        {parcels.map(parcel => {
+          if (!parcel.geom) return null;
+          
+          // Ensure the GeoJSON has the properties needed for interaction
+          const geoJSON = {
+            ...parcel.geom,
+            properties: {
+              id: parcel.id,
+              parcel_id: parcel.parcel_id,
+              address: parcel.address,
+              owner_name: parcel.owner_name
+            }
+          };
+          
+          return (
+            <GeoJSON
+              key={parcel.id}
+              data={geoJSON}
+              style={parcelStyle}
+              onEachFeature={onEachFeature}
+            />
+          );
+        })}
         
-        {parcels.length > 0 && (
-          <GeoJSON
-            data={geoJsonData as any}
-            style={parcelStyle}
-            onEachFeature={onEachFeature}
-            ref={geoJsonLayerRef}
-          />
+        {onBoundsChanged && (
+          <MapBoundsHandler onBoundsChanged={onBoundsChanged} />
         )}
       </MapContainer>
     </div>
