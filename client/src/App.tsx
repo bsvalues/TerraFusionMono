@@ -27,6 +27,7 @@ import YieldPredictionPage from "@/pages/YieldPredictionPage";
 import CollaborationDemo from "@/pages/CollaborationDemo";
 import FieldDataPage from "@/pages/FieldDataPage";
 import ImportPage from "@/pages/import";
+import ValuationPage from "@/pages/valuation";
 
 function Router() {
   return (
@@ -56,6 +57,7 @@ function Router() {
         <Route path="/collaboration" component={CollaborationDemo} />
         <Route path="/field-data" component={FieldDataPage} />
         <Route path="/import" component={ImportPage} />
+        <Route path="/valuation" component={ValuationPage} />
         
         {/* Dynamic routes for apps and plugins */}
         <Route path="/apps/:name" component={AppDetails} />

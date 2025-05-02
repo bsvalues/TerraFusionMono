@@ -1,131 +1,207 @@
-import React from 'react';
-import { CostMatrix } from '../../schemas/wizardSchemas';
-import { Button } from '@radix-ui/react-dropdown-menu';
-import { Plus, Trash2 } from 'lucide-react';
+import React, { useState } from 'react';
+import { Card, CardContent } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { Slider } from "@/components/ui/slider";
+import { PlusCircle, Trash2, ChevronUp, ChevronDown } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
 
 interface MatrixEditorProps {
-  matrix: CostMatrix;
-  onChange: (matrix: CostMatrix) => void;
-  className?: string;
+  matrix: {
+    name: string;
+    baseCost: number;
+    modifiers: { description: string; factor: number }[];
+  };
+  setMatrix: React.Dispatch<React.SetStateAction<{
+    name: string;
+    baseCost: number;
+    modifiers: { description: string; factor: number }[];
+  }>>;
 }
 
-export const MatrixEditor: React.FC<MatrixEditorProps> = ({ 
-  matrix, 
-  onChange, 
-  className = ''
-}) => {
+export const MatrixEditor: React.FC<MatrixEditorProps> = ({ matrix, setMatrix }) => {
+  const [newModifier, setNewModifier] = useState({
+    description: '',
+    factor: 1.0
+  });
+
+  // Add a new modifier to the matrix
   const addModifier = () => {
-    onChange({
-      ...matrix,
-      modifiers: [
-        ...matrix.modifiers,
-        { description: '', factor: 0 }
-      ]
-    });
-  };
-
-  const updateModifier = (index: number, field: 'description' | 'factor', value: string | number) => {
-    const newModifiers = [...matrix.modifiers];
-    newModifiers[index] = { 
-      ...newModifiers[index], 
-      [field]: field === 'factor' ? Number(value) : value 
-    };
+    if (!newModifier.description.trim()) return;
     
-    onChange({
-      ...matrix,
-      modifiers: newModifiers
+    setMatrix(prev => ({
+      ...prev,
+      modifiers: [...prev.modifiers, { ...newModifier }]
+    }));
+    
+    // Reset the form
+    setNewModifier({
+      description: '',
+      factor: 1.0
     });
   };
 
+  // Remove a modifier from the matrix
   const removeModifier = (index: number) => {
-    onChange({
-      ...matrix,
-      modifiers: matrix.modifiers.filter((_, i) => i !== index)
+    setMatrix(prev => ({
+      ...prev,
+      modifiers: prev.modifiers.filter((_, i) => i !== index)
+    }));
+  };
+
+  // Move a modifier up in the list
+  const moveModifierUp = (index: number) => {
+    if (index === 0) return;
+    
+    setMatrix(prev => {
+      const newModifiers = [...prev.modifiers];
+      const temp = newModifiers[index];
+      newModifiers[index] = newModifiers[index - 1];
+      newModifiers[index - 1] = temp;
+      return { ...prev, modifiers: newModifiers };
     });
+  };
+
+  // Move a modifier down in the list
+  const moveModifierDown = (index: number) => {
+    if (index === matrix.modifiers.length - 1) return;
+    
+    setMatrix(prev => {
+      const newModifiers = [...prev.modifiers];
+      const temp = newModifiers[index];
+      newModifiers[index] = newModifiers[index + 1];
+      newModifiers[index + 1] = temp;
+      return { ...prev, modifiers: newModifiers };
+    });
+  };
+
+  // Format the factor as a percentage (e.g., 1.5 → "+50%", 0.8 → "-20%")
+  const formatFactor = (factor: number) => {
+    const percentage = (factor - 1) * 100;
+    return percentage >= 0 ? `+${percentage.toFixed(0)}%` : `${percentage.toFixed(0)}%`;
+  };
+
+  // Get color class for the factor badge
+  const getFactorColorClass = (factor: number) => {
+    if (factor > 1) return "bg-green-500/20 text-green-700 hover:bg-green-500/30";
+    if (factor < 1) return "bg-red-500/20 text-red-700 hover:bg-red-500/30";
+    return "bg-gray-200 text-gray-700 hover:bg-gray-300";
   };
 
   return (
-    <div className={`p-4 border border-gray-200 rounded-lg ${className}`}>
-      <h3 className="text-lg font-semibold mb-4">Edit Cost Matrix</h3>
-      
-      <div className="mb-4">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Matrix Name
-        </label>
-        <input
-          type="text"
-          value={matrix.name}
-          onChange={(e) => onChange({ ...matrix, name: e.target.value })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="Enter matrix name"
-        />
-      </div>
-      
-      <div className="mb-6">
-        <label className="block text-sm font-medium text-gray-700 mb-1">
-          Base Cost ($)
-        </label>
-        <input
-          type="number"
-          min="0"
-          step="0.01"
-          value={matrix.baseCost}
-          onChange={(e) => onChange({ ...matrix, baseCost: Number(e.target.value) })}
-          className="w-full px-3 py-2 border border-gray-300 rounded-md"
-          placeholder="Enter base cost"
-        />
-      </div>
-      
-      <div>
-        <div className="flex justify-between items-center mb-3">
-          <h4 className="text-md font-medium">Cost Modifiers</h4>
-          <button 
-            onClick={addModifier}
-            className="px-3 py-1 bg-blue-600 text-white rounded-md flex items-center text-sm"
-          >
-            <Plus size={16} className="mr-1" /> Add Modifier
-          </button>
-        </div>
-        
-        {matrix.modifiers.length === 0 ? (
-          <div className="text-center py-8 text-gray-500 border border-dashed border-gray-300 rounded-md">
-            No modifiers added yet. Click "Add Modifier" to get started.
-          </div>
-        ) : (
-          <div className="space-y-3">
-            {matrix.modifiers.map((modifier, index) => (
-              <div key={index} className="flex space-x-3 items-start p-3 border border-gray-200 rounded-md">
-                <div className="flex-grow">
-                  <input
-                    type="text"
-                    value={modifier.description}
-                    onChange={(e) => updateModifier(index, 'description', e.target.value)}
-                    className="w-full px-3 py-2 border border-gray-300 rounded-md mb-2"
-                    placeholder="Description"
-                  />
-                  <div className="flex items-center">
-                    <span className="mr-2 text-sm text-gray-600">Factor:</span>
-                    <input
-                      type="number"
-                      min="0"
-                      step="0.01"
-                      value={modifier.factor}
-                      onChange={(e) => updateModifier(index, 'factor', e.target.value)}
-                      className="w-32 px-3 py-2 border border-gray-300 rounded-md"
-                    />
-                  </div>
-                </div>
-                <button 
-                  onClick={() => removeModifier(index)}
-                  className="p-2 text-red-500 hover:bg-red-50 rounded-md"
-                >
-                  <Trash2 size={18} />
-                </button>
+    <Card>
+      <CardContent className="pt-6">
+        <div className="space-y-6">
+          <div>
+            <h3 className="text-lg font-medium mb-2">Add Cost Modifiers</h3>
+            <p className="text-sm text-muted-foreground mb-4">
+              Define factors that adjust the base cost up or down based on property characteristics.
+            </p>
+            
+            <div className="grid grid-cols-1 md:grid-cols-5 gap-3 mb-3 items-end">
+              <div className="md:col-span-3">
+                <label className="text-sm font-medium">Description</label>
+                <Input
+                  value={newModifier.description}
+                  onChange={(e) => setNewModifier(prev => ({ ...prev, description: e.target.value }))}
+                  placeholder="e.g., Premium Location, Needs Renovation"
+                  className="w-full"
+                />
               </div>
-            ))}
+              
+              <div className="md:col-span-1">
+                <label className="text-sm font-medium">Factor ({formatFactor(newModifier.factor)})</label>
+                <Slider
+                  value={[newModifier.factor]}
+                  min={0.5}
+                  max={2}
+                  step={0.05}
+                  onValueChange={(values) => setNewModifier(prev => ({ ...prev, factor: values[0] }))}
+                  className="py-2"
+                />
+              </div>
+              
+              <div>
+                <Button 
+                  onClick={addModifier}
+                  className="w-full"
+                  disabled={!newModifier.description.trim()}
+                >
+                  <PlusCircle className="h-4 w-4 mr-2" />
+                  Add
+                </Button>
+              </div>
+            </div>
           </div>
-        )}
-      </div>
-    </div>
+          
+          <div>
+            <h3 className="text-lg font-medium mb-2">Current Modifiers</h3>
+            
+            {matrix.modifiers.length === 0 ? (
+              <div className="bg-muted p-4 rounded-md text-center text-muted-foreground">
+                No modifiers added yet. Add at least one modifier to continue.
+              </div>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead className="w-[50px]">#</TableHead>
+                    <TableHead>Description</TableHead>
+                    <TableHead className="w-[120px] text-center">Factor</TableHead>
+                    <TableHead className="w-[100px]">Actions</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {matrix.modifiers.map((modifier, index) => (
+                    <TableRow key={index}>
+                      <TableCell>{index + 1}</TableCell>
+                      <TableCell>{modifier.description}</TableCell>
+                      <TableCell className="text-center">
+                        <Badge variant="outline" className={getFactorColorClass(modifier.factor)}>
+                          {formatFactor(modifier.factor)}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
+                        <div className="flex items-center space-x-1">
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveModifierUp(index)}
+                            disabled={index === 0}
+                            className="h-8 w-8"
+                          >
+                            <ChevronUp className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => moveModifierDown(index)}
+                            disabled={index === matrix.modifiers.length - 1}
+                            className="h-8 w-8"
+                          >
+                            <ChevronDown className="h-4 w-4" />
+                          </Button>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            onClick={() => removeModifier(index)}
+                            className="h-8 w-8 text-red-500 hover:text-red-700"
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </div>
+                      </TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+          </div>
+        </div>
+      </CardContent>
+    </Card>
   );
 };
+
+export default MatrixEditor;

@@ -1,2 +1,4 @@
 export * from './IncomeWizard';
-export * from './IncomeEditor';
+export * from './IncomeForm';
+export * from './IncomePreview';
+export * from './IncomeResults';
