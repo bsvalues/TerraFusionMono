@@ -1,0 +1,144 @@
+Here are the concrete files to drop into your repo to enable the CSS enhancements and CI coverage enforcement we discussed.
+
+---
+
+## 1. Tailwind Configuration
+
+Create or update `tailwind.config.js` at your repo root under `packages/ui`:
+
+```js
+// packages/ui/tailwind.config.js
+module.exports = {
+  darkMode: 'class',
+  content: [
+    './src/**/*.{js,jsx,ts,tsx}',
+    '../**/src/**/*.{js,jsx,ts,tsx}'
+  ],
+  theme: {
+    extend: {
+      // add any custom colors, spacing, etc.
+    }
+  },
+  plugins: [
+    require('@tailwindcss/forms'),   // consistent form styling
+    require('@tailwindcss/typography')
+  ],
+  variants: {
+    extend: {
+      backgroundColor: ['dark', 'hover', 'focus'],
+      textColor: ['dark', 'hover', 'focus'],
+      ringColor: ['focus']
+    }
+  }
+};
+```
+
+Install the plugins:
+
+```bash
+cd packages/ui
+npm install -D tailwindcss@latest postcss@latest autoprefixer@latest @tailwindcss/forms @tailwindcss/typography
+npx tailwindcss init -p
+```
+
+Update your CSS entry (e.g. `src/index.css`) to include:
+
+```css
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+```
+
+---
+
+## 2. Example Component Update
+
+Here’s how you’d update the wizard container and buttons:
+
+```diff
+--- ValuationWizard.tsx
+- <div className="max-w-3xl mx-auto bg-white p-6 rounded-lg shadow">
++ <div className="max-w-full md:max-w-3xl mx-auto bg-white dark:bg-gray-800 p-4 md:p-6 rounded-lg shadow-lg">
+```
+
+```diff
+- <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700" …
++ <button className="px-4 py-2 bg-blue-600 text-white rounded hover:bg-blue-700 
+    focus:outline-none focus:ring-2 focus:ring-blue-400 
+    dark:bg-blue-500 dark:hover:bg-blue-600" …
+```
+
+---
+
+## 3. Jest Coverage Enforcement
+
+In `packages/ui/package.json`, add:
+
+```json
+"scripts": {
+  "test": "jest --coverage",
+  "coverage:check": "jest --coverage --coverageThreshold='{\"global\":{\"branches\":80,\"functions\":80,\"lines\":80,\"statements\":80}}'"
+}
+```
+
+And your `jest.config.js`:
+
+```js
+// packages/ui/jest.config.js
+module.exports = {
+  preset: 'ts-jest',
+  testEnvironment: 'jsdom',
+  collectCoverage: true,
+  coverageDirectory: 'coverage',
+  coverageThreshold: {
+    global: {
+      branches: 80,
+      functions: 80,
+      lines: 80,
+      statements: 80
+    }
+  },
+  moduleNameMapper: {
+    '\\.(css|scss)$': 'identity-obj-proxy'
+  }
+};
+```
+
+---
+
+## 4. GitHub Actions Update
+
+In `.github/workflows/ci-cd.yaml`, under the `build` job add:
+
+```yaml
+      - name: Run UI tests with coverage
+        working-directory: packages/ui
+        run: |
+          npm ci
+          npm run test
+
+      - name: Enforce coverage threshold
+        working-directory: packages/ui
+        run: npm run coverage:check
+```
+
+Optionally, after that step add Codecov upload:
+
+```yaml
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v3
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
+          files: packages/ui/coverage/lcov.info
+          flags: ui
+```
+
+---
+
+With these in place:
+
+- **Tailwind** will automatically style forms, dark mode, focus rings, and responsive layouts.  
+- **Jest** will generate coverage reports and fail the build if coverage drops below 80%.  
+- **CI** will enforce tests on every PR and push.
+
+Go ahead and commit these changes; your UI will look sharper and your pipeline will guard quality automatically.
