@@ -1,0 +1,33 @@
+version: 2
+
+sources:
+  - name: appraisal
+    database: "{{ env_var('PGDATABASE', 'terradb') }}"
+    schema: appraisal
+    tables:
+      - name: property
+        description: Core property records
+      - name: land_parcel
+        description: Land parcels associated with properties
+      - name: improvement
+        description: Improvements/buildings on properties
+
+  - name: billing
+    database: "{{ env_var('PGDATABASE', 'terradb') }}"
+    schema: billing
+    tables:
+      - name: levy
+        description: Tax levy information
+      - name: levy_bill
+        description: Property tax bill records
+      - name: payment
+        description: Payment records for levy bills
+      - name: special_assessment
+        description: Special assessments for properties
+
+  - name: master
+    database: "{{ env_var('PGDATABASE', 'terradb') }}"
+    schema: master
+    tables:
+      - name: property_comprehensive
+        description: Integrated view of property information

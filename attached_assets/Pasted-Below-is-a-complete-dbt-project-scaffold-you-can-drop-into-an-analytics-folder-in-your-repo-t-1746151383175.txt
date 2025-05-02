@@ -1,0 +1,195 @@
+Below is a complete **dbt project scaffold** you can drop into an `analytics/` folder in your repo to kick off Phase C. It includes:
+
+1. **profiles.yml** – your connection settings  
+2. **dbt_project.yml** – project configuration  
+3. **models/**  
+   - **staging/** – raw extracts from PACS tables  
+   - **marts/** – your star‐schema models (fact & dimension)  
+
+You can copy these files (and folders) into `analytics/`, install dbt, then run `dbt run` to build your star schema.
+
+---
+
+### Folder Structure
+
+```
+analytics/
+├─ profiles.yml
+├─ dbt_project.yml
+└─ models/
+   ├─ staging/
+   │  ├─ staging_property.sql
+   │  └─ staging_matrix_cost.sql
+   └─ marts/
+      ├─ dim_property.sql
+      └─ fact_property_valuation.sql
+```
+
+---
+
+### 1. analytics/profiles.yml
+
+```yaml
+your_dbt_profile:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: YOUR_DB_HOST
+      user: YOUR_DB_USER
+      password: YOUR_DB_PASSWORD
+      port: 5432
+      dbname: YOUR_DB_NAME
+      schema: analytics
+      threads: 4
+```
+
+---
+
+### 2. analytics/dbt_project.yml
+
+```yaml
+name: 'terrafusion_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'your_dbt_profile'
+
+source-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_modules"
+
+models:
+  terrafusion_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+```
+
+---
+
+### 3. analytics/models/staging/staging_property.sql
+
+```sql
+-- models/staging/staging_property.sql
+with source as (
+    select
+        prop_id,
+        owner_id,
+        effective_date,
+        market_value as property_market_value
+    from
+        {{ source('pacs', 'Property_val') }}
+)
+select
+    prop_id,
+    owner_id,
+    effective_date,
+    property_market_value
+from source;
+```
+
+---
+
+### 4. analytics/models/staging/staging_matrix_cost.sql
+
+```sql
+-- models/staging/staging_matrix_cost.sql
+with source as (
+    select
+        matrix_id,
+        description,
+        cost_factor,
+        base_cost
+    from
+        {{ source('pacs', 'Cost_Matrix') }}
+)
+select
+    matrix_id,
+    description,
+    cost_factor,
+    base_cost
+from source;
+```
+
+---
+
+### 5. analytics/models/marts/dim_property.sql
+
+```sql
+-- models/marts/dim_property.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+)
+select distinct
+    prop_id,
+    owner_id,
+    effective_date
+from prop;
+```
+
+---
+
+### 6. analytics/models/marts/fact_property_valuation.sql
+
+```sql
+-- models/marts/fact_property_valuation.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+),
+matrix as (
+    select * from {{ ref('staging_matrix_cost') }}
+),
+valuation as (
+    select
+        p.prop_id,
+        date_part('year', p.effective_date) as year,
+        p.property_market_value as market_value,
+        m.base_cost + sum(m.cost_factor) as cost_value
+    from prop p
+    left join matrix m on 1=1
+    group by p.prop_id, p.effective_date, p.property_market_value, m.base_cost
+)
+select
+    prop_id,
+    year,
+    cost_value,
+    market_value,
+    now() as loaded_at
+from valuation;
+```
+
+---
+
+### How to Use
+
+1. **Copy** this scaffold into your repo at `analytics/`.  
+2. **Install dbt** (e.g. `pip install dbt-postgres`).  
+3. **Configure** `profiles.yml` with real connection details.  
+4. Run:
+   ```bash
+   cd analytics
+   dbt deps       # if you have packages
+   dbt seed       # if you have any seed files
+   dbt run        # builds staging and mart tables
+   dbt test       # runs any tests you add
+   ```
+5. **Verify** in your data warehouse that you now have:  
+   - `analytics.staging_property` (a view)  
+   - `analytics.staging_matrix_cost` (a view)  
+   - `analytics.marts.dim_property` (table)  
+   - `analytics.marts.fact_property_valuation` (table)  
+
+From here, you can extend with additional dimensions (`dim_owner`, `dim_time`, etc.) and more facts (`fact_income_valuation`).  
+
+Let me know if you’d like me to zip this scaffold for you or add more models/tests!
