@@ -1,0 +1,11 @@
+replicaCount: 1
+image:
+  repository: yourrepo/valuation-wizard
+  tag: latest
+service:
+  port: 3000
+ingress:
+  enabled: true
+  hosts:
+    - host: wizard.terrafusion.local
+      paths: ["/"]
