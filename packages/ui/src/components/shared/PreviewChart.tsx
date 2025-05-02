@@ -1,72 +1,73 @@
 import React from 'react';
-import { CostMatrix, IncomeSchedule } from '../../schemas/wizardSchemas';
+import { Bar, BarChart, Cell, ResponsiveContainer, Tooltip, XAxis } from 'recharts';
 
-interface PreviewChartProps {
-  parcelId: string;
-  matrix?: CostMatrix;
-  income?: IncomeSchedule;
-  className?: string;
+interface ChartData {
+  name: string;
+  value: number;
 }
 
-export const PreviewChart: React.FC<PreviewChartProps> = ({ 
-  parcelId, 
-  matrix, 
-  income, 
-  className = '' 
-}) => {
-  if (!parcelId) {
+interface PreviewChartProps {
+  data: ChartData[];
+}
+
+// Custom colors for the chart
+const COLORS = ['#2563eb', '#ef4444', '#f59e0b', '#10b981'];
+
+// Custom formatter for the tooltip
+const CustomTooltip = ({ active, payload, label }: any) => {
+  if (active && payload && payload.length) {
     return (
-      <div className={`p-6 border border-gray-200 rounded-lg bg-gray-50 text-center ${className}`}>
-        Please enter a parcel ID to preview valuation
+      <div className="bg-background border rounded-md shadow-sm p-2 text-sm">
+        <p className="font-semibold">{label}</p>
+        <p className="text-muted-foreground">
+          {new Intl.NumberFormat('en-US', {
+            style: 'currency',
+            currency: 'USD',
+            minimumFractionDigits: 0,
+            maximumFractionDigits: 0,
+          }).format(payload[0].value)}
+        </p>
       </div>
     );
   }
 
-  // Calculate a simulated value for display
-  const getValue = (): number => {
-    // This is a simplified calculation for demonstration
-    if (matrix) {
-      let value = matrix.baseCost;
-      matrix.modifiers.forEach(mod => {
-        value *= (1 + mod.factor);
-      });
-      return Math.round(value);
-    } else if (income) {
-      // NOI = Gross Income * (1 - Vacancy Rate) - Operating Expenses
-      const noi = income.grossIncome * (1 - income.vacancyRate) - income.operatingExpenses;
-      // Value = NOI / Cap Rate
-      return Math.round(income.capRate > 0 ? noi / income.capRate : 0);
-    }
-    return 0;
-  };
+  return null;
+};
 
-  const value = getValue();
-
+export const PreviewChart: React.FC<PreviewChartProps> = ({ data }) => {
   return (
-    <div className={`p-6 border border-gray-200 rounded-lg ${className}`}>
-      <div className="text-sm text-gray-500 mb-2">Valuation preview for parcel</div>
-      <div className="text-lg font-semibold mb-4">{parcelId}</div>
-      
-      <div className="flex justify-between items-center">
-        <div className="text-sm text-gray-500">Estimated Value:</div>
-        <div className="text-2xl font-bold text-blue-600">${value.toLocaleString()}</div>
-      </div>
-      
-      {matrix && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-sm font-medium mb-2">Applied Matrix: {matrix.name}</div>
-          <div className="text-sm text-gray-600">Base Cost: ${matrix.baseCost.toLocaleString()}</div>
-          <div className="text-sm text-gray-600">Modifiers: {matrix.modifiers.length}</div>
-        </div>
-      )}
-      
-      {income && (
-        <div className="mt-4 pt-4 border-t border-gray-200">
-          <div className="text-sm font-medium mb-2">Income Schedule: {income.propertyType}</div>
-          <div className="text-sm text-gray-600">Gross Income: ${income.grossIncome.toLocaleString()}</div>
-          <div className="text-sm text-gray-600">Cap Rate: {(income.capRate * 100).toFixed(2)}%</div>
-        </div>
-      )}
-    </div>
+    <ResponsiveContainer width="100%" height="100%">
+      <BarChart
+        data={data}
+        margin={{
+          top: 5,
+          right: 5,
+          left: 5,
+          bottom: 30,
+        }}
+      >
+        <XAxis 
+          dataKey="name" 
+          axisLine={false}
+          tickLine={false}
+          tickMargin={10}
+          tick={{ fontSize: 12 }}
+          angle={-45}
+          textAnchor="end"
+        />
+        <Tooltip content={<CustomTooltip />} cursor={{ fill: 'rgba(0, 0, 0, 0.05)' }} />
+        <Bar 
+          dataKey="value" 
+          fill="#8884d8" 
+          radius={[4, 4, 0, 0]}
+        >
+          {data.map((entry, index) => (
+            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
+          ))}
+        </Bar>
+      </BarChart>
+    </ResponsiveContainer>
   );
 };
+
+export default PreviewChart;
