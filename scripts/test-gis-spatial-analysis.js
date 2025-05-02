@@ -4,8 +4,15 @@
  * This script tests all the new advanced spatial analysis endpoints.
  */
 
-const axios = require('axios');
-const chalk = require('chalk') || { green: (text) => `✓ ${text}`, red: (text) => `✗ ${text}`, yellow: (text) => `! ${text}`, blue: (text) => `ℹ ${text}` };
+import axios from 'axios';
+
+// Simple chalk-like coloring for console output
+const chalk = {
+  green: (text) => `✓ ${text}`,
+  red: (text) => `✗ ${text}`,
+  yellow: (text) => `! ${text}`,
+  blue: (text) => `ℹ ${text}`
+};
 
 // Configuration
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000/api/gis';
@@ -268,12 +275,10 @@ async function runTests() {
   return results;
 }
 
-// Run tests if executed directly
-if (require.main === module) {
-  runTests().catch(error => {
-    console.error('Error running tests:', error);
-    process.exit(1);
-  });
-}
+// Run tests
+runTests().catch(error => {
+  console.error('Error running tests:', error);
+  process.exit(1);
+});
 
-module.exports = { runTests };
+export { runTests };

@@ -613,10 +613,12 @@ router.get('/parcels/:id/distance', async (req, res) => {
   try {
     const id = req.params.id;
     const { lat, lon, unit } = distanceSchema.parse(req.query);
+    const latitude = Number(lat);
+    const longitude = Number(lon);
     
     const client = await pool.connect();
     try {
-      // First try with string ID (prop_id)
+      // First get parcel by prop_id
       let query = `
         SELECT 
           p.prop_id as parcel_id,
@@ -624,15 +626,15 @@ router.get('/parcels/:id/distance', async (req, res) => {
             p.geom::geography, 
             ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
           ) as distance_meters,
-          ST_ClosestPoint(
+          ST_AsText(ST_ClosestPoint(
             p.geom, 
             ST_SetSRID(ST_MakePoint($2, $3), 4326)
-          ) as closest_point
+          )) as closest_point_wkt
         FROM Property_val p
         WHERE p.prop_id = $1
       `;
       
-      let result = await client.query(query, [id, lon, lat]);
+      let result = await client.query(query, [id, longitude, latitude]);
       
       // If no results, try with numeric ID
       if (result.rows.length === 0) {
@@ -645,13 +647,13 @@ router.get('/parcels/:id/distance', async (req, res) => {
                 p.geom::geography, 
                 ST_SetSRID(ST_MakePoint($2, $3), 4326)::geography
               ) as distance_meters,
-              ST_ClosestPoint(
+              ST_AsText(ST_ClosestPoint(
                 p.geom, 
                 ST_SetSRID(ST_MakePoint($2, $3), 4326)
-              ) as closest_point
+              )) as closest_point_wkt
             FROM Property_val p
             WHERE p.id = $1
-          `, [numId, lon, lat]);
+          `, [numId, longitude, latitude]);
           
           if (result.rows.length === 0) {
             return res.status(404).json({ error: 'Parcel not found' });
@@ -665,29 +667,28 @@ router.get('/parcels/:id/distance', async (req, res) => {
       const distanceMeters = parseFloat(result.rows[0].distance_meters);
       const convertedDistance = convertFromMeters(distanceMeters, unit);
       
-      // Get coordinates of closest point
-      const closestPointWKB = result.rows[0].closest_point;
+      // Parse WKT to get coordinates
+      // Format is typically: POINT(lon lat)
+      const wktPoint = result.rows[0].closest_point_wkt;
+      const coordMatch = wktPoint.match(/POINT\(([^ ]+) ([^)]+)\)/i);
       
-      // Extract coordinates of closest point
-      const closestPointQuery = `
-        SELECT 
-          ST_X(ST_GeomFromEWKB($1)) as lon, 
-          ST_Y(ST_GeomFromEWKB($1)) as lat
-      `;
-      const pointResult = await client.query(closestPointQuery, [closestPointWKB]);
+      let closestPoint = { lon: 0, lat: 0 };
+      if (coordMatch && coordMatch.length >= 3) {
+        closestPoint = {
+          lon: parseFloat(coordMatch[1]),
+          lat: parseFloat(coordMatch[2])
+        };
+      }
       
       res.json({
         parcel_id: result.rows[0].parcel_id,
         point: {
-          lat: parseFloat(lat),
-          lon: parseFloat(lon)
+          lat: latitude,
+          lon: longitude
         },
         distance: convertedDistance,
         unit: unit,
-        closest_point: {
-          lat: parseFloat(pointResult.rows[0].lat),
-          lon: parseFloat(pointResult.rows[0].lon)
-        }
+        closest_point: closestPoint
       });
     } finally {
       client.release();
@@ -707,15 +708,44 @@ router.get('/parcels/:id/relation/:target_id', async (req, res) => {
     
     const client = await pool.connect();
     try {
-      // First get the source and target geometries
-      let sourceQuery = `SELECT prop_id, geom FROM Property_val WHERE prop_id = $1 OR id = $1::integer`;
-      let targetQuery = `SELECT prop_id, geom FROM Property_val WHERE prop_id = $1 OR id = $1::integer`;
+      // First get the source parcel by prop_id
+      let sourceQuery = `
+        SELECT id, prop_id, geom FROM Property_val 
+        WHERE prop_id = $1
+      `;
+      let sourceResult = await client.query(sourceQuery, [sourceId]);
       
-      const sourceResult = await client.query(sourceQuery, [sourceId]);
-      const targetResult = await client.query(targetQuery, [targetId]);
+      // If not found by prop_id, try numeric ID
+      if (sourceResult.rows.length === 0) {
+        const numSourceId = parseInt(sourceId, 10);
+        if (!isNaN(numSourceId)) {
+          sourceResult = await client.query(`
+            SELECT id, prop_id, geom FROM Property_val 
+            WHERE id = $1
+          `, [numSourceId]);
+        }
+      }
       
       if (sourceResult.rows.length === 0) {
         return res.status(404).json({ error: 'Source parcel not found' });
+      }
+      
+      // Get the target parcel by prop_id
+      let targetQuery = `
+        SELECT id, prop_id, geom FROM Property_val 
+        WHERE prop_id = $1
+      `;
+      let targetResult = await client.query(targetQuery, [targetId]);
+      
+      // If not found by prop_id, try numeric ID
+      if (targetResult.rows.length === 0) {
+        const numTargetId = parseInt(targetId, 10);
+        if (!isNaN(numTargetId)) {
+          targetResult = await client.query(`
+            SELECT id, prop_id, geom FROM Property_val 
+            WHERE id = $1
+          `, [numTargetId]);
+        }
       }
       
       if (targetResult.rows.length === 0) {
@@ -892,45 +922,72 @@ router.get('/parcels/:id/nearest', async (req, res) => {
     
     const client = await pool.connect();
     try {
-      // First get the source parcel's geometry
+      // First get the source parcel's geometry by prop_id
       let sourceQuery = `
         SELECT id, prop_id, geom FROM Property_val 
-        WHERE prop_id = $1 OR id = $1::integer
+        WHERE prop_id = $1
       `;
       
-      const sourceResult = await client.query(sourceQuery, [id]);
+      let sourceResult = await client.query(sourceQuery, [id]);
       
+      // If not found by prop_id, try with numeric ID
       if (sourceResult.rows.length === 0) {
-        return res.status(404).json({ error: 'Source parcel not found' });
+        const numId = parseInt(id, 10);
+        if (!isNaN(numId)) {
+          sourceResult = await client.query(`
+            SELECT id, prop_id, geom FROM Property_val 
+            WHERE id = $1
+          `, [numId]);
+          
+          if (sourceResult.rows.length === 0) {
+            return res.status(404).json({ error: 'Source parcel not found' });
+          }
+        } else {
+          return res.status(404).json({ error: 'Source parcel not found' });
+        }
       }
       
       const sourceId = sourceResult.rows[0].id;
       const sourcePropId = sourceResult.rows[0].prop_id;
       
       // Find nearest neighbors with distance
-      let nearestQuery = `
-        SELECT 
-          p.id, 
-          p.prop_id as parcel_id, 
-          p.address, 
-          p.owner_name,
-          ST_Distance(p.geom::geography, $1::geography) as distance_meters,
-          ST_AsGeoJSON(p.geom)::json as geom
-        FROM Property_val p
-        WHERE p.id != $2
-        ${maxDistanceMeters ? 'AND ST_DWithin(p.geom::geography, $1::geography, $4)' : ''}
-        ORDER BY ST_Distance(p.geom::geography, $1::geography)
-        LIMIT $3
-      `;
+      let query = '';
+      let queryParams = [];
       
-      const nearestResult = await client.query(
-        maxDistanceMeters 
-          ? nearestQuery 
-          : nearestQuery.replace('${maxDistanceMeters ? \'AND ST_DWithin(p.geom::geography, $1::geography, $4)\' : \'\'}', ''), 
-        maxDistanceMeters 
-          ? [sourceResult.rows[0].geom, sourceId, limit, maxDistanceMeters] 
-          : [sourceResult.rows[0].geom, sourceId, limit]
-      );
+      if (maxDistanceMeters) {
+        query = `
+          SELECT 
+            p.id, 
+            p.prop_id as parcel_id, 
+            p.address, 
+            p.owner_name,
+            ST_Distance(p.geom::geography, $1::geography) as distance_meters,
+            ST_AsGeoJSON(p.geom)::json as geom
+          FROM Property_val p
+          WHERE p.id != $2
+            AND ST_DWithin(p.geom::geography, $1::geography, $3)
+          ORDER BY ST_Distance(p.geom::geography, $1::geography)
+          LIMIT $4
+        `;
+        queryParams = [sourceResult.rows[0].geom, sourceId, maxDistanceMeters, limit];
+      } else {
+        query = `
+          SELECT 
+            p.id, 
+            p.prop_id as parcel_id, 
+            p.address, 
+            p.owner_name,
+            ST_Distance(p.geom::geography, $1::geography) as distance_meters,
+            ST_AsGeoJSON(p.geom)::json as geom
+          FROM Property_val p
+          WHERE p.id != $2
+          ORDER BY ST_Distance(p.geom::geography, $1::geography)
+          LIMIT $3
+        `;
+        queryParams = [sourceResult.rows[0].geom, sourceId, limit];
+      }
+      
+      const nearestResult = await client.query(query, queryParams);
       
       // Convert distances to requested unit
       const neighbors = nearestResult.rows.map(row => {
@@ -969,15 +1026,44 @@ router.get('/parcels/:id/boundary/:target_id', async (req, res) => {
     
     const client = await pool.connect();
     try {
-      // First get the source and target geometries
-      let sourceQuery = `SELECT prop_id, geom FROM Property_val WHERE prop_id = $1 OR id = $1::integer`;
-      let targetQuery = `SELECT prop_id, geom FROM Property_val WHERE prop_id = $1 OR id = $1::integer`;
+      // Get the source parcel
+      let sourceQuery = `
+        SELECT id, prop_id, geom FROM Property_val 
+        WHERE prop_id = $1
+      `;
+      let sourceResult = await client.query(sourceQuery, [sourceId]);
       
-      const sourceResult = await client.query(sourceQuery, [sourceId]);
-      const targetResult = await client.query(targetQuery, [targetId]);
+      // If not found by prop_id, try by numeric id
+      if (sourceResult.rows.length === 0) {
+        const numSourceId = parseInt(sourceId, 10);
+        if (!isNaN(numSourceId)) {
+          sourceResult = await client.query(`
+            SELECT id, prop_id, geom FROM Property_val 
+            WHERE id = $1
+          `, [numSourceId]);
+        }
+      }
       
       if (sourceResult.rows.length === 0) {
         return res.status(404).json({ error: 'Source parcel not found' });
+      }
+      
+      // Get the target parcel
+      let targetQuery = `
+        SELECT id, prop_id, geom FROM Property_val 
+        WHERE prop_id = $1
+      `;
+      let targetResult = await client.query(targetQuery, [targetId]);
+      
+      // If not found by prop_id, try by numeric id
+      if (targetResult.rows.length === 0) {
+        const numTargetId = parseInt(targetId, 10);
+        if (!isNaN(numTargetId)) {
+          targetResult = await client.query(`
+            SELECT id, prop_id, geom FROM Property_val 
+            WHERE id = $1
+          `, [numTargetId]);
+        }
       }
       
       if (targetResult.rows.length === 0) {
