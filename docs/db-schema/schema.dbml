@@ -1,0 +1,79 @@
+// Database schema for TerraFusion
+// Generated from Drizzle ORM migration files
+
+Project TerraFusion {
+  database_type: 'PostgreSQL'
+  Note: 'TerraFusion Geospatial and Agricultural Management Platform'
+}
+
+// Core Tables
+Table property {
+  id uuid [pk]
+  // Other property fields inferred from migration files
+  note: 'Core property record containing main property information'
+}
+
+Table levy {
+  id uuid [pk]
+  // Other levy fields inferred from migration files
+  note: 'Tax levy information'
+}
+
+// Land & Improvement Tables
+Table land_parcel {
+  id uuid [pk]
+  property_id uuid [ref: > property.id, not null]
+  type_code char(10)
+  acreage numeric(10,3)
+  valuation numeric(14,2)
+  note: 'Land parcel information tied to a property'
+}
+
+Table improvement {
+  id uuid [pk]
+  property_id uuid [ref: > property.id, not null]
+  type_code char(5)
+  year_built integer
+  replacement_cost numeric(14,2)
+  note: 'Property improvements like buildings and structures'
+}
+
+// Billing & Payment Tables
+Table levy_bill {
+  id uuid [pk]
+  property_id uuid [ref: > property.id]
+  levy_id uuid [ref: > levy.id]
+  billed_amount numeric(14,2)
+  due_date date
+  status varchar(20) [default: 'UNPAID']
+  note: 'Property tax bill records'
+}
+
+Table payment {
+  id uuid [pk]
+  bill_id uuid [ref: > levy_bill.id]
+  tender_date date
+  amount numeric(14,2)
+  note: 'Payment records for levy bills'
+}
+
+// Collections & Assessments Tables
+Table collection_transaction {
+  id uuid [pk]
+  property_id uuid [ref: > property.id]
+  tx_type varchar(20)
+  tx_date date
+  amount numeric(14,2)
+  note: 'Collection transactions for properties'
+}
+
+Table special_assessment {
+  id uuid [pk]
+  property_id uuid [ref: > property.id]
+  agency_code varchar(10)
+  description varchar(100)
+  assessment_amount numeric(14,2)
+  start_year integer
+  end_year integer
+  note: 'Special assessment records for properties'
+}
