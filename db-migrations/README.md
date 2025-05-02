@@ -1,65 +1,97 @@
 # TerraFusion Database Migrations
 
-This directory contains database migrations for TerraFusion, managed using Flyway.
+This directory contains the Flyway database migration scripts for the TerraFusion platform. These migrations handle the evolution of the database schema in a controlled and repeatable manner.
 
-## PostGIS Migrations
+## Directory Structure
 
-### V4__enable_postgis.sql
-Enables the PostGIS extension in the database, which provides:
-- Spatial data types (geometry, geography)
-- Spatial functions and operators
-- Spatial indexing
+- `migrations/`: Contains versioned SQL migration scripts
+- `scripts/`: Contains utility scripts for database operations
+- `flyway.conf`: Configuration file for Flyway
+- `run-migrations.sh`: Script to run migration commands
 
-### V5__add_parcel_geom.sql
-Adds a geometry column to the `appraisal.Property_val` table for storing parcel boundaries:
-- Creates a `geom` column with SRID 4326 (WGS84)
-- Creates a spatial index using GiST for efficient spatial queries
-- Adds appropriate metadata comments
+## Migration Naming Convention
+
+Flyway migrations follow a specific naming pattern:
+
+```
+V{version}__{description}.sql
+```
+
+For example:
+- `V4__enable_postgis.sql`
+- `V5__add_parcel_geom.sql`
+- `V6__create_geojson_helpers.sql`
+
+## GIS-specific Migrations
+
+The following migrations are specifically related to GIS (Geographic Information System) functionality:
+
+1. **V4__enable_postgis.sql**
+   - Enables the PostGIS extension
+   - Creates a GIS schema
+   - Sets up spatial reference systems
+
+2. **V5__add_parcel_geom.sql**
+   - Adds geometry columns to the parcels table
+   - Creates spatial indexes
+   - Sets up triggers for automatic centroid calculation
+
+3. **V6__create_geojson_helpers.sql**
+   - Creates utility functions for converting between GeoJSON and PostGIS geometries
+   - Implements spatial query functions for finding parcels
 
 ## Running Migrations
 
-Flyway will automatically run these migrations in order. To manually apply migrations:
+To run migrations, use the provided script from the project root:
 
 ```bash
-flyway -configFiles=flyway.conf migrate
+./run-db-migrations.sh [command]
 ```
 
-## Verification
+Available commands:
 
-After running migrations, verify the setup using these SQL commands:
+- `migrate`: Apply pending migrations
+- `clean`: Remove all objects from the schema (use with caution!)
+- `info`: Print information about applied and pending migrations
+- `validate`: Validate applied migrations against the filesystem
+- `repair`: Repair the schema history table
+- `baseline`: Baseline an existing database
+- `sample`: Load sample parcel geometries (for development)
 
-```sql
--- Check that PostGIS is installed
-SELECT postgis_full_version();
+## Sample Data
 
--- Check the Property_val table structure
-\d appraisal.Property_val
-
--- Test a simple spatial query
-SELECT COUNT(*) FROM appraisal.Property_val WHERE ST_IsValid(geom);
-```
-
-## Loading Sample Data
-
-An optional script is provided to load sample geometry data:
+For development and testing purposes, you can load sample parcel geometries:
 
 ```bash
-psql -f db-migrations/scripts/load_sample_geometries.sql
+./run-db-migrations.sh sample
 ```
 
-## Testing Spatial Queries
+This will create five sample parcels with different geometry types.
 
-After loading data, you can test spatial queries like:
+## CI/CD Integration
 
-```sql
--- Find properties within a bounding box
-SELECT id, name 
-FROM appraisal.Property_val 
-WHERE ST_Intersects(geom, ST_MakeEnvelope(-98.1, 40.0, -97.9, 40.2, 4326));
+These migrations are validated in the CI pipeline to ensure they can be applied cleanly to a fresh database. See `.github/workflows/ci.yml` for the implementation.
 
--- Find properties near a point
-SELECT id, name, ST_Distance(geom, ST_SetSRID(ST_Point(-98.0, 40.1), 4326)) AS distance
-FROM appraisal.Property_val
-WHERE ST_DWithin(geom, ST_SetSRID(ST_Point(-98.0, 40.1), 4326), 0.05)
-ORDER BY distance;
-```
+## Important Notes
+
+1. **Never modify an existing migration** that has been applied to any environment. Instead, create a new migration to make the desired changes.
+
+2. **Test migrations locally** before committing them.
+
+3. **Use idempotent scripts** when possible, with conditional logic (e.g., `IF NOT EXISTS`).
+
+4. The `parcels` table uses both PostGIS geometry columns and text columns to store the GeoJSON representation for easier integration with the ORM.
+
+5. Spatial indexes are automatically created for optimal performance.
+
+## Troubleshooting
+
+Common issues:
+
+1. **"PostGIS not available" error**: Make sure the PostGIS extension is installed on your database server.
+
+2. **"Permission denied" on run-migrations.sh**: Make it executable with `chmod +x run-migrations.sh`.
+
+3. **"Connection refused"**: Check the database connection parameters in flyway.conf.
+
+4. **Failed migration**: Use `./run-db-migrations.sh repair` to repair the schema history, then try again.

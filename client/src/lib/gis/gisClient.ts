@@ -1,343 +1,218 @@
-/**
- * GIS client for interacting with the GIS GraphQL API
- * This module provides functions for spatial operations and querying
- */
+import { queryClient } from "../queryClient";
 
-import { apiRequest } from '../queryClient';
+// Define types for GIS data
+export interface Parcel {
+  id: string;
+  parcel_id: string;
+  address?: string;
+  owner_name?: string;
+  county?: string;
+  state_code?: string;
+  geom?: any; // GeoJSON
+  centroid?: any; // GeoJSON
+  created_at?: string;
+  updated_at?: string;
+}
 
-// GraphQL queries for GIS operations
-const GIS_QUERIES = {
-  // Get all parcels
-  GET_PARCELS: `
-    query GetParcels {
-      parcels {
-        id
-        externalId
-        name
-        description
-        centerPoint {
-          lat
-          lng
-        }
-        boundary
-        geom
-      }
-    }
-  `,
-  
-  // Get a specific parcel by ID
-  GET_PARCEL: `
-    query GetParcel($id: ID!) {
-      parcel(id: $id) {
-        id
-        externalId
-        name
-        description
-        centerPoint {
-          lat
-          lng
-        }
-        boundary
-        geom
-        perimeter
-      }
-    }
-  `,
-  
-  // Find parcels near a point
-  FIND_PARCELS_NEAR_POINT: `
-    query FindParcelsNearPoint($lat: Float!, $lng: Float!, $radiusMeters: Float!) {
-      spatial {
-        nearby(lat: $lat, lng: $lng, radiusMeters: $radiusMeters) {
-          id
-          externalId
-          name
-          description
-          centerPoint {
-            lat
-            lng
-          }
-          boundary
-          geom
-        }
-      }
-    }
-  `,
-  
-  // Find parcels within a bounding box
-  FIND_PARCELS_IN_BBOX: `
-    query FindParcelsInBbox(
-      $minLat: Float!, 
-      $minLng: Float!, 
-      $maxLat: Float!, 
-      $maxLng: Float!
-    ) {
-      spatial {
-        bbox(
-          minLat: $minLat, 
-          minLng: $minLng, 
-          maxLat: $maxLat, 
-          maxLng: $maxLng
-        ) {
-          id
-          externalId
-          name
-          description
-          centerPoint {
-            lat
-            lng
-          }
-          boundary
-          geom
-        }
-      }
-    }
-  `,
-  
-  // Find parcels that intersect with a geometry
-  FIND_PARCELS_INTERSECTING: `
-    query FindParcelsIntersecting($wkt: WKT!) {
-      spatial {
-        intersects(geometryWkt: $wkt) {
-          id
-          externalId
-          name
-          description
-          centerPoint {
-            lat
-            lng
-          }
-          boundary
-          geom
-        }
-      }
-    }
-  `,
-  
-  // Check if a point is within a parcel
-  IS_POINT_IN_PARCEL: `
-    query IsPointInParcel($parcelId: ID!, $lat: Float!, $lng: Float!) {
-      parcel(id: $parcelId) {
-        id
-        containsPoint(lat: $lat, lng: $lng)
-      }
-    }
-  `,
-  
-  // Calculate distance between a point and parcel
-  DISTANCE_TO_PARCEL: `
-    query DistanceToParcel($parcelId: ID!, $lat: Float!, $lng: Float!) {
-      parcel(id: $parcelId) {
-        id
-        distance(lat: $lat, lng: $lng)
-      }
-    }
-  `,
-  
-  // Convert GeoJSON to WKT
-  GEOJSON_TO_WKT: `
-    query GeoJSONToWkt($geoJSON: GeoJSON!) {
-      geoJSONToWkt(geoJSON: $geoJSON)
-    }
-  `,
-  
-  // Convert WKT to GeoJSON
-  WKT_TO_GEOJSON: `
-    query WktToGeoJSON($wkt: WKT!) {
-      wktToGeoJSON(wkt: $wkt)
-    }
-  `,
-};
+export interface ParcelArea {
+  parcel_id: string;
+  area: number;
+  unit: 'SQUARE_METERS' | 'SQUARE_FEET' | 'ACRES' | 'HECTARES';
+}
 
-/**
- * Client library for GIS operations
- */
+export type AreaUnit = 'SQUARE_METERS' | 'SQUARE_FEET' | 'ACRES' | 'HECTARES';
+
+// GIS Client API
 export const gisClient = {
-  /**
-   * Get all parcels
-   */
-  async getParcels() {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.GET_PARCELS
-        })
-      });
-      
-      return response.data?.parcels || [];
-    } catch (error) {
-      console.error('Error fetching parcels:', error);
-      return [];
-    }
+  // Fetch parcels within a bounding box
+  fetchParcelsInBBox: async (bbox: [number, number, number, number]): Promise<Parcel[]> => {
+    const query = `
+      query ParcelsInBBox($bbox: [Float!]!) {
+        parcelsInBBox(bbox: $bbox) {
+          id
+          parcel_id
+          address
+          owner_name
+          county
+          state_code
+          geom
+          centroid
+        }
+      }
+    `;
+
+    const response = await queryClient.fetchQuery({
+      queryKey: ['gis', 'parcelsInBBox', bbox],
+      queryFn: async () => {
+        const result = await fetch('/api/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query,
+            variables: { bbox },
+          }),
+        });
+        
+        if (!result.ok) {
+          throw new Error('Failed to fetch parcels in bounding box');
+        }
+        
+        const data = await result.json();
+        return data.data.parcelsInBBox;
+      },
+    });
+    
+    return response;
   },
   
-  /**
-   * Get a specific parcel by ID
-   */
-  async getParcel(id: string | number) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.GET_PARCEL,
-          variables: { id: String(id) }
-        })
-      });
-      
-      return response.data?.parcel || null;
-    } catch (error) {
-      console.error(`Error fetching parcel ${id}:`, error);
-      return null;
-    }
+  // Fetch parcels near a point
+  fetchParcelsNear: async (lat: number, lon: number, radiusMeters: number = 500): Promise<Parcel[]> => {
+    const query = `
+      query ParcelsNear($lat: Float!, $lon: Float!, $radiusMeters: Float!) {
+        parcelsNear(lat: $lat, lon: $lon, radiusMeters: $radiusMeters) {
+          id
+          parcel_id
+          address
+          owner_name
+          geom
+          centroid
+        }
+      }
+    `;
+    
+    const response = await queryClient.fetchQuery({
+      queryKey: ['gis', 'parcelsNear', lat, lon, radiusMeters],
+      queryFn: async () => {
+        const result = await fetch('/api/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query,
+            variables: { lat, lon, radiusMeters },
+          }),
+        });
+        
+        if (!result.ok) {
+          throw new Error('Failed to fetch parcels near point');
+        }
+        
+        const data = await result.json();
+        return data.data.parcelsNear;
+      },
+    });
+    
+    return response;
   },
   
-  /**
-   * Find parcels near a point within a radius
-   */
-  async findParcelsNearPoint(lat: number, lng: number, radiusMeters: number) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.FIND_PARCELS_NEAR_POINT,
-          variables: { lat, lng, radiusMeters }
-        })
-      });
-      
-      return response.data?.spatial?.nearby || [];
-    } catch (error) {
-      console.error('Error finding parcels near point:', error);
-      return [];
-    }
+  // Get a single parcel by ID
+  fetchParcel: async (id: string): Promise<Parcel | null> => {
+    const query = `
+      query Parcel($id: String!) {
+        parcel(id: $id) {
+          id
+          parcel_id
+          address
+          owner_name
+          county
+          state_code
+          geom
+          centroid
+          created_at
+          updated_at
+        }
+      }
+    `;
+    
+    const response = await queryClient.fetchQuery({
+      queryKey: ['gis', 'parcel', id],
+      queryFn: async () => {
+        const result = await fetch('/api/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query,
+            variables: { id },
+          }),
+        });
+        
+        if (!result.ok) {
+          throw new Error('Failed to fetch parcel');
+        }
+        
+        const data = await result.json();
+        return data.data.parcel;
+      },
+    });
+    
+    return response;
   },
   
-  /**
-   * Find parcels within a bounding box
-   */
-  async findParcelsInBbox(minLat: number, minLng: number, maxLat: number, maxLng: number) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.FIND_PARCELS_IN_BBOX,
-          variables: { minLat, minLng, maxLat, maxLng }
-        })
-      });
-      
-      return response.data?.spatial?.bbox || [];
-    } catch (error) {
-      console.error('Error finding parcels in bbox:', error);
-      return [];
-    }
+  // Calculate the area of a parcel
+  calculateParcelArea: async (id: string, unit: AreaUnit = 'SQUARE_METERS'): Promise<ParcelArea> => {
+    const query = `
+      query ParcelArea($id: String!, $unit: AreaUnit!) {
+        parcelArea(id: $id, unit: $unit) {
+          parcel_id
+          area
+          unit
+        }
+      }
+    `;
+    
+    const response = await queryClient.fetchQuery({
+      queryKey: ['gis', 'parcelArea', id, unit],
+      queryFn: async () => {
+        const result = await fetch('/api/graphql', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            query,
+            variables: { id, unit },
+          }),
+        });
+        
+        if (!result.ok) {
+          throw new Error('Failed to calculate parcel area');
+        }
+        
+        const data = await result.json();
+        return data.data.parcelArea;
+      },
+    });
+    
+    return response;
   },
   
-  /**
-   * Find parcels that intersect with a WKT geometry
-   */
-  async findParcelsIntersecting(wkt: string) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.FIND_PARCELS_INTERSECTING,
-          variables: { wkt }
-        })
-      });
-      
-      return response.data?.spatial?.intersects || [];
-    } catch (error) {
-      console.error('Error finding intersecting parcels:', error);
-      return [];
+  // Update a parcel's geometry
+  updateParcelGeometry: async (parcelId: string, geojson: any): Promise<boolean> => {
+    // This would typically be a mutation, but for this example we'll use a REST endpoint
+    const response = await fetch(`/api/parcels/${parcelId}/geometry`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ geojson }),
+    });
+    
+    if (!response.ok) {
+      throw new Error('Failed to update parcel geometry');
     }
+    
+    // Invalidate related queries to refresh data
+    queryClient.invalidateQueries({ queryKey: ['gis', 'parcel', parcelId] });
+    queryClient.invalidateQueries({ queryKey: ['gis', 'parcelsInBBox'] });
+    queryClient.invalidateQueries({ queryKey: ['gis', 'parcelsNear'] });
+    
+    return true;
   },
-  
-  /**
-   * Check if a point is within a parcel
-   */
-  async isPointInParcel(parcelId: string | number, lat: number, lng: number) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.IS_POINT_IN_PARCEL,
-          variables: { parcelId: String(parcelId), lat, lng }
-        })
-      });
-      
-      return response.data?.parcel?.containsPoint || false;
-    } catch (error) {
-      console.error('Error checking if point is in parcel:', error);
-      return false;
-    }
-  },
-  
-  /**
-   * Calculate distance between a point and parcel
-   */
-  async distanceToParcel(parcelId: string | number, lat: number, lng: number) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.DISTANCE_TO_PARCEL,
-          variables: { parcelId: String(parcelId), lat, lng }
-        })
-      });
-      
-      return response.data?.parcel?.distance || null;
-    } catch (error) {
-      console.error('Error calculating distance to parcel:', error);
-      return null;
-    }
-  },
-  
-  /**
-   * Convert GeoJSON to WKT
-   */
-  async geoJSONToWkt(geoJSON: any) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.GEOJSON_TO_WKT,
-          variables: { geoJSON }
-        })
-      });
-      
-      return response.data?.geoJSONToWkt || null;
-    } catch (error) {
-      console.error('Error converting GeoJSON to WKT:', error);
-      return null;
-    }
-  },
-  
-  /**
-   * Convert WKT to GeoJSON
-   */
-  async wktToGeoJSON(wkt: string) {
-    try {
-      const response = await apiRequest('/api/graphql', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          query: GIS_QUERIES.WKT_TO_GEOJSON,
-          variables: { wkt }
-        })
-      });
-      
-      return response.data?.wktToGeoJSON || null;
-    } catch (error) {
-      console.error('Error converting WKT to GeoJSON:', error);
-      return null;
-    }
-  }
 };
+
+export default gisClient;

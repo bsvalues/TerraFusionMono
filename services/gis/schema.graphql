@@ -1,0 +1,54 @@
+type Query {
+  # Find parcels within a bounding box
+  parcelsInBBox(bbox: [Float!]!): [Parcel!]!
+  
+  # Find parcels near a point within a radius
+  parcelsNear(lat: Float!, lon: Float!, radiusMeters: Float! = 500): [Parcel!]!
+  
+  # Get a single parcel by ID
+  parcel(id: String!): Parcel
+  
+  # Calculate area of a parcel in various units
+  parcelArea(id: String!, unit: AreaUnit = SQUARE_METERS): ParcelArea
+}
+
+# A property parcel with boundary geometry
+type Parcel {
+  id: ID!
+  parcel_id: String!
+  address: String
+  owner_name: String
+  county: String
+  state_code: String
+  
+  # GeoJSON representation of the boundary
+  geom: GeoJSON
+  
+  # GeoJSON representation of the centroid
+  centroid: GeoJSON
+  
+  # Area of the parcel
+  area(unit: AreaUnit = SQUARE_METERS): Float
+  
+  # Metadata
+  created_at: String
+  updated_at: String
+}
+
+# GeoJSON object (can be any valid GeoJSON type)
+scalar GeoJSON
+
+# Units for area calculation
+enum AreaUnit {
+  SQUARE_METERS
+  SQUARE_FEET
+  ACRES
+  HECTARES
+}
+
+# Area calculation result
+type ParcelArea {
+  parcel_id: String!
+  area: Float!
+  unit: AreaUnit!
+}

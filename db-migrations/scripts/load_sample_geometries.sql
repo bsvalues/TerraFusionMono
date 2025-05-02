@@ -1,64 +1,155 @@
 -- load_sample_geometries.sql
--- Optional script to load sample polygon data into the Property_val table
--- This should be run manually after the migrations are applied
+-- Load sample geometries for testing GIS functionality in TerraFusion
 
--- Function to update property geometries with sample data
--- Each property gets a simple rectangle boundary based on its ID
-CREATE OR REPLACE FUNCTION update_sample_geometries() RETURNS void AS $$
-DECLARE
-    prop RECORD;
-    center_lat FLOAT;
-    center_lng FLOAT;
-    size FLOAT;
-    geojson TEXT;
+-- Begin transaction
+BEGIN;
+
+-- Create a function to avoid duplicate data
+CREATE OR REPLACE FUNCTION insert_sample_parcel(
+    p_parcel_id VARCHAR,
+    p_address VARCHAR,
+    p_owner_name VARCHAR,
+    p_county VARCHAR,
+    p_state_code VARCHAR,
+    p_geojson TEXT
+) RETURNS VOID AS $$
 BEGIN
-    -- Loop through all properties that don't have geometry yet
-    FOR prop IN SELECT id FROM appraisal.Property_val WHERE geom IS NULL LIMIT 100
-    LOOP
-        -- Generate a random center point based on property ID
-        -- This ensures consistent but "random" looking data
-        center_lat := 40.0 + (prop.id % 100) * 0.01;
-        center_lng := -98.0 - (prop.id % 50) * 0.02;
-        
-        -- Size varies slightly based on ID
-        size := 0.005 + (prop.id % 10) * 0.001;
-        
-        -- Create a GeoJSON polygon (simple rectangle)
-        geojson := format('{
-            "type": "Polygon",
-            "coordinates": [[
-                [%s, %s],
-                [%s, %s],
-                [%s, %s],
-                [%s, %s],
-                [%s, %s]
-            ]]
-        }',
-            center_lng - size, center_lat - size,
-            center_lng + size, center_lat - size,
-            center_lng + size, center_lat + size,
-            center_lng - size, center_lat + size,
-            center_lng - size, center_lat - size
+    -- Check if parcel_id already exists
+    IF NOT EXISTS (SELECT 1 FROM parcels WHERE parcel_id = p_parcel_id) THEN
+        -- Insert parcel without geometry
+        INSERT INTO parcels (
+            parcel_id, 
+            address, 
+            owner_name, 
+            county, 
+            state_code
+        ) VALUES (
+            p_parcel_id,
+            p_address,
+            p_owner_name,
+            p_county,
+            p_state_code
         );
         
-        -- Update the property with the new geometry
-        -- Convert GeoJSON to PostGIS geometry
-        UPDATE appraisal.Property_val
-        SET geom = ST_GeomFromGeoJSON(geojson)
-        WHERE id = prop.id;
+        -- Update geometry using our helper function
+        PERFORM gis.update_parcel_geometry_from_geojson(p_parcel_id, p_geojson);
         
-        RAISE NOTICE 'Updated property % with geometry', prop.id;
-    END LOOP;
-    
-    RAISE NOTICE 'Sample geometries loaded successfully';
+        RAISE NOTICE 'Inserted sample parcel %', p_parcel_id;
+    ELSE
+        RAISE NOTICE 'Parcel % already exists, skipping', p_parcel_id;
+    END IF;
 END;
 $$ LANGUAGE plpgsql;
 
--- Execute the function to load sample data
-SELECT update_sample_geometries();
+-- Sample 1: Rectangle in New York City (Central Park area)
+SELECT insert_sample_parcel(
+    'NYC-CP-001',
+    '59th St & 5th Ave, New York, NY',
+    'City of New York',
+    'New York',
+    'NY',
+    '{
+        "type": "Polygon",
+        "coordinates": [[
+            [-73.9819, 40.7682],
+            [-73.9492, 40.7682],
+            [-73.9492, 40.7965],
+            [-73.9819, 40.7965],
+            [-73.9819, 40.7682]
+        ]]
+    }'
+);
 
--- Drop the function as it's no longer needed
-DROP FUNCTION update_sample_geometries();
+-- Sample 2: Triangle in San Francisco (Golden Gate Park)
+SELECT insert_sample_parcel(
+    'SF-GGP-001',
+    'Golden Gate Park, San Francisco, CA',
+    'City of San Francisco',
+    'San Francisco',
+    'CA',
+    '{
+        "type": "Polygon",
+        "coordinates": [[
+            [-122.5105, 37.7684],
+            [-122.4562, 37.7684],
+            [-122.4847, 37.7705],
+            [-122.5105, 37.7684]
+        ]]
+    }'
+);
 
--- Verify that geometries were added
-SELECT COUNT(*) AS properties_with_geometry FROM appraisal.Property_val WHERE geom IS NOT NULL;
+-- Sample 3: Complex polygon in Austin (Downtown area)
+SELECT insert_sample_parcel(
+    'ATX-DT-001',
+    'Downtown Austin, TX',
+    'City of Austin',
+    'Travis',
+    'TX',
+    '{
+        "type": "Polygon",
+        "coordinates": [[
+            [-97.7515, 30.2610],
+            [-97.7360, 30.2615],
+            [-97.7320, 30.2700],
+            [-97.7405, 30.2780],
+            [-97.7530, 30.2730],
+            [-97.7520, 30.2650],
+            [-97.7515, 30.2610]
+        ]]
+    }'
+);
+
+-- Sample 4: Small rural parcel
+SELECT insert_sample_parcel(
+    'RURAL-001',
+    'Rural Route 2, Smallville, KS',
+    'Kent Family Farm',
+    'Butler',
+    'KS',
+    '{
+        "type": "Polygon",
+        "coordinates": [[
+            [-97.1099, 38.2025],
+            [-97.1020, 38.2025],
+            [-97.1020, 38.2080],
+            [-97.1099, 38.2080],
+            [-97.1099, 38.2025]
+        ]]
+    }'
+);
+
+-- Sample 5: Large agricultural plot
+SELECT insert_sample_parcel(
+    'AG-PLOT-001',
+    'County Road 55, Farmville, IA',
+    'Heartland Farms LLC',
+    'Story',
+    'IA',
+    '{
+        "type": "Polygon",
+        "coordinates": [[
+            [-93.6120, 42.0310],
+            [-93.5950, 42.0310],
+            [-93.5950, 42.0410],
+            [-93.6120, 42.0410],
+            [-93.6120, 42.0310]
+        ]]
+    }'
+);
+
+-- Clean up the temporary function
+DROP FUNCTION IF EXISTS insert_sample_parcel;
+
+-- Commit transaction
+COMMIT;
+
+-- Show counts for verification
+SELECT 'Sample data loaded: ' || COUNT(*) || ' parcels with geometry' AS result 
+FROM parcels 
+WHERE boundary_geom IS NOT NULL;
+
+-- Verify spatial queries work
+SELECT 
+    'Spatial query test result: ' || COUNT(*) || ' parcels found' AS result
+FROM 
+    gis.find_parcels_near_point(40.7800, -73.9700, 5000);  -- Near Central Park, NYC

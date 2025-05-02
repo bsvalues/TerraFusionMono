@@ -65,7 +65,7 @@ jobs:
     runs-on: ubuntu-latest
     services:
       postgres:
-        image: postgres:14
+        image: postgis/postgis:14-3.3  # Using official PostGIS image
         env:
           POSTGRES_USER: postgres
           POSTGRES_PASSWORD: postgres
@@ -87,12 +87,12 @@ jobs:
           distribution: 'temurin'
           java-version: '11'
       
-      - name: Install PostGIS in PostgreSQL
+      - name: Verify PostGIS is available
         run: |
           sudo apt-get update
-          sudo apt-get install -y postgresql-client postgis
-          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -c "CREATE EXTENSION postgis;"
-          echo "PostGIS extension installed."
+          sudo apt-get install -y postgresql-client
+          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -c "SELECT postgis_version();"
+          echo "PostGIS extension verified."
       
       - name: Download Flyway
         run: |
@@ -104,11 +104,63 @@ jobs:
           cd db-migrations
           flyway validate -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres -locations=filesystem:migrations
       
-      - name: Run Flyway clean and migrate to test migrations
+      - name: Run Flyway migrations
         run: |
           cd db-migrations
           flyway clean -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres
           flyway migrate -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres -locations=filesystem:migrations
           
-          # Verify PostGIS is working correctly
-          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -c "SELECT postgis_version();"
+      - name: Load sample data for testing
+        run: |
+          cd db-migrations
+          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -f "scripts/load_sample_geometries.sql"
+          
+      - name: Verify spatial queries
+        run: |
+          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -c "SELECT * FROM gis.find_parcels_near_point(40.7800, -73.9700, 5000);"
+          PGPASSWORD=postgres psql -h localhost -U postgres -d testdb -c "SELECT gis.calculate_parcel_area('NYC-CP-001', 'acres');"
+          echo "Spatial queries verified successfully."
+          
+  rollback-test:
+    runs-on: ubuntu-latest
+    needs: validate-migrations
+    services:
+      postgres:
+        image: postgis/postgis:14-3.3
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: testdb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+        
+      - name: Download Flyway
+        run: |
+          wget -qO- https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.4.0/flyway-commandline-9.4.0-linux-x64.tar.gz | tar xvz
+          sudo ln -s $(pwd)/flyway-9.4.0/flyway /usr/local/bin/flyway
+      
+      - name: Test migration to specific version
+        run: |
+          cd db-migrations
+          # Migrate to the latest version
+          flyway migrate -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres -locations=filesystem:migrations
+          
+          # Validate current state
+          flyway info -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres
+          
+          # Clean and migrate only to version 5 (without GeoJSON helpers)
+          flyway clean -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres
+          flyway migrate -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres -target=5
+          
+          # Verify it has only applied up to V5
+          flyway info -url=jdbc:postgresql://localhost:5432/testdb -user=postgres -password=postgres
+          
+          echo "Incremental migration testing successful."

@@ -1,216 +1,163 @@
-import { useEffect, useState } from 'react';
-import { MapContainer, TileLayer, GeoJSON, Marker, Popup, useMap } from 'react-leaflet';
-import { LatLngBounds, LatLngTuple, Icon } from 'leaflet';
+import React, { useEffect, useRef, useState } from 'react';
+import { MapContainer, TileLayer, GeoJSON, Marker, Popup, useMapEvents } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
-import { Button } from '@/components/ui/button';
-import { useToast } from '@/hooks/use-toast';
+import L from 'leaflet';
 
-// Fix for default marker icons in Leaflet with React
-// This is needed because the default markers use relative paths that don't work in the build
-import markerIcon from 'leaflet/dist/images/marker-icon.png';
-import markerIcon2x from 'leaflet/dist/images/marker-icon-2x.png';
-import markerShadow from 'leaflet/dist/images/marker-shadow.png';
+// Fix for default marker icons in Leaflet
+import icon from 'leaflet/dist/images/marker-icon.png';
+import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
-// Define the Parcel type based on our schema
+let DefaultIcon = L.icon({
+  iconUrl: icon,
+  shadowUrl: iconShadow,
+  iconSize: [25, 41],
+  iconAnchor: [12, 41]
+});
+
+L.Marker.prototype.options.icon = DefaultIcon;
+
+// Define the Parcel type
 interface Parcel {
-  id: number;
-  externalId: string;
-  name: string;
-  description?: string;
-  boundary?: any; // GeoJSON
-  centerPoint?: {
-    lat: number;
-    lng: number;
-  };
-  geom?: string; // WKT
+  id: string;
+  parcel_id: string;
+  address?: string;
+  owner_name?: string;
+  geom: any; // GeoJSON
+  centroid?: any; // GeoJSON
 }
 
-// Define props for our component
+// Props for the ParcelMap component
 interface ParcelMapProps {
-  parcels?: Parcel[];
-  selectedParcelId?: number;
-  onParcelSelect?: (parcelId: number) => void;
+  parcels: Parcel[];
+  center?: [number, number]; // [latitude, longitude]
+  zoom?: number;
   height?: string;
-  width?: string;
-  initialZoom?: number;
-  initialCenter?: [number, number]; // [lat, lng]
+  onBoundsChanged?: (bounds: L.LatLngBounds) => void;
 }
 
-// Helper component to recenter the map when selectedParcelId changes
-const MapController = ({ 
-  selectedParcel, 
-  fitBounds 
-}: { 
-  selectedParcel?: Parcel; 
-  fitBounds?: boolean;
-}) => {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (selectedParcel?.centerPoint && fitBounds) {
-      map.setView(
-        [selectedParcel.centerPoint.lat, selectedParcel.centerPoint.lng],
-        14
-      );
+// MapEvents component to handle map interactions
+const MapEvents = ({ onBoundsChanged }: { onBoundsChanged?: (bounds: L.LatLngBounds) => void }) => {
+  const map = useMapEvents({
+    moveend: () => {
+      if (onBoundsChanged) {
+        onBoundsChanged(map.getBounds());
+      }
+    },
+    zoomend: () => {
+      if (onBoundsChanged) {
+        onBoundsChanged(map.getBounds());
+      }
     }
-  }, [selectedParcel, map, fitBounds]);
-  
+  });
   return null;
 };
 
-// Set up default marker icons
-const DefaultIcon = new Icon({
-  iconUrl: markerIcon,
-  iconRetinaUrl: markerIcon2x,
-  shadowUrl: markerShadow,
-  iconSize: [25, 41],
-  iconAnchor: [12, 41],
-  popupAnchor: [1, -34],
-  shadowSize: [41, 41]
-});
+// Main ParcelMap component
+const ParcelMap: React.FC<ParcelMapProps> = ({
+  parcels,
+  center = [40.7128, -74.0060], // Default to NYC
+  zoom = 12,
+  height = '500px',
+  onBoundsChanged
+}) => {
+  const geoJsonLayerRef = useRef<L.GeoJSON | null>(null);
 
-export default function ParcelMap({
-  parcels = [],
-  selectedParcelId,
-  onParcelSelect,
-  height = '600px',
-  width = '100%',
-  initialZoom = 10,
-  initialCenter = [39.8283, -98.5795], // Center of USA
-}: ParcelMapProps) {
-  const [selectedParcel, setSelectedParcel] = useState<Parcel | undefined>();
-  const { toast } = useToast();
+  // Style for the GeoJSON parcels
+  const parcelStyle = {
+    color: '#3388ff',
+    weight: 2,
+    opacity: 0.7,
+    fillColor: '#3388ff',
+    fillOpacity: 0.2
+  };
 
-  // Find selected parcel when selectedParcelId changes
-  useEffect(() => {
-    if (selectedParcelId) {
-      const parcel = parcels.find(p => p.id === selectedParcelId);
-      setSelectedParcel(parcel);
-    } else {
-      setSelectedParcel(undefined);
-    }
-  }, [selectedParcelId, parcels]);
+  // Style for the selected parcel
+  const selectedParcelStyle = {
+    color: '#ff4500',
+    weight: 3,
+    opacity: 1,
+    fillColor: '#ff4500',
+    fillOpacity: 0.3
+  };
 
-  // Handle click on a parcel
-  const handleParcelClick = (parcel: Parcel) => {
-    if (onParcelSelect) {
-      onParcelSelect(parcel.id);
-    }
-    setSelectedParcel(parcel);
+  // Zoom to a specific parcel when it's clicked
+  const onEachFeature = (feature: any, layer: L.Layer) => {
+    const parcelId = feature.properties.parcel_id;
+    const address = feature.properties.address || 'No address';
+    const owner = feature.properties.owner_name || 'Unknown owner';
     
-    toast({
-      title: "Parcel Selected",
-      description: `Selected ${parcel.name} (ID: ${parcel.externalId})`,
+    layer.bindPopup(`
+      <div>
+        <h3>Parcel: ${parcelId}</h3>
+        <p><strong>Address:</strong> ${address}</p>
+        <p><strong>Owner:</strong> ${owner}</p>
+      </div>
+    `);
+    
+    layer.on({
+      click: (e) => {
+        // Reset styles for all layers
+        if (geoJsonLayerRef.current) {
+          geoJsonLayerRef.current.resetStyle();
+        }
+        
+        // Set style for the clicked layer if it's a path (like polygon or polyline)
+        if ('setStyle' in layer) {
+          (layer as L.Path).setStyle(selectedParcelStyle);
+        }
+      }
     });
   };
 
-  // Parse GeoJSON from parcel boundary
-  const getGeoJSON = (parcel: Parcel) => {
-    if (!parcel.boundary) return null;
-    
-    // If it's already a GeoJSON object, return it
-    if (typeof parcel.boundary === 'object') {
-      return parcel.boundary;
-    }
-    
-    // If it's a string (e.g., from the API), parse it
-    try {
-      return JSON.parse(parcel.boundary);
-    } catch (error) {
-      console.error("Error parsing GeoJSON boundary:", error);
-      return null;
-    }
-  };
-
-  // Style for the GeoJSON polygons
-  const getParcelStyle = (parcel: Parcel) => {
-    const isSelected = parcel.id === selectedParcelId;
+  // Convert parcels to GeoJSON features
+  const parcelFeatures = parcels.map(parcel => {
+    // If the geom is a string, parse it; otherwise use it directly
+    const geometry = typeof parcel.geom === 'string' 
+      ? JSON.parse(parcel.geom) 
+      : parcel.geom;
     
     return {
-      color: isSelected ? '#ff4500' : '#3388ff',
-      weight: isSelected ? 3 : 2,
-      opacity: 1,
-      fillColor: isSelected ? '#ff4500' : '#3388ff',
-      fillOpacity: isSelected ? 0.3 : 0.2,
+      type: 'Feature',
+      geometry,
+      properties: {
+        id: parcel.id,
+        parcel_id: parcel.parcel_id,
+        address: parcel.address,
+        owner_name: parcel.owner_name
+      }
     };
+  });
+
+  const geoJsonData = {
+    type: 'FeatureCollection',
+    features: parcelFeatures
   };
 
   return (
-    <Card className="map-container w-full">
-      <CardHeader className="py-3">
-        <CardTitle>Property Map</CardTitle>
-        <CardDescription>
-          {selectedParcel 
-            ? `Viewing: ${selectedParcel.name} (${selectedParcel.externalId})`
-            : 'Click on a parcel to view details'}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div style={{ height, width, position: 'relative' }}>
-          <MapContainer
-            center={initialCenter}
-            zoom={initialZoom}
-            style={{ height: '100%', width: '100%', borderRadius: '0.5rem' }}
-          >
-            <TileLayer
-              attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-              url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-            />
-            
-            {/* Center the map on the selected parcel */}
-            <MapController selectedParcel={selectedParcel} fitBounds={!!selectedParcel} />
-            
-            {/* Render each parcel as a GeoJSON polygon */}
-            {parcels.map(parcel => {
-              const geojson = getGeoJSON(parcel);
-              if (!geojson) return null;
-              
-              return (
-                <GeoJSON
-                  key={`parcel-${parcel.id}`}
-                  data={geojson}
-                  style={() => getParcelStyle(parcel)}
-                  eventHandlers={{
-                    click: () => handleParcelClick(parcel),
-                  }}
-                />
-              );
-            })}
-            
-            {/* Show markers for parcel center points */}
-            {parcels.map(parcel => 
-              parcel.centerPoint && (
-                <Marker
-                  key={`marker-${parcel.id}`}
-                  position={[parcel.centerPoint.lat, parcel.centerPoint.lng]}
-                  icon={DefaultIcon}
-                  eventHandlers={{
-                    click: () => handleParcelClick(parcel),
-                  }}
-                >
-                  <Popup>
-                    <div>
-                      <h3 className="font-medium">{parcel.name}</h3>
-                      <p className="text-sm text-gray-500">ID: {parcel.externalId}</p>
-                      {parcel.description && (
-                        <p className="text-sm mt-1">{parcel.description}</p>
-                      )}
-                      <Button 
-                        size="sm" 
-                        className="mt-2"
-                        onClick={() => handleParcelClick(parcel)}
-                      >
-                        Select
-                      </Button>
-                    </div>
-                  </Popup>
-                </Marker>
-              )
-            )}
-          </MapContainer>
-        </div>
-      </CardContent>
-    </Card>
+    <div style={{ height, width: '100%' }}>
+      <MapContainer
+        center={center}
+        zoom={zoom}
+        style={{ height: '100%', width: '100%' }}
+      >
+        <TileLayer
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+        />
+        
+        <MapEvents onBoundsChanged={onBoundsChanged} />
+        
+        {parcels.length > 0 && (
+          <GeoJSON
+            data={geoJsonData as any}
+            style={parcelStyle}
+            onEachFeature={onEachFeature}
+            ref={geoJsonLayerRef}
+          />
+        )}
+      </MapContainer>
+    </div>
   );
-}
+};
+
+export default ParcelMap;

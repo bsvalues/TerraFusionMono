@@ -1,0 +1,127 @@
+Great—your database now supports PostGIS and the `geom` column is in place. Let’s complete the GIS pipeline by loading real parcel boundaries and testing the spatial queries.
+
+---
+
+## 1. Load Parcel Polygons into `geom`
+
+Assuming you have a Shapefile (or GeoJSON) of your parcel boundaries:
+
+### A) Using `shp2pgsql` (PostGIS CLI)
+
+1. Install PostGIS client tools (if not already).  
+2. Run:
+   ```bash
+   shp2pgsql -I -s 4326 path/to/parcels.shp appraisal.property_val_geom_tmp | psql -h $DB_HOST -d $DB_NAME -U $DB_USER
+   ```
+   This loads into a new table `appraisal.property_val_geom_tmp`.
+
+3. Copy into your production table matching on `prop_id`:
+   ```sql
+   UPDATE appraisal.Property_val AS p
+     SET geom = g.geom
+   FROM appraisal.property_val_geom_tmp AS g
+   WHERE p.prop_id = g.prop_id;
+   ```
+
+4. Drop the staging table:
+   ```sql
+   DROP TABLE appraisal.property_val_geom_tmp;
+   ```
+
+### B) Using `ogr2ogr`
+
+Alternatively, if you prefer:
+```bash
+ogr2ogr -f "PostgreSQL" \
+  PG:"host=$DB_HOST dbname=$DB_NAME user=$DB_USER password=$DB_PASS" \
+  path/to/parcels.shp \
+  -nln appraisal.Property_val \
+  -append \
+  -nlt PROMOTE_TO_MULTI \
+  -lco GEOMETRY_NAME=geom \
+  -lco FID=prop_id \
+  -lco PRECISION=NO
+```
+This will append/overwrite the `geom` column on matching `prop_id`.
+
+---
+
+## 2. Verify Spatial Data
+
+In `psql` or your SQL client:
+```sql
+-- Check one polygon
+SELECT prop_id, ST_AsText(geom) 
+  FROM appraisal.Property_val 
+ WHERE geom IS NOT NULL 
+ LIMIT 5;
+
+-- Verify spatial index is used
+EXPLAIN ANALYZE 
+  SELECT * 
+    FROM appraisal.Property_val 
+   WHERE geom && ST_MakeEnvelope(-122.7,45.4,-122.5,45.6,4326);
+```
+
+You should see a `Bitmap Index Scan` on the `gist` index, confirming performance.
+
+---
+
+## 3. Test GraphQL Spatial Queries
+
+In your GraphQL Playground:
+
+```graphql
+query ParcelsInBBox {
+  parcelsInBBox(bbox: [-122.7,45.4,-122.5,45.6]) {
+    id
+    address
+    geom   # returns GeoJSON
+    centroid
+  }
+}
+
+query ParcelsNear {
+  parcelsNear(lat: 45.52, lon: -122.65, radiusMeters: 500) {
+    id
+    address
+    centroid
+  }
+}
+```
+
+You should receive parcel features within that bounding box or radius.
+
+---
+
+## 4. Render on the Map
+
+Update your Dashboard component to:
+
+```tsx
+const [parcels, setParcels] = useState<Parcel[]>([]);
+
+function onMapMove(e) {
+  const bounds = e.target.getBounds(); // Leaflet LatLngBounds
+  const bbox = [bounds.getWest(), bounds.getSouth(), bounds.getEast(), bounds.getNorth()];
+  client.query({ query: PARCELS_IN_BBOX, variables: { bbox } })
+    .then(res => setParcels(res.data.parcelsInBBox));
+}
+
+// ...
+<MapContainer onmoveend={onMapMove} /* … */>
+  {/* … */}
+</MapContainer>
+<ParcelMap parcels={parcels} />
+```
+
+---
+
+With these steps you’ll have:
+
+- **Real parcel geometries** in PostGIS  
+- **Spatial indexes** for fast queries  
+- **GraphQL endpoints** returning GeoJSON  
+- **Interactive React map** displaying parcels  
+
+Let me know once you’ve loaded your shapefile and tested the queries, or if you need help with any of these commands!
