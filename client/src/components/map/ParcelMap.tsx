@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useCallback } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { MapContainer, TileLayer, GeoJSON, Popup, useMap } from 'react-leaflet';
@@ -28,15 +28,15 @@ function ChangeMapView({ center, zoom }: { center: [number, number]; zoom: numbe
 }
 
 // Component to highlight a GeoJSON on the map
-function HighlightLayer({ geometry, map }: { geometry: any; map: L.Map }) {
+function HighlightLayer({ geometry, mapInstance }: { geometry: any; mapInstance: L.Map }) {
   const [geoJsonLayer, setGeoJsonLayer] = useState<L.GeoJSON | null>(null);
 
   useEffect(() => {
-    if (!geometry) return;
+    if (!geometry || !mapInstance) return;
 
     // Remove previous layer if exists
     if (geoJsonLayer) {
-      map.removeLayer(geoJsonLayer);
+      mapInstance.removeLayer(geoJsonLayer);
     }
 
     // Create new layer with the geometry
@@ -51,21 +51,21 @@ function HighlightLayer({ geometry, map }: { geometry: any; map: L.Map }) {
     });
 
     // Add the layer to the map
-    layer.addTo(map);
+    layer.addTo(mapInstance);
 
     // Store the layer reference
     setGeoJsonLayer(layer);
 
     // Zoom to fit the layer bounds
-    map.fitBounds(layer.getBounds());
+    mapInstance.fitBounds(layer.getBounds());
 
     // Cleanup function
     return () => {
       if (layer) {
-        map.removeLayer(layer);
+        mapInstance.removeLayer(layer);
       }
     };
-  }, [geometry, map]);
+  }, [geometry, mapInstance]);
 
   return null;
 }
@@ -81,7 +81,8 @@ export default function ParcelMap({
   zoom = 13,
   height = '600px'
 }: ParcelMapProps) {
-  const mapRef = useRef<L.Map | null>(null);
+  // Need to use state to store the map instance, not ref
+  const [map, setMap] = useState<L.Map | null>(null);
   const [selectedParcel, setSelectedParcel] = useState<any>(null);
   const [highlightGeometry, setHighlightGeometry] = useState<any>(null);
 
@@ -109,6 +110,11 @@ export default function ParcelMap({
   const handleClearHighlight = () => {
     setHighlightGeometry(null);
   };
+  
+  // Function to handle map load
+  const handleMapLoad = useCallback((e: { target: L.Map }) => {
+    setMap(e.target);
+  }, []);
 
   return (
     <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -123,9 +129,7 @@ export default function ParcelMap({
                 center={center}
                 zoom={zoom}
                 style={{ height: '100%', width: '100%' }}
-                whenCreated={(map) => {
-                  mapRef.current = map;
-                }}
+                whenReady={handleMapLoad}
               >
                 <TileLayer
                   attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
@@ -168,8 +172,8 @@ export default function ParcelMap({
                   />
                 )}
 
-                {mapRef.current && highlightGeometry && (
-                  <HighlightLayer geometry={highlightGeometry} map={mapRef.current} />
+                {map && highlightGeometry && (
+                  <HighlightLayer geometry={highlightGeometry} mapInstance={map} />
                 )}
               </MapContainer>
             </div>

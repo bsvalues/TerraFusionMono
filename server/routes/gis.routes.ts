@@ -4,6 +4,56 @@ import { z } from 'zod';
 
 const router = Router();
 
+// Get all parcels for map view
+router.get('/parcels', async (req, res) => {
+  try {
+    const client = await pool.connect();
+    try {
+      const query = `
+        SELECT 
+          id, 
+          prop_id, 
+          address, 
+          owner_name,
+          ST_AsGeoJSON(geom)::json as geometry
+        FROM Property_val
+        LIMIT 1000
+      `;
+      
+      const result = await client.query(query);
+      
+      // Transform to GeoJSON format
+      const features = result.rows.map(row => {
+        return {
+          type: 'Feature',
+          geometry: row.geometry,
+          properties: {
+            id: row.id,
+            prop_id: row.prop_id,
+            address: row.address,
+            owner_name: row.owner_name
+          }
+        };
+      });
+      
+      const featureCollection = {
+        type: 'FeatureCollection',
+        features: features
+      };
+      
+      res.json({
+        parcels: featureCollection,
+        count: features.length
+      });
+    } finally {
+      client.release();
+    }
+  } catch (error) {
+    console.error('Error fetching parcels:', error);
+    res.status(500).json({ error: 'Failed to fetch parcels' });
+  }
+});
+
 // Validate bounding box parameters
 const bboxSchema = z.object({
   west: z.coerce.number(),
