@@ -48,6 +48,99 @@ models:
       - name: improvement_value
         description: "Assessed value of the improvement"
 
+  - name: stg_owner
+    description: "Staged owner data from the master schema"
+    columns:
+      - name: owner_id
+        description: "Unique identifier for the owner"
+        tests:
+          - not_null
+          - unique
+      - name: first_name
+        description: "Owner's first name"
+      - name: last_name
+        description: "Owner's last name"
+      - name: address
+        description: "Owner's address"
+      - name: email
+        description: "Owner's email address"
+      - name: phone
+        description: "Owner's phone number"
+      - name: created_at
+        description: "Timestamp when the owner record was created"
+      - name: updated_at
+        description: "Timestamp when the owner record was last updated"
+
+  - name: stg_time
+    description: "Generated time dimension for date-based analysis"
+    columns:
+      - name: date_key
+        description: "Date primary key"
+        tests:
+          - not_null
+          - unique
+      - name: year
+        description: "Year component of the date"
+        tests:
+          - not_null
+      - name: month
+        description: "Month component of the date (1-12)"
+      - name: day
+        description: "Day component of the date"
+      - name: month_name
+        description: "Full name of the month"
+      - name: month_short
+        description: "Short name of the month"
+      - name: quarter
+        description: "Quarter of the year (1-4)"
+      - name: quarter_name
+        description: "Quarter name (Q1-Q4)"
+      - name: week_of_year
+        description: "Week number within the year"
+      - name: day_of_year
+        description: "Day number within the year"
+      - name: day_of_week
+        description: "Day number within the week"
+      - name: day_name
+        description: "Name of the day"
+      - name: day_short
+        description: "Short name of the day"
+      - name: fiscal_year
+        description: "Fiscal year (July-June)"
+      - name: fiscal_month
+        description: "Month of the fiscal year (1-12)"
+      - name: is_first_day_of_month
+        description: "Flag indicating if the date is the first day of a month"
+      - name: is_last_day_of_month
+        description: "Flag indicating if the date is the last day of a month"
+      - name: is_weekend
+        description: "Flag indicating if the date is a weekend"
+
+  - name: stg_tax_area
+    description: "Staged tax area data from the master schema"
+    columns:
+      - name: tax_area_id
+        description: "Unique identifier for the tax area"
+        tests:
+          - not_null
+          - unique
+      - name: area_code
+        description: "Code representing the tax area"
+        tests:
+          - not_null
+      - name: area_name
+        description: "Name of the tax area"
+      - name: description
+        description: "Description of the tax area"
+      - name: jurisdiction_type
+        description: "Type of jurisdiction (city, county, state, etc.)"
+      - name: effective_date
+        description: "Date when the tax area became effective"
+      - name: expiration_date
+        description: "Date when the tax area expires (if applicable)"
+      - name: is_active
+        description: "Flag indicating if the tax area is currently active"
+        
   - name: stg_levy
     description: "Staged levy data from the billing schema"
     columns:

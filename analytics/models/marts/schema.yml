@@ -18,6 +18,81 @@ models:
       - name: updated_by
         description: "User or process that last updated the property record"
 
+  - name: dim_owner
+    description: "Owner dimension table containing account holder information"
+    columns:
+      - name: owner_id
+        description: "Unique identifier for the owner"
+        tests:
+          - not_null
+          - unique
+      - name: first_name
+        description: "Owner's first name"
+      - name: last_name
+        description: "Owner's last name"
+      - name: full_name
+        description: "Owner's full name (first + last)"
+      - name: address
+        description: "Owner's address"
+      - name: email
+        description: "Owner's email address"
+      - name: phone
+        description: "Owner's phone number"
+      - name: created_at
+        description: "Timestamp when the owner record was created"
+      - name: updated_at
+        description: "Timestamp when the owner record was last updated"
+
+  - name: dim_time
+    description: "Time dimension table for date-based analysis"
+    columns:
+      - name: date_key
+        description: "Date primary key"
+        tests:
+          - not_null
+          - unique
+      - name: year
+        description: "Year component of the date"
+        tests:
+          - not_null
+      - name: month
+        description: "Month component of the date (1-12)"
+      - name: month_name
+        description: "Full name of the month"
+      - name: quarter
+        description: "Quarter of the year (1-4)"
+      - name: quarter_name
+        description: "Quarter name (Q1-Q4)"
+      - name: fiscal_year
+        description: "Fiscal year (July-June)"
+      - name: fiscal_month
+        description: "Month of the fiscal year (1-12)"
+      - name: is_weekend
+        description: "Flag indicating if the date is a weekend"
+
+  - name: dim_tax_area
+    description: "Tax area dimension containing district and jurisdiction information"
+    columns:
+      - name: tax_area_id
+        description: "Unique identifier for the tax area"
+        tests:
+          - not_null
+          - unique
+      - name: area_code
+        description: "Code representing the tax area"
+        tests:
+          - not_null
+      - name: area_name
+        description: "Name of the tax area"
+      - name: jurisdiction_type
+        description: "Type of jurisdiction (city, county, state, etc.)"
+      - name: is_active
+        description: "Flag indicating if the tax area is currently active"
+      - name: effective_date
+        description: "Date when the tax area became effective"
+      - name: expiration_date
+        description: "Date when the tax area expires (if applicable)"
+
   - name: dim_levy
     description: "Tax levy dimension table containing levy rates and authority information"
     columns:

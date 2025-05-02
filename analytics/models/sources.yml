@@ -31,3 +31,7 @@ sources:
     tables:
       - name: property_comprehensive
         description: Integrated view of property information
+      - name: account
+        description: Owner account information
+      - name: tax_area
+        description: Tax district and jurisdiction information

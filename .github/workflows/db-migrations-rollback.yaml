@@ -1,0 +1,67 @@
+name: Flyway Rollback Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - "db-migrations/**"
+
+jobs:
+  rollback-test:
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:14
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: terradb
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Wait for PostgreSQL
+        run: |
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U postgres && break
+            echo "Waiting..."
+            sleep 5
+          done
+
+      - name: Install Flyway
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Migrate Up (Baseline → V5)
+        env:
+          FLYWAY_URL: "jdbc:postgresql://localhost:5432/terradb"
+          FLYWAY_USER: "postgres"
+          FLYWAY_PASSWORD: "postgres"
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: flyway migrate
+
+      - name: Migrate Down (Rollback V5)
+        env:
+          FLYWAY_URL: "jdbc:postgresql://localhost:5432/terradb"
+          FLYWAY_USER: "postgres"
+          FLYWAY_PASSWORD: "postgres"
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: flyway undo
+
+      - name: Verify V4 Still Applied, V5 Undone
+        run: |
+          export PGPASSWORD=postgres
+          flyway info | grep "V4__audit_columns" || (echo "V4 missing" && exit 1)
+          ! flyway info | grep "Success.*V5__analysis_views" || (echo "V5 still applied after undo" && exit 1)

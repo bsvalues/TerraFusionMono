@@ -1,95 +1,92 @@
-# TerraFusion Database Migrations
+# Database Migrations
 
-This directory contains database migration scripts for the TerraFusion property assessment and taxation system.
+This directory contains the database migration scripts for the TerraFusion property assessment and taxation system.
 
-## Migration Framework
+## Structure
 
-We use Flyway as our database migration framework. Flyway tracks migration versions and ensures that migrations are applied in the correct order.
-
-## Configuration
-
-The `flyway.conf` file contains the configuration for Flyway. It reads database credentials from environment variables.
-
-## Migration Script Overview
-
-1. **V1__baseline.sql**
-   - Establishes a baseline for the database
-   - Creates schema namespaces: appraisal, billing, master
-
-2. **V2__schema_reorganization.sql**
-   - Reorganizes tables into logical schema namespaces
-   - Moves property-related tables to the appraisal schema
-   - Moves billing-related tables to the billing schema
-
-3. **V3__add_fks.sql**
-   - Adds explicit foreign key constraints across schemas
-   - Ensures data integrity between related tables
-
-4. **V4__index_optimizations.sql**
-   - Adds optimized indexes for improved query performance
-   - Adds compound indexes for common query patterns
-   - Sets default values where needed
-
-5. **V5__audit_columns.sql**
-   - Adds audit tracking columns (created_at, updated_at, etc.)
-   - Creates triggers to automatically update timestamps
-   - Tracks who created and updated records
-
-6. **V6__analysis_views.sql**
-   - Creates database views for common analysis queries
-   - Provides summary views for property valuation
-   - Provides summary views for billing and payment information
-
-## Running Migrations Locally
-
-We provide a convenient script for running Flyway commands locally:
-
-```bash
-./run-local-migration.sh [command]
+```
+db-migrations/
+├── config/
+│   ├── flyway.dev.conf       # Development environment configuration
+│   └── flyway.prod.conf      # Production environment configuration
+├── migrations/
+│   ├── V1__baseline.sql      # Baseline schema (initial state)
+│   ├── V2__schema_reorganization.sql    # Reorganization into namespaces
+│   ├── V3__add_fks.sql       # Addition of foreign key constraints
+│   ├── V4__audit_columns.sql # Addition of audit columns
+│   └── V5__analysis_views.sql # Analysis views for reporting
+├── scripts/
+│   ├── apply-migrations.sh   # Script to apply migrations
+│   ├── info-migrations.sh    # Script to show migration status
+│   └── rollback-migration.sh # Script to rollback latest migration
+└── README.md                 # This file
 ```
 
-Available commands:
-- `migrate` - Apply pending migrations
-- `info` - Show migration status
-- `validate` - Validate applied migrations
-- `clean` - Remove all objects (warning: destroys data!)
-- `baseline` - Baseline an existing database
-- `repair` - Repair the metadata table
+## Using Flyway
+
+### Prerequisites
+
+- Flyway CLI installed (v9.x or later)
+- PostgreSQL database connection credentials
+
+### Configuration
+
+Flyway configuration files are stored in the `config/` directory. You need to set the following environment variables or update the configuration files:
+
+- `FLYWAY_URL` - JDBC URL to the database
+- `FLYWAY_USER` - Database user
+- `FLYWAY_PASSWORD` - Database password
+- `FLYWAY_SCHEMAS` - Comma-separated list of schemas to manage (public,appraisal,billing,master)
+- `FLYWAY_LOCATIONS` - Location of migration files
+
+### Basic Commands
+
+**View Migration Status:**
+```bash
+flyway -configFiles=config/flyway.dev.conf info
+```
+
+**Apply Migrations:**
+```bash
+flyway -configFiles=config/flyway.dev.conf migrate
+```
+
+**Rollback Latest Migration:**
+```bash
+flyway -configFiles=config/flyway.dev.conf undo
+```
 
 ## CI/CD Integration
 
-Database migrations are integrated with our CI/CD pipeline:
+The repository includes GitHub Actions workflows to:
 
-1. **Pull Request Validation**: Migrations are automatically tested on PRs
-2. **Automated Deployment**: Migrations are deployed to staging/production on merge
-3. **Rollback Protection**: Backups are taken before applying migrations
+1. **Validate Migrations** - Checks that migrations can be applied cleanly
+2. **Deploy Migrations** - Applies migrations to the target environment
+3. **Rollback Smoke Test** - Tests that the latest migration can be safely rolled back
 
-For more details, see the [CI/CD Documentation](../devops/ci/README.md).
+See the [Database Migrations Runbook](../docs/runbooks/db-migrations.md) for detailed procedures on handling migrations in production environments.
 
-## Schema Overview
+## Migration Standards
 
-### Appraisal Schema
-Contains tables related to property characteristics and valuation:
-- property
-- land_parcel
-- improvement
+When creating new migrations, follow these guidelines:
 
-### Billing Schema
-Contains tables related to taxes, bills, and payments:
-- levy
-- levy_bill
-- payment
-- collection_transaction 
-- special_assessment
+1. Version files sequentially (V6, V7, etc.)
+2. Use descriptive names that clearly indicate the purpose
+3. Include transactional boundaries (`BEGIN`/`COMMIT` blocks)
+4. For each migration, ensure an "undo" migration is possible
+5. Keep migrations atomic (focused on a single, coherent change)
+6. Test both forward and backward migrations before submitting
+7. Document any manual steps required for production deployments
 
-### Master Schema
-Contains integration views that bring together all aspects of a property:
-- property_comprehensive (view)
+## Schema Namespaces
 
-## Best Practices
+The database is organized into the following namespaces:
 
-1. **Never modify existing migrations** that have been applied to any environment
-2. **Always create new migration files** for schema changes
-3. **Test migrations locally** before pushing to source control
-4. **Make migrations idempotent** when possible (use IF EXISTS/IF NOT EXISTS)
-5. **Keep migrations small and focused** to minimize deployment risk
+- `appraisal` - Property valuation and assessment tables
+- `billing` - Tax levy and payment processing tables
+- `master` - Shared lookup tables and configuration
+
+## Contact
+
+For questions or assistance with database migrations, contact:
+- Database Team: db-team@terrafusion.local
