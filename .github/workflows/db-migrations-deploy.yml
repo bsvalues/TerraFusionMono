@@ -2,90 +2,82 @@ name: Deploy Database Migrations
 
 on:
   push:
-    branches: [ main, develop ]
+    branches:
+      - main
     paths:
       - "db-migrations/**"
-  workflow_dispatch:
-    inputs:
-      environment:
-        description: 'Environment to deploy to'
-        required: true
-        default: 'staging'
-        type: choice
-        options:
-        - staging
-        - production
 
 jobs:
   deploy-migrations:
     runs-on: ubuntu-latest
-    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    environment: production  # Use GitHub environments for production deployments
     
     steps:
-      - uses: actions/checkout@v3
-      
-      - name: Install Flyway CLI
-        run: |
-          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz | tar xz
-          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
-      
-      - name: Create Backup (Staging)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' || github.ref == 'refs/heads/develop' }}
-        env:
-          PGHOST: ${{ secrets.DB_HOST_STAGING }}
-          PGUSER: ${{ secrets.DB_USER_STAGING }}
-          PGPASSWORD: ${{ secrets.DB_PASSWORD_STAGING }}
-          PGDATABASE: ${{ secrets.DB_NAME_STAGING }}
-        run: |
-          export BACKUP_FILE="pre_migration_backup_$(date +%Y%m%d_%H%M%S).sql"
-          echo "Creating database backup to $BACKUP_FILE"
-          pg_dump -h $PGHOST -U $PGUSER -d $PGDATABASE -F p -f $BACKUP_FILE
-          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Create Backup (Production)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'production' || github.ref == 'refs/heads/main' }}
-        env:
-          PGHOST: ${{ secrets.DB_HOST_PROD }}
-          PGUSER: ${{ secrets.DB_USER_PROD }}
-          PGPASSWORD: ${{ secrets.DB_PASSWORD_PROD }}
-          PGDATABASE: ${{ secrets.DB_NAME_PROD }}
+      - name: Install Flyway
         run: |
-          export BACKUP_FILE="pre_migration_backup_$(date +%Y%m%d_%H%M%S).sql"
-          echo "Creating database backup to $BACKUP_FILE"
-          pg_dump -h $PGHOST -U $PGUSER -d $PGDATABASE -F p -f $BACKUP_FILE
-          echo "BACKUP_FILE=$BACKUP_FILE" >> $GITHUB_ENV
-      
-      - name: Run Migrations (Staging)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'staging' || github.ref == 'refs/heads/develop' }}
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Validate migrations
         env:
-          FLYWAY_URL: jdbc:postgresql://${{ secrets.DB_HOST_STAGING }}:5432/${{ secrets.DB_NAME_STAGING }}
-          FLYWAY_USER: ${{ secrets.DB_USER_STAGING }}
-          FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD_STAGING }}
-          FLYWAY_SCHEMAS: master,appraisal,billing
-          FLYWAY_DEFAULT_SCHEMA: public
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
         run: |
-          echo "Running migrations on STAGING environment"
-          flyway -configFiles=./db-migrations/flyway.conf info
-          flyway -configFiles=./db-migrations/flyway.conf migrate
-          flyway -configFiles=./db-migrations/flyway.conf info
-      
-      - name: Run Migrations (Production)
-        if: ${{ github.event_name == 'workflow_dispatch' && inputs.environment == 'production' || github.ref == 'refs/heads/main' }}
+          # Validate migration scripts before applying
+          flyway validate
+
+      - name: Apply migrations
         env:
-          FLYWAY_URL: jdbc:postgresql://${{ secrets.DB_HOST_PROD }}:5432/${{ secrets.DB_NAME_PROD }}
-          FLYWAY_USER: ${{ secrets.DB_USER_PROD }}
-          FLYWAY_PASSWORD: ${{ secrets.DB_PASSWORD_PROD }}
-          FLYWAY_SCHEMAS: master,appraisal,billing
-          FLYWAY_DEFAULT_SCHEMA: public
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
         run: |
-          echo "Running migrations on PRODUCTION environment"
-          flyway -configFiles=./db-migrations/flyway.conf info
-          flyway -configFiles=./db-migrations/flyway.conf migrate
-          flyway -configFiles=./db-migrations/flyway.conf info
+          # Apply migrations
+          flyway migrate
       
-      - name: Upload Backup Artifact
-        uses: actions/upload-artifact@v3
-        with:
-          name: database-backup
-          path: ${{ env.BACKUP_FILE }}
-          retention-days: 7
+      - name: Create deployment record
+        env:
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+        run: |
+          # Get current state
+          MIGRATION_INFO=$(flyway info -table)
+          
+          # Save deployment record
+          cat > deployment-record.md << EOF
+          # Database Migration Deployment
+          
+          **Date:** $(date)
+          **Git Commit:** ${{ github.sha }}
+          **Workflow:** ${{ github.workflow }}
+          **Environment:** production
+          
+          ## Applied Migrations
+          \`\`\`
+          $MIGRATION_INFO
+          \`\`\`
+          EOF
+          
+          # Archive deployment record
+          mkdir -p deployment-records
+          cp deployment-record.md deployment-records/$(date +%Y%m%d-%H%M%S)-migration-record.md
+      
+      - name: Notify deployment
+        # This could be a Slack, Teams, or email notification
+        run: |
+          echo "Database migration successfully deployed to production!"
+          echo "See deployment record for details."

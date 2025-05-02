@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# Apply Flyway Migrations Script
-# Usage: ./apply-migrations.sh [environment]
-# Example: ./apply-migrations.sh dev
+# Rollback Flyway Migration Script
+# Usage: ./rollback-migration.sh [environment]
+# Example: ./rollback-migration.sh dev
 
 set -e  # Exit on error
 
@@ -24,29 +24,41 @@ if [ ! -f "$CONFIG_FILE" ]; then
 fi
 
 echo "====================================================================="
-echo "      Applying Flyway Migrations - $ENV Environment"
+echo "      Rollback Flyway Migration - $ENV Environment"
 echo "====================================================================="
 
 # Display current migration status
 echo "Current migration status:"
 flyway -configFiles="$CONFIG_FILE" info
 
+# Check if there's at least one migration to roll back
+MIGRATION_COUNT=$(flyway -configFiles="$CONFIG_FILE" info -table | grep -c "Success")
+if [ "$MIGRATION_COUNT" -lt 1 ]; then
+  echo "Error: No successful migrations found to roll back."
+  exit 1
+fi
+
+echo ""
+echo "WARNING: This will roll back the latest migration."
+echo "This operation should NOT be performed on production without proper planning."
+echo ""
+
 # Prompt for confirmation before proceeding
-read -p "Do you want to apply migrations? (y/n): " -n 1 -r
+read -p "Do you want to proceed with rollback? (y/n): " -n 1 -r
 echo
 if [[ ! $REPLY =~ ^[Yy]$ ]]; then
-  echo "Aborted by user."
+  echo "Rollback aborted by user."
   exit 0
 fi
 
-# Apply migrations
-echo "Applying migrations..."
-flyway -configFiles="$CONFIG_FILE" migrate
+# Apply rollback
+echo "Rolling back the latest migration..."
+flyway -configFiles="$CONFIG_FILE" undo
 
 # Show the updated migration status
-echo "Migration completed. Updated status:"
+echo "Rollback completed. Updated status:"
 flyway -configFiles="$CONFIG_FILE" info
 
 echo "====================================================================="
-echo "                     Migration Complete"
+echo "                     Rollback Complete"
 echo "====================================================================="

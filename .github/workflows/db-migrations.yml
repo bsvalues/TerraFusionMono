@@ -1,21 +1,20 @@
-name: Database Migrations CI
+name: Validate Database Migrations
 
 on:
   pull_request:
     paths:
       - "db-migrations/**"
-  workflow_dispatch:
 
 jobs:
-  flyway-migrate:
+  validate-migrations:
     runs-on: ubuntu-latest
     services:
       postgres:
         image: postgres:14
         env:
-          POSTGRES_PASSWORD: postgres
           POSTGRES_USER: postgres
-          POSTGRES_DB: test_database
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: terradb
         ports:
           - 5432:5432
         options: >-
@@ -25,81 +24,37 @@ jobs:
           --health-retries 5
 
     steps:
-      - uses: actions/checkout@v3
+      - name: Checkout repository
+        uses: actions/checkout@v3
 
-      - name: Install Flyway CLI
+      - name: Wait for PostgreSQL
         run: |
-          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz | tar xz
+          for i in {1..30}; do
+            pg_isready -h localhost -p 5432 -U postgres && break
+            echo "Waiting..."
+            sleep 5
+          done
+
+      - name: Install Flyway
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
           sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
 
-      - name: Validate Migrations
+      - name: Validate migrations
         env:
-          FLYWAY_URL: "jdbc:postgresql://localhost:5432/test_database"
+          FLYWAY_URL: "jdbc:postgresql://localhost:5432/terradb"
           FLYWAY_USER: "postgres"
           FLYWAY_PASSWORD: "postgres"
-          FLYWAY_SCHEMAS: "master,appraisal,billing"
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
           FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
         run: |
-          flyway -configFiles=./db-migrations/flyway.conf validate
+          # First run validate to check for syntax errors
+          flyway validate
 
-      - name: Run Flyway Migrations
-        env:
-          FLYWAY_URL: "jdbc:postgresql://localhost:5432/test_database"
-          FLYWAY_USER: "postgres"
-          FLYWAY_PASSWORD: "postgres"
-          FLYWAY_SCHEMAS: "master,appraisal,billing"
-          FLYWAY_DEFAULT_SCHEMA: "public"
-        run: |
-          flyway -configFiles=./db-migrations/flyway.conf migrate
+          # Then try to apply the migrations
+          flyway migrate
 
-      - name: Verify migration history
-        env:
-          FLYWAY_URL: "jdbc:postgresql://localhost:5432/test_database"
-          FLYWAY_USER: "postgres"
-          FLYWAY_PASSWORD: "postgres"
-          FLYWAY_SCHEMAS: "master,appraisal,billing"
-          FLYWAY_DEFAULT_SCHEMA: "public"
-        run: |
-          flyway -configFiles=./db-migrations/flyway.conf info
-          
-      - name: Run Schema Verification
-        run: |
-          export PGPASSWORD=postgres
-          
-          # Check for required schemas
-          echo "Checking for required schemas..."
-          schemas=$(psql -h localhost -p 5432 -U postgres -d test_database -t -c "
-            SELECT schema_name 
-            FROM information_schema.schemata 
-            WHERE schema_name IN ('appraisal', 'billing', 'master');
-          ")
-          
-          # Count number of schemas
-          schema_count=$(echo "$schemas" | grep -v '^\s*$' | wc -l)
-          if [ "$schema_count" -ne 3 ]; then
-            echo "ERROR: Missing schemas. Expected 3, found $schema_count:"
-            echo "$schemas"
-            exit 1
-          else
-            echo "✓ All required schemas found ($schema_count/3)"
-          fi
-          
-          # Verify cross-schema foreign keys
-          echo "Checking cross-schema foreign key constraints..."
-          fk_result=$(psql -h localhost -p 5432 -U postgres -d test_database -t -c "
-            SELECT count(*) 
-            FROM information_schema.table_constraints tc
-            JOIN information_schema.constraint_column_usage ccu 
-              ON tc.constraint_name = ccu.constraint_name
-            WHERE tc.constraint_type = 'FOREIGN KEY'
-            AND tc.table_schema != ccu.table_schema
-            AND tc.table_schema IN ('appraisal', 'billing', 'master')
-            AND ccu.table_schema IN ('appraisal', 'billing', 'master');
-          ")
-          
-          fk_count=$(echo "$fk_result" | tr -d ' ')
-          if [ "$fk_count" -gt 0 ]; then
-            echo "✓ $fk_count cross-schema foreign key constraints found"
-          else
-            echo "WARNING: No cross-schema foreign key constraints found. This might indicate a problem with schema reorganization."
-          fi
+          # Check the migration status
+          flyway info

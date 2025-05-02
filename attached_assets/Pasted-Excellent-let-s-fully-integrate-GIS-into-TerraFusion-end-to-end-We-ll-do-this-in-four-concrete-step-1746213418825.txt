@@ -1,0 +1,188 @@
+Excellent—let’s fully integrate GIS into TerraFusion end‑to‑end. We’ll do this in four concrete steps:  
+
+1. **DB Migration**: enable PostGIS and add a `geom` column on parcels  
+2. **Flyway Migration Script** for V4/V5  
+3. **GraphQL Schema & Resolver Updates** to expose GeoJSON and spatial queries  
+4. **React Map Component** to render parcel polygons  
+
+---
+
+## 1. DB Migration: Enable PostGIS & Add Geometry Column
+
+Create two new Flyway migrations:
+
+### V4__enable_postgis.sql
+
+```sql
+-- V4__enable_postgis.sql
+-- Enable PostGIS extension in the PACS database
+CREATE EXTENSION IF NOT EXISTS postgis;
+```
+
+### V5__add_parcel_geom.sql
+
+```sql
+-- V5__add_parcel_geom.sql
+-- Add geometry column to appraisal.Property_val for parcel boundaries
+ALTER TABLE appraisal.Property_val
+  ADD COLUMN geom geometry(Polygon, 4326);
+
+-- Populate with placeholder (optional) or leave null until loaded
+-- CREATE INDEX on geom for spatial queries
+CREATE INDEX ON appraisal.Property_val USING GIST(geom);
+```
+
+Place these in your `db-migrations/migrations/` folder and commit. Your Flyway CI will pick them up and apply in order.
+
+---
+
+## 2. Apply & Verify in Staging
+
+```bash
+flyway -configFiles=flyway.conf migrate
+psql -h $DB_HOST -d $DB_NAME -c "\d appraisal.Property_val"
+# You should see the new 'geom' column of type geometry(Polygon,4326)
+```
+
+Then test:
+
+```sql
+SELECT ST_AsGeoJSON(geom) FROM appraisal.Property_val LIMIT 1;
+```
+
+---
+
+## 3. GraphQL Updates
+
+### SDL Additions
+
+```graphql
+scalar GeoJSON
+
+type Parcel {
+  id: ID!
+  address: String!
+  lastValue: Float
+  ownerId: ID!
+  geom: GeoJSON
+  centroid: GeoJSON
+}
+
+type Query {
+  parcelsInBBox(bbox: [Float!]!): [Parcel!]!
+  parcelsNear(lat: Float!, lon: Float!, radiusMeters: Int!): [Parcel!]!
+}
+```
+
+### Resolver Implementation (TypeGraphQL / Apollo)
+
+```ts
+import { Geometry } from 'geojson';
+import { getRepository } from 'typeorm';
+import { Parcel as ParcelEntity } from './entities/Property_val';
+import { GraphQLJSONObject } from 'graphql-type-json';
+
+@ObjectType()
+class Parcel {
+  @Field(() => ID) id: string;
+  @Field() address: string;
+  @Field(() => Float, { nullable: true }) lastValue?: number;
+  @Field(() => GraphQLJSONObject, { nullable: true }) geom?: Geometry;
+  @Field(() => GraphQLJSONObject, { nullable: true }) centroid?: Geometry;
+}
+
+@Resolver(() => Parcel)
+export class ParcelResolver {
+  @Query(() => [Parcel])
+  async parcelsInBBox(
+    @Arg('bbox', () => [Float]) bbox: number[]
+  ): Promise<ParcelEntity[]> {
+    const [xmin,ymin,xmax,ymax] = bbox;
+    return await getRepository(ParcelEntity)
+      .createQueryBuilder('p')
+      .select(['p.id','p.address','p.lastValue'])
+      .addSelect('ST_AsGeoJSON(p.geom)::json', 'geom')
+      .addSelect('ST_AsGeoJSON(ST_Centroid(p.geom))::json', 'centroid')
+      .where('p.geom && ST_MakeEnvelope(:xmin,:ymin,:xmax,:ymax,4326)')
+      .setParameters({ xmin,ymin,xmax,ymax })
+      .getRawAndEntities()
+      .then(result => {
+        // merge raw geo fields into entities
+        return result.entities.map((ent, i) => ({
+          ...ent,
+          geom: result.raw[i].geom,
+          centroid: result.raw[i].centroid
+        }));
+      });
+  }
+
+  @Query(() => [Parcel])
+  async parcelsNear(
+    @Arg('lat', () => Float) lat: number,
+    @Arg('lon', () => Float) lon: number,
+    @Arg('radiusMeters', () => Int) radius: number
+  ): Promise<ParcelEntity[]> {
+    return await getRepository(ParcelEntity)
+      .createQueryBuilder('p')
+      .select(['p.id','p.address','p.lastValue'])
+      .addSelect('ST_AsGeoJSON(p.geom)::json', 'geom')
+      .addSelect('ST_AsGeoJSON(ST_Centroid(p.geom))::json', 'centroid')
+      .where('ST_DWithin(p.geom::geography, ST_MakePoint(:lon,:lat)::geography, :radius)')
+      .setParameters({ lat, lon, radius })
+      .getRawAndEntities()
+      .then(result => result.entities.map((ent, i) => ({
+        ...ent,
+        geom: result.raw[i].geom,
+        centroid: result.raw[i].centroid
+      })));
+  }
+}
+```
+
+Be sure to register the `GeoJSON` scalar using `graphql-type-json` in your server setup.
+
+---
+
+## 4. React Map Component
+
+Install dependencies:
+
+```bash
+npm install react-leaflet leaflet
+```
+
+Add CSS import in your root:
+
+```js
+import 'leaflet/dist/leaflet.css';
+```
+
+Create `ParcelMap.tsx`:
+
+```tsx
+import { MapContainer, TileLayer, GeoJSON } from 'react-leaflet';
+import { Parcel } from '../generated/graphql'; // your codegen types
+
+interface Props { parcels: Parcel[]; }
+
+export const ParcelMap: React.FC<Props> = ({ parcels }) => (
+  <MapContainer style={{ height: 400, width: '100%' }} center={[45, -122]} zoom={12}>
+    <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+    {parcels.map(p => p.geom && (
+      <GeoJSON key={p.id} data={p.geom as any} />
+    ))}
+  </MapContainer>
+);
+```
+
+Wire it into your Dashboard: fetch `parcelsInBBox` on map move and render `ParcelMap`.
+
+---
+
+With these four steps complete, you’ll have true GIS support:
+
+- **PostGIS geometry** stored and indexed  
+- **GraphQL** exposing GeoJSON and spatial queries  
+- **React/Leaflet** interactive parcel mapping  
+
+Let me know when you’ve applied the Flyway migrations and I’ll help test the spatial endpoints!
