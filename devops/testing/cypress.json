@@ -1,0 +1,23 @@
+{
+  "baseUrl": "http://localhost:3000",
+  "viewportWidth": 1280,
+  "viewportHeight": 720,
+  "video": false,
+  "screenshotOnRunFailure": true,
+  "screenshotsFolder": "cypress/screenshots",
+  "videosFolder": "cypress/videos",
+  "pluginsFile": "cypress/plugins/index.js",
+  "supportFile": "cypress/support/index.js",
+  "fixturesFolder": "cypress/fixtures",
+  "integrationFolder": "cypress/integration",
+  "testFiles": "**/*.spec.{js,ts,jsx,tsx}",
+  "env": {
+    "codeCoverage": {
+      "url": "/api/__coverage__"
+    }
+  },
+  "retries": {
+    "runMode": 2,
+    "openMode": 0
+  }
+}
