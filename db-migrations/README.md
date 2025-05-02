@@ -1,92 +1,65 @@
-# Database Migrations
+# TerraFusion Database Migrations
 
-This directory contains the database migration scripts for the TerraFusion property assessment and taxation system.
+This directory contains database migrations for TerraFusion, managed using Flyway.
 
-## Structure
+## PostGIS Migrations
 
-```
-db-migrations/
-├── config/
-│   ├── flyway.dev.conf       # Development environment configuration
-│   └── flyway.prod.conf      # Production environment configuration
-├── migrations/
-│   ├── V1__baseline.sql      # Baseline schema (initial state)
-│   ├── V2__schema_reorganization.sql    # Reorganization into namespaces
-│   ├── V3__add_fks.sql       # Addition of foreign key constraints
-│   ├── V4__audit_columns.sql # Addition of audit columns
-│   └── V5__analysis_views.sql # Analysis views for reporting
-├── scripts/
-│   ├── apply-migrations.sh   # Script to apply migrations
-│   ├── info-migrations.sh    # Script to show migration status
-│   └── rollback-migration.sh # Script to rollback latest migration
-└── README.md                 # This file
-```
+### V4__enable_postgis.sql
+Enables the PostGIS extension in the database, which provides:
+- Spatial data types (geometry, geography)
+- Spatial functions and operators
+- Spatial indexing
 
-## Using Flyway
+### V5__add_parcel_geom.sql
+Adds a geometry column to the `appraisal.Property_val` table for storing parcel boundaries:
+- Creates a `geom` column with SRID 4326 (WGS84)
+- Creates a spatial index using GiST for efficient spatial queries
+- Adds appropriate metadata comments
 
-### Prerequisites
+## Running Migrations
 
-- Flyway CLI installed (v9.x or later)
-- PostgreSQL database connection credentials
+Flyway will automatically run these migrations in order. To manually apply migrations:
 
-### Configuration
-
-Flyway configuration files are stored in the `config/` directory. You need to set the following environment variables or update the configuration files:
-
-- `FLYWAY_URL` - JDBC URL to the database
-- `FLYWAY_USER` - Database user
-- `FLYWAY_PASSWORD` - Database password
-- `FLYWAY_SCHEMAS` - Comma-separated list of schemas to manage (public,appraisal,billing,master)
-- `FLYWAY_LOCATIONS` - Location of migration files
-
-### Basic Commands
-
-**View Migration Status:**
 ```bash
-flyway -configFiles=config/flyway.dev.conf info
+flyway -configFiles=flyway.conf migrate
 ```
 
-**Apply Migrations:**
+## Verification
+
+After running migrations, verify the setup using these SQL commands:
+
+```sql
+-- Check that PostGIS is installed
+SELECT postgis_full_version();
+
+-- Check the Property_val table structure
+\d appraisal.Property_val
+
+-- Test a simple spatial query
+SELECT COUNT(*) FROM appraisal.Property_val WHERE ST_IsValid(geom);
+```
+
+## Loading Sample Data
+
+An optional script is provided to load sample geometry data:
+
 ```bash
-flyway -configFiles=config/flyway.dev.conf migrate
+psql -f db-migrations/scripts/load_sample_geometries.sql
 ```
 
-**Rollback Latest Migration:**
-```bash
-flyway -configFiles=config/flyway.dev.conf undo
+## Testing Spatial Queries
+
+After loading data, you can test spatial queries like:
+
+```sql
+-- Find properties within a bounding box
+SELECT id, name 
+FROM appraisal.Property_val 
+WHERE ST_Intersects(geom, ST_MakeEnvelope(-98.1, 40.0, -97.9, 40.2, 4326));
+
+-- Find properties near a point
+SELECT id, name, ST_Distance(geom, ST_SetSRID(ST_Point(-98.0, 40.1), 4326)) AS distance
+FROM appraisal.Property_val
+WHERE ST_DWithin(geom, ST_SetSRID(ST_Point(-98.0, 40.1), 4326), 0.05)
+ORDER BY distance;
 ```
-
-## CI/CD Integration
-
-The repository includes GitHub Actions workflows to:
-
-1. **Validate Migrations** - Checks that migrations can be applied cleanly
-2. **Deploy Migrations** - Applies migrations to the target environment
-3. **Rollback Smoke Test** - Tests that the latest migration can be safely rolled back
-
-See the [Database Migrations Runbook](../docs/runbooks/db-migrations.md) for detailed procedures on handling migrations in production environments.
-
-## Migration Standards
-
-When creating new migrations, follow these guidelines:
-
-1. Version files sequentially (V6, V7, etc.)
-2. Use descriptive names that clearly indicate the purpose
-3. Include transactional boundaries (`BEGIN`/`COMMIT` blocks)
-4. For each migration, ensure an "undo" migration is possible
-5. Keep migrations atomic (focused on a single, coherent change)
-6. Test both forward and backward migrations before submitting
-7. Document any manual steps required for production deployments
-
-## Schema Namespaces
-
-The database is organized into the following namespaces:
-
-- `appraisal` - Property valuation and assessment tables
-- `billing` - Tax levy and payment processing tables
-- `master` - Shared lookup tables and configuration
-
-## Contact
-
-For questions or assistance with database migrations, contact:
-- Database Team: db-team@terrafusion.local

@@ -1,0 +1,82 @@
+I’m on Phase 2 now—enhancing the CI pipeline. Below is a revamped `.github/workflows/ci.yml` that:
+
+- **Caches** both Node modules and Helm’s cache to speed up runs  
+- **Runs** lint, type-check, unit tests, **npm audit**  
+- **Helm-lints** each chart in `infra/helm/` via a loop  
+
+You can drop this in and see much faster, more reliable CI.
+
+```yaml
+name: CI
+
+on:
+  push:
+    branches: [ main ]
+  pull_request:
+    branches: [ main ]
+
+jobs:
+  build-and-lint:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v3
+
+      - name: Cache Node modules
+        uses: actions/cache@v3
+        with:
+          path: ~/.npm
+          key: ${{ runner.os }}-node-${{ hashFiles('**/package-lock.json') }}
+          restore-keys: |
+            ${{ runner.os }}-node-
+
+      - name: Cache Helm cache
+        uses: actions/cache@v3
+        with:
+          path: ~/.cache/helm
+          key: ${{ runner.os }}-helm-${{ hashFiles('infra/helm/**/*.yaml') }}
+          restore-keys: |
+            ${{ runner.os }}-helm-
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 16
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run lint & type-check
+        run: |
+          npm run lint
+          npm run type-check
+
+      - name: Run unit tests
+        run: npm test
+
+      - name: Security audit
+        run: npm audit --audit-level=moderate
+
+      - name: Setup Helm
+        uses: azure/setup-helm@v3
+
+      - name: Helm lint all charts
+        working-directory: infra/helm
+        run: |
+          for d in *; do
+            if [ -f "$d/Chart.yaml" ]; then
+              echo "→ Linting chart: $d"
+              helm lint "$d" --strict
+            fi
+          done
+```
+
+---
+
+### Next steps
+
+1. **Apply** this updated `ci.yml` in your repo.  
+2. **Trigger** a PR or push to `main` to watch the new workflow in action—CI should complete faster thanks to caching, and you’ll get clear per-chart Helm linting.  
+3. Assuming green CI, I’ll then move on to Phase 3 (CD pipeline & registry publishing).  
+
+Let me know once you’ve merged this or if you’d like any tweaks!
