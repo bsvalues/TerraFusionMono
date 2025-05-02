@@ -1099,6 +1099,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Main PACS Migration routes with authentication
   app.use('/api/pacs-migration', isAuthenticated, pacsMigrationRoutes);
   
+  // Import data routes
+  app.use('/api/import', importRoutes);
+  
   // WebSocket monitoring endpoints
   app.get('/api/websocket/connections', async (req, res) => {
     try {
