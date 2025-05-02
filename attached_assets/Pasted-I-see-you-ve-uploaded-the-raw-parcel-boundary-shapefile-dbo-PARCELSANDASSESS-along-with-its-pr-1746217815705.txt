@@ -1,0 +1,112 @@
+I see you’ve uploaded the raw parcel‐boundary shapefile (`dbo_PARCELSANDASSESS.*`) along with its projection and attribute files—this is exactly what we need to populate our new `geom` column in PostGIS. Here’s a step‑by‑step to load those into your `appraisal.Property_val` table:
+
+---
+
+## 1. Inspect the Shapefile’s CRS   
+Your `.prj` reports:  
+```
+NAD_1983_HARN_StatePlane_Washington_South_FIPS_4602_Feet (EPSG:2927)
+```  
+We need to transform that into WGS84 (EPSG:4326) when loading.
+
+---
+
+## 2. Load into a Temporary Staging Table
+
+On the machine with GDAL/PostGIS tools installed, run:
+
+```bash
+# 1) Create a staging table
+psql -h $DB_HOST -d $DB_NAME -U $DB_USER -c "
+  DROP TABLE IF EXISTS appraisal.parcel_shp_staging;
+  CREATE TABLE appraisal.parcel_shp_staging (
+    prop_id    integer,
+    centroid_x double precision,
+    centroid_y double precision,
+    shape_area double precision,
+    geom_src   geometry(Polygon,2927)
+  );
+"
+
+# 2) Use ogr2ogr to load shapefile into that staging table,
+#    transforming from EPSG:2927 → EPSG:4326 on the fly:
+ogr2ogr \
+  -f "PostgreSQL" \
+  PG:"host=$DB_HOST dbname=$DB_NAME user=$DB_USER password=$DB_PASS" \
+  /mnt/data/dbo_PARCELSANDASSESS.shp \
+  -nln appraisal.parcel_shp_staging \
+  -nlt PROMOTE_TO_MULTI \
+  -t_srs EPSG:4326 \
+  -lco GEOMETRY_NAME=geom_src \
+  -lco FID=prop_id \
+  -lco PRECISION=NO
+```
+
+This will populate `appraisal.parcel_shp_staging` with all your polygon boundaries (as `geom_src`) plus attribute fields like `Prop_ID`, `CENTROID_X/Y`, `Shape_Area` .
+
+---
+
+## 3. Copy Geometry into Your Production Table
+
+Now that staging has the correctly re‑projected geometries, run:
+
+```sql
+-- 3a) Update the geom column in Property_val
+UPDATE appraisal.Property_val AS p
+SET geom = s.geom_src
+FROM appraisal.parcel_shp_staging AS s
+WHERE p.prop_id = s.prop_id;
+
+-- 3b) (Optional) update centroid if you want to store it separately
+ALTER TABLE appraisal.Property_val
+  ADD COLUMN centroid geography(Point,4326);
+
+UPDATE appraisal.Property_val AS p
+SET centroid = ST_Centroid(p.geom)::geography;
+
+-- 3c) Clean up staging
+DROP TABLE appraisal.parcel_shp_staging;
+```
+
+---
+
+## 4. Verify the Load
+
+```sql
+-- Check a few rows have non‑NULL geom
+SELECT prop_id, ST_AsText(geom) 
+  FROM appraisal.Property_val 
+ WHERE geom IS NOT NULL
+ LIMIT 5;
+
+-- Confirm spatial index is used
+EXPLAIN ANALYZE
+SELECT * 
+  FROM appraisal.Property_val 
+ WHERE geom && ST_MakeEnvelope(-122.7,45.4,-122.5,45.6,4326);
+```
+
+You should see a GiST index scan and valid WKT polygons.
+
+---
+
+## 5. Test the GraphQL Spatial Queries
+
+In your GraphQL Playground run:
+
+```graphql
+query {
+  parcelsInBBox(bbox: [-122.7,45.4,-122.5,45.6]) {
+    id
+    address
+    geom   # GeoJSON polygon
+    centroid
+  }
+}
+```
+
+You should now see real parcel boundaries rendered.
+
+---
+
+Once you’ve completed those steps, our GIS pipeline is end‑to‑end: shapefile → PostGIS → GraphQL → React Map. Let me know how the import goes or if you hit any errors!
