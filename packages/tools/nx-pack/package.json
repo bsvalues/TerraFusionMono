@@ -3,17 +3,6 @@
   "version": "1.0.0",
   "description": "NX executor for packaging TerraFusion components and bundles",
   "main": "src/index.js",
-  "executors": "./executors.json",
-  "scripts": {
-    "test": "jest"
-  },
-  "keywords": [
-    "nx",
-    "nx-plugin",
-    "terrafusion",
-    "package",
-    "bundle"
-  ],
   "author": "TerraFusion Team",
   "license": "MIT",
   "dependencies": {
@@ -21,10 +10,14 @@
     "ajv-formats": "^2.1.1",
     "glob": "^10.3.10"
   },
-  "peerDependencies": {
-    "nx": ">=16.0.0"
-  },
-  "devDependencies": {
-    "jest": "^29.7.0"
+  "nx": {
+    "targets": {
+      "test": {
+        "executor": "@nx/jest:jest",
+        "options": {
+          "jestConfig": "packages/tools/nx-pack/jest.config.js"
+        }
+      }
+    }
   }
 }
