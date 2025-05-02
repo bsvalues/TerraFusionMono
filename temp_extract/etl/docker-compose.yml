@@ -1,0 +1,28 @@
+
+version: "3.8"
+services:
+  kafka:
+    image: bitnami/kafka:3
+    environment:
+      - KAFKA_CFG_ZOOKEEPER_CONNECT=zookeeper:2181
+      - KAFKA_CFG_ADVERTISED_LISTENERS=PLAINTEXT://kafka:9092
+  zookeeper:
+    image: bitnami/zookeeper:3
+  debezium:
+    image: debezium/connect:2.6
+    environment:
+      - BOOTSTRAP_SERVERS=kafka:9092
+      - GROUP_ID=pacs-sync
+      - CONFIG_STORAGE_TOPIC=pacs_connect_configs
+      - OFFSET_STORAGE_TOPIC=pacs_connect_offsets
+    ports:
+      - "8083:8083"
+    volumes:
+      - ./connectors:/kafka/connect
+    depends_on: [kafka]
+  sync-loader:
+    build: ./sync_loader
+    depends_on: [kafka]
+    environment:
+      - KAFKA_BROKERS=kafka:9092
+      - TF_DB_URL=postgres://tf:tf@postgres:5432/terrafusion

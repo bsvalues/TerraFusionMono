@@ -1,0 +1,13 @@
+{
+  "id": "pacs-migration-pack",
+  "type": "bundle",
+  "name": "PACS Migration Pack",
+  "contains": [
+    "cdc-etl@>=0.1.0",
+    "agentmesh@>=0.1.0",
+    "levy-service@>=0.1.0",
+    "levy-ui@>=0.1.0"
+  ],
+  "postInstall": "scripts/pacs_wizard.sh",
+  "license": "EULA-commercial"
+}

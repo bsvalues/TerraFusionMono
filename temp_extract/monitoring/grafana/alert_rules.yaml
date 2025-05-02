@@ -1,0 +1,12 @@
+
+groups:
+  - name: pacs-parallel-run
+    rules:
+      - alert: VarianceHigh
+        expr: abs(pacs_variance_pct) > 0.1
+        for: 30m
+        labels:
+          severity: critical
+        annotations:
+          summary: "High variance between PACS and TerraFusion"
+          description: "Reconciliation difference {{ $value }}% exceeds 0.1%"

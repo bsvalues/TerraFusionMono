@@ -1,0 +1,16 @@
+
+name: Deploy
+
+on:
+  push:
+    branches: [ main ]
+jobs:
+  k8s-deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: kubectl apply
+        uses: azure/k8s-deploy@v4
+        with:
+          manifests: |
+            infra/k8s/sync-loader-deployment.yaml
