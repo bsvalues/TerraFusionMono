@@ -5,7 +5,7 @@
  * and functioning with PostGIS integration.
  */
 
-const axios = require('axios');
+import axios from 'axios';
 
 // Configuration
 const API_BASE_URL = 'http://localhost:5000/api/gis';

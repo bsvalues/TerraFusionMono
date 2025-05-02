@@ -8,16 +8,36 @@ echo "Loading sample parcel geometries for testing..."
 # Get the database connection string from environment
 DB_URL="${DATABASE_URL:-postgresql://postgres:postgres@localhost:5432/postgres}"
 
-# Extract parts from the connection string using regex
+# For debugging
+echo "Using database URL: ${DB_URL}"
+
+# Extract parts from the connection string - handles both formats
 if [[ $DB_URL =~ postgresql://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+) ]]; then
+  # Standard format: postgresql://user:pass@host:port/dbname
+  DB_USER="${BASH_REMATCH[1]}"
+  DB_PASS="${BASH_REMATCH[2]}"
+  DB_HOST="${BASH_REMATCH[3]}"
+  DB_PORT="${BASH_REMATCH[4]}"
+  DB_NAME="${BASH_REMATCH[5]}"
+elif [[ $DB_URL =~ postgres://([^:]+):([^@]+)@([^:]+):([^/]+)/(.+) ]]; then
+  # Alternate format: postgres://user:pass@host:port/dbname
   DB_USER="${BASH_REMATCH[1]}"
   DB_PASS="${BASH_REMATCH[2]}"
   DB_HOST="${BASH_REMATCH[3]}"
   DB_PORT="${BASH_REMATCH[4]}"
   DB_NAME="${BASH_REMATCH[5]}"
 else
-  echo "Error: Could not parse DATABASE_URL"
-  exit 1
+  echo "Error: Could not parse DATABASE_URL format"
+  echo "Please manually specify database connection details:"
+  
+  # Use environment variables if available, or default values
+  DB_USER="${PGUSER:-postgres}"
+  DB_PASS="${PGPASSWORD:-postgres}"
+  DB_HOST="${PGHOST:-localhost}"
+  DB_PORT="${PGPORT:-5432}"
+  DB_NAME="${PGDATABASE:-postgres}"
+  
+  echo "Using database connection: $DB_USER@$DB_HOST:$DB_PORT/$DB_NAME"
 fi
 
 export PGPASSWORD="$DB_PASS"
@@ -27,9 +47,34 @@ cat > /tmp/sample_parcels.sql << 'EOSQL'
 -- Enable PostGIS extension if not already enabled
 CREATE EXTENSION IF NOT EXISTS postgis;
 
+-- Create Property_val table if not exists
+CREATE TABLE IF NOT EXISTS Property_val (
+  id SERIAL PRIMARY KEY,
+  prop_id TEXT NOT NULL UNIQUE,
+  address TEXT,
+  owner_name TEXT,
+  county TEXT,
+  state_code TEXT,
+  created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+  geom GEOMETRY(GEOMETRY, 4326),
+  centroid GEOMETRY(POINT, 4326)
+);
+
+-- Create geo spatial indexes
+CREATE INDEX IF NOT EXISTS property_val_geom_idx ON Property_val USING GIST (geom);
+CREATE INDEX IF NOT EXISTS property_val_centroid_idx ON Property_val USING GIST (centroid);
+
 -- Create temp table to verify if sample data already exists
-CREATE TEMP TABLE temp_check AS
-SELECT COUNT(*) as count FROM Property_val WHERE prop_id = 'SAMPLE-0001';
+DO $$
+BEGIN
+  CREATE TEMP TABLE temp_check AS
+  SELECT COUNT(*) as count FROM Property_val WHERE prop_id = 'SAMPLE-0001';
+EXCEPTION
+  WHEN undefined_table THEN
+    -- If Property_val doesn't exist yet
+    CREATE TEMP TABLE temp_check AS SELECT 0 as count;
+END $$;
 
 -- Check if sample data already exists
 DO $$
