@@ -2,6 +2,9 @@ import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, deci
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// For PostGIS geometry, we'll use a standard text column that can be cast to geometry in SQL
+// This avoids ORM compatibility issues while still allowing us to use PostGIS functions
+
 // Enums for crop health
 export const cropHealthStatusEnum = pgEnum('crop_health_status', [
   'excellent', 'good', 'fair', 'poor', 'critical'
@@ -319,6 +322,9 @@ export type InsertPluginProduct = z.infer<typeof insertPluginProductSchema>;
 export type UserPlugin = typeof userPlugins.$inferSelect;
 export type InsertUserPlugin = z.infer<typeof insertUserPluginSchema>;
 
+// export type Parcel = typeof parcels.$inferSelect; // Defined elsewhere
+export type InsertParcel = z.infer<typeof insertParcelSchema>;
+
 // Geocode call tracking for metered billing
 export const geocodeCalls = pgTable("geocode_calls", {
   id: serial("id").primaryKey(),
@@ -358,6 +364,7 @@ export const parcels = pgTable("parcels", {
   centerLat: decimal("center_lat", { precision: 10, scale: 6 }),
   centerLng: decimal("center_lng", { precision: 10, scale: 6 }),
   areaHectares: decimal("area_hectares", { precision: 10, scale: 2 }),
+  geomWkb: text("geom"), // PostGIS geometry column stored as WKB text, will be cast to geometry in SQL
   // Agricultural data
   soilType: text("soil_type"),
   soilPh: decimal("soil_ph", { precision: 4, scale: 2 }),
@@ -393,7 +400,7 @@ export const parcels = pgTable("parcels", {
 });
 
 export const insertParcelSchema = createInsertSchema(parcels)
-  .omit({ id: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, createdAt: true, updatedAt: true, geomWkb: true }) // Exclude geometry from inserts as it's derived from boundary
   .extend({
     boundary: z.any().optional(),
     accessRights: z.any().optional(),
@@ -690,8 +697,9 @@ export const insertWeatherDataSchema = createInsertSchema(weatherData)
   });
 
 // Export types for all schemas
-export type Parcel = typeof parcels.$inferSelect;
-export type InsertParcel = z.infer<typeof insertParcelSchema>;
+// Parcel types already defined above
+// // export type Parcel = typeof parcels.$inferSelect; // Defined elsewhere
+// export type InsertParcel = z.infer<typeof insertParcelSchema>;
 
 export type ParcelNote = typeof parcelNotes.$inferSelect;
 export type InsertParcelNote = z.infer<typeof insertParcelNoteSchema>;
