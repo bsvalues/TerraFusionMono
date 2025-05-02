@@ -1,9 +1,13 @@
-import React, { useEffect, useRef } from 'react';
-import { MapContainer, TileLayer, GeoJSON, useMap } from 'react-leaflet';
+import React, { useEffect, useState, useRef } from 'react';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { MapContainer, TileLayer, GeoJSON, Popup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import L from 'leaflet';
+import { useQuery } from '@tanstack/react-query';
+import SpatialAnalysisControls from './SpatialAnalysisControls';
 
-// Fix for default marker icons in Leaflet
+// Fix for Leaflet marker icons
 import icon from 'leaflet/dist/images/marker-icon.png';
 import iconShadow from 'leaflet/dist/images/marker-shadow.png';
 
@@ -16,147 +20,170 @@ let DefaultIcon = L.icon({
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
-// Interface for a parcel
-export interface Parcel {
-  id: string;
-  parcel_id: string;
-  address?: string;
-  owner_name?: string;
-  geom: any; // GeoJSON
-  centroid?: any; // GeoJSON
+// Function to ensure we don't load until leaflet is available in window
+function ChangeMapView({ center, zoom }: { center: [number, number]; zoom: number }) {
+  const map = useMap();
+  map.setView(center, zoom);
+  return null;
 }
 
-// Props for the ParcelMap component
+// Component to highlight a GeoJSON on the map
+function HighlightLayer({ geometry, map }: { geometry: any; map: L.Map }) {
+  const [geoJsonLayer, setGeoJsonLayer] = useState<L.GeoJSON | null>(null);
+
+  useEffect(() => {
+    if (!geometry) return;
+
+    // Remove previous layer if exists
+    if (geoJsonLayer) {
+      map.removeLayer(geoJsonLayer);
+    }
+
+    // Create new layer with the geometry
+    const layer = L.geoJSON(geometry, {
+      style: {
+        color: '#FF4500',
+        weight: 3,
+        opacity: 0.7,
+        fillColor: '#FF8C00',
+        fillOpacity: 0.3
+      }
+    });
+
+    // Add the layer to the map
+    layer.addTo(map);
+
+    // Store the layer reference
+    setGeoJsonLayer(layer);
+
+    // Zoom to fit the layer bounds
+    map.fitBounds(layer.getBounds());
+
+    // Cleanup function
+    return () => {
+      if (layer) {
+        map.removeLayer(layer);
+      }
+    };
+  }, [geometry, map]);
+
+  return null;
+}
+
 interface ParcelMapProps {
-  parcels: Parcel[];
-  center?: [number, number]; // [latitude, longitude]
+  center?: [number, number];
   zoom?: number;
   height?: string;
-  onBoundsChanged?: (bounds: L.LatLngBounds) => void;
-  onParcelClick?: (parcel: Parcel) => void;
 }
 
-// Component to handle the map bounds changes
-const MapBoundsHandler: React.FC<{ onBoundsChanged?: (bounds: L.LatLngBounds) => void }> = ({ 
-  onBoundsChanged 
-}) => {
-  const map = useMap();
-  
-  useEffect(() => {
-    if (!onBoundsChanged) return;
-    
-    // Handler for bounds change
-    const handleBoundsChange = () => {
-      const bounds = map.getBounds();
-      onBoundsChanged(bounds);
-    };
-    
-    // Add event listeners
-    map.on('moveend', handleBoundsChange);
-    map.on('zoomend', handleBoundsChange);
-    
-    // Initial bounds
-    handleBoundsChange();
-    
-    // Remove event listeners on cleanup
-    return () => {
-      map.off('moveend', handleBoundsChange);
-      map.off('zoomend', handleBoundsChange);
-    };
-  }, [map, onBoundsChanged]);
-  
-  return null;
-};
+export default function ParcelMap({
+  center = [34.05, -118.25], // Default center (Los Angeles)
+  zoom = 13,
+  height = '600px'
+}: ParcelMapProps) {
+  const mapRef = useRef<L.Map | null>(null);
+  const [selectedParcel, setSelectedParcel] = useState<any>(null);
+  const [highlightGeometry, setHighlightGeometry] = useState<any>(null);
 
-// The main component
-const ParcelMap: React.FC<ParcelMapProps> = ({
-  parcels,
-  center = [40.7128, -74.0060], // Default to NYC
-  zoom = 12,
-  height = '500px',
-  onBoundsChanged,
-  onParcelClick
-}) => {
-  // Style function for parcels
-  const parcelStyle = (feature?: any) => {
-    return {
-      color: '#3388ff',
-      weight: 2,
-      opacity: 0.8,
-      fillColor: '#3388ff',
-      fillOpacity: 0.2
-    };
-  };
-  
-  // Click handler for parcels
-  const onEachFeature = (feature: any, layer: L.Layer) => {
-    if (onParcelClick && feature.properties) {
-      layer.on({
-        click: () => {
-          const parcel = parcels.find(p => p.id === feature.properties.id);
-          if (parcel) {
-            onParcelClick(parcel);
-          }
-        }
-      });
+  // Query to fetch all parcels
+  const parcelsQuery = useQuery({
+    queryKey: ['/api/gis/parcels'],
+    queryFn: async () => {
+      const response = await fetch('/api/gis/parcels');
+      if (!response.ok) throw new Error('Failed to fetch parcels');
+      return response.json();
     }
-    
-    // Add a popup with basic info
-    if (feature.properties) {
-      const { parcel_id, address, owner_name } = feature.properties;
-      const popupContent = `
-        <div>
-          <strong>Parcel ID:</strong> ${parcel_id || 'N/A'}<br>
-          ${address ? `<strong>Address:</strong> ${address}<br>` : ''}
-          ${owner_name ? `<strong>Owner:</strong> ${owner_name}` : ''}
-        </div>
-      `;
-      layer.bindPopup(popupContent);
-    }
+  });
+
+  // Function to handle parcel click
+  const handleParcelClick = (parcel: any) => {
+    setSelectedParcel(parcel);
   };
-  
+
+  // Function to handle highlight geometry
+  const handleHighlightGeometry = (geometry: any) => {
+    setHighlightGeometry(geometry);
+  };
+
+  // Function to clear highlight
+  const handleClearHighlight = () => {
+    setHighlightGeometry(null);
+  };
+
   return (
-    <div style={{ height, width: '100%' }}>
-      <MapContainer
-        center={center}
-        zoom={zoom}
-        style={{ height: '100%', width: '100%' }}
-      >
-        <TileLayer
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+    <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+      <div className="md:col-span-2">
+        <Card>
+          <CardHeader>
+            <CardTitle>Property Map</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div style={{ height, width: '100%' }}>
+              <MapContainer
+                center={center}
+                zoom={zoom}
+                style={{ height: '100%', width: '100%' }}
+                whenCreated={(map) => {
+                  mapRef.current = map;
+                }}
+              >
+                <TileLayer
+                  attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'
+                  url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+                />
+                <ChangeMapView center={center} zoom={zoom} />
+
+                {parcelsQuery.data?.parcels && (
+                  <GeoJSON
+                    data={parcelsQuery.data.parcels}
+                    style={{
+                      color: '#3388ff',
+                      weight: 2,
+                      opacity: 0.65,
+                      fillOpacity: 0.1
+                    }}
+                    onEachFeature={(feature, layer) => {
+                      const parcelId = feature.properties?.prop_id || 'Unknown';
+                      const address = feature.properties?.address || 'No address';
+                      const owner = feature.properties?.owner_name || 'Unknown owner';
+
+                      layer.bindPopup(
+                        `<div class="parcel-popup">
+                          <h3>${parcelId}</h3>
+                          <p>${address}</p>
+                          <p>Owner: ${owner}</p>
+                        </div>`
+                      );
+
+                      layer.on('click', () => {
+                        handleParcelClick({
+                          id: feature.properties?.id,
+                          prop_id: parcelId,
+                          address,
+                          owner_name: owner,
+                          geometry: feature.geometry
+                        });
+                      });
+                    }}
+                  />
+                )}
+
+                {mapRef.current && highlightGeometry && (
+                  <HighlightLayer geometry={highlightGeometry} map={mapRef.current} />
+                )}
+              </MapContainer>
+            </div>
+          </CardContent>
+        </Card>
+      </div>
+
+      <div>
+        <SpatialAnalysisControls 
+          selectedParcelId={selectedParcel?.prop_id || null}
+          onHighlightGeometry={handleHighlightGeometry}
+          onClearHighlight={handleClearHighlight}
         />
-        
-        {parcels.map(parcel => {
-          if (!parcel.geom) return null;
-          
-          // Ensure the GeoJSON has the properties needed for interaction
-          const geoJSON = {
-            ...parcel.geom,
-            properties: {
-              id: parcel.id,
-              parcel_id: parcel.parcel_id,
-              address: parcel.address,
-              owner_name: parcel.owner_name
-            }
-          };
-          
-          return (
-            <GeoJSON
-              key={parcel.id}
-              data={geoJSON}
-              style={parcelStyle}
-              onEachFeature={onEachFeature}
-            />
-          );
-        })}
-        
-        {onBoundsChanged && (
-          <MapBoundsHandler onBoundsChanged={onBoundsChanged} />
-        )}
-      </MapContainer>
+      </div>
     </div>
   );
-};
-
-export default ParcelMap;
+}

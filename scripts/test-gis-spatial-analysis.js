@@ -18,7 +18,9 @@ const chalk = {
 const API_BASE_URL = process.env.API_BASE_URL || 'http://localhost:5000/api/gis';
 const TEST_PARCEL_ID = process.env.TEST_PARCEL_ID || 'SAMPLE-0001';
 const TEST_TARGET_PARCEL_ID = process.env.TEST_TARGET_PARCEL_ID || 'SAMPLE-0002';
-const TEST_POINT = { lat: 34.052235, lon: -118.243683 }; // Default test point (Los Angeles)
+const TEST_ADJACENT_PARCEL_ID = process.env.TEST_ADJACENT_PARCEL_ID || 'SAMPLE-ADJ1';
+const TEST_OVERLAPPING_PARCEL_ID = process.env.TEST_OVERLAPPING_PARCEL_ID || 'SAMPLE-OVER1';
+const TEST_POINT = { lat: 34.05, lon: -118.25 }; // Center of our main sample parcel
 
 // Helper function to make API requests
 async function apiRequest(endpoint, params = {}) {
@@ -164,7 +166,7 @@ async function runTests() {
   
   // 5. Test Spatial Relationships
   await runTest('Spatial Relationships', async () => {
-    const response = await apiRequest(`/parcels/${TEST_PARCEL_ID}/relation/${TEST_TARGET_PARCEL_ID}`, {
+    const response = await apiRequest(`/parcels/${TEST_PARCEL_ID}/relation/${TEST_OVERLAPPING_PARCEL_ID}`, {
       relation: 'intersects'
     });
     
@@ -238,7 +240,7 @@ async function runTests() {
   
   // 8. Test Shared Boundary Analysis
   await runTest('Shared Boundary Analysis', async () => {
-    const response = await apiRequest(`/parcels/${TEST_PARCEL_ID}/boundary/${TEST_TARGET_PARCEL_ID}`);
+    const response = await apiRequest(`/parcels/${TEST_PARCEL_ID}/boundary/${TEST_ADJACENT_PARCEL_ID}`);
     
     if (!response.success) return response;
     
