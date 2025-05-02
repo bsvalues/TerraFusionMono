@@ -1,32 +1,33 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
+import L from 'leaflet';
 import { MapContainer, TileLayer, FeatureGroup, useMap } from 'react-leaflet';
 import 'leaflet/dist/leaflet.css';
 import 'leaflet-draw/dist/leaflet.draw.css';
-import L from 'leaflet';
+import 'leaflet-draw';
 
-// Fix for default marker icons in Leaflet
-import icon from 'leaflet/dist/images/marker-icon.png';
-import iconShadow from 'leaflet/dist/images/marker-shadow.png';
-
-let DefaultIcon = L.icon({
-  iconUrl: icon,
-  shadowUrl: iconShadow,
+// Default icon setup for markers (to avoid the missing icon issue)
+const DefaultIcon = L.icon({
+  iconUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-icon.png',
+  shadowUrl: 'https://unpkg.com/leaflet@1.7.1/dist/images/marker-shadow.png',
   iconSize: [25, 41],
-  iconAnchor: [12, 41]
+  iconAnchor: [12, 41],
+  popupAnchor: [1, -34],
+  shadowSize: [41, 41]
 });
 
 L.Marker.prototype.options.icon = DefaultIcon;
 
 // Need to import the EditControl dynamically since it has type issues
-let EditControl;
+let EditControl: React.FC<any> | null = null;
 try {
   // This is a workaround to avoid TypeScript errors with the EditControl component
   // @ts-ignore
-  EditControl = require('react-leaflet-draw').EditControl;
+  const imported = require('react-leaflet-draw').EditControl;
+  EditControl = imported;
 } catch (err) {
   console.error('Failed to load react-leaflet-draw:', err);
   // Provide a dummy component if the import fails
-  EditControl = ({ children }) => <>{children}</>;
+  EditControl = (props: any) => <>{props.children}</>;
 }
 
 interface ParcelDrawingToolProps {

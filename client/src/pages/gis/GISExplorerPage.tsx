@@ -2,8 +2,6 @@ import React, { useState, useEffect } from 'react';
 import { useQuery } from '@tanstack/react-query';
 import ParcelMap from '../../components/map/ParcelMap';
 import { gisClient, Parcel as GISParcel, AreaUnit } from '../../lib/gis/gisClient';
-// Use the ParcelMap's Parcel type
-import { Parcel } from '../../components/map/ParcelMap';
 import { 
   Card,
   CardContent,
@@ -30,6 +28,17 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Separator } from "../../components/ui/separator";
 import { toast } from "../../hooks/use-toast";
+import L from 'leaflet';
+
+// Interface for a parcel in the map component
+interface Parcel {
+  id: string;
+  parcel_id: string;
+  address?: string;
+  owner_name?: string;
+  geom: any; // GeoJSON
+  centroid?: any; // GeoJSON
+}
 
 const GISExplorerPage: React.FC = () => {
   const [activeTab, setActiveTab] = useState<string>('view');
@@ -367,6 +376,7 @@ const GISExplorerPage: React.FC = () => {
                 parcels={parcels}
                 height="100%"
                 onBoundsChanged={handleBoundsChanged}
+                onParcelClick={(parcel) => setSelectedParcelId(parcel.id)}
               />
             </CardContent>
           </Card>
