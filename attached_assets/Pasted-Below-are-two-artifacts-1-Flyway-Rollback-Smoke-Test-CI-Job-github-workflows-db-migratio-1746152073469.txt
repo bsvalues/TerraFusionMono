@@ -1,0 +1,195 @@
+Below are two artifacts:
+
+1. **Flyway Rollback Smoke-Test CI Job** (`.github/workflows/db-migrations-rollback.yaml`)  
+2. **Migration Runbook Template** (`docs/runbooks/db-migrations.md`)  
+
+---
+
+### 1. `.github/workflows/db-migrations-rollback.yaml`
+
+```yaml
+name: Flyway Rollback Smoke Test
+
+on:
+  pull_request:
+    paths:
+      - "db-migrations/**"
+
+jobs:
+  rollback-test:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="echo 'SELECT 1' | /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P ${{ secrets.MSSQL_SA_PASSWORD }}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Wait for SQL Server
+        run: |
+          for i in {1..30}; do
+            /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "${{ secrets.MSSQL_SA_PASSWORD }}" -Q "SELECT 1" && break
+            echo "Waiting..."
+            sleep 5
+          done
+
+      - name: Install Flyway
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Migrate Up (Baseline → V3)
+        env:
+          FLYWAY_URL: "jdbc:sqlserver://localhost:1433;databaseName=master"
+          FLYWAY_USER: "SA"
+          FLYWAY_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+          FLYWAY_SCHEMAS: "master,appraisal,billing"
+          FLYWAY_DEFAULT_SCHEMA: "master"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: flyway migrate
+
+      - name: Migrate Down (Rollback V3)
+        env:
+          FLYWAY_URL: "jdbc:sqlserver://localhost:1433;databaseName=master"
+          FLYWAY_USER: "SA"
+          FLYWAY_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+          FLYWAY_SCHEMAS: "master,appraisal,billing"
+          FLYWAY_DEFAULT_SCHEMA: "master"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: flyway undo
+
+      - name: Verify Baseline Only
+        run: |
+          flyway info | grep "Baselined" || (echo "Baseline missing" && exit 1)
+          flyway info | grep "V2__schema_namespaces" || (echo "V2 missing" && exit 1)
+          ! flyway info | grep "V3__add_fks" || (echo "V3 still applied after undo" && exit 1)
+```
+
+- **`flyway undo`** rolls back the last versioned migration (V3).  
+- We then assert that V3 is no longer applied, but V1/V2 remain.  
+- If any step fails, the job errors, preventing merge.
+
+---
+
+### 2. `docs/runbooks/db-migrations.md`
+
+```markdown
+# Database Migrations Runbook
+
+## Overview  
+This runbook describes how to apply, test, and rollback database schema migrations for TerraFusion’s PACS database using Flyway.
+
+---
+
+## Prerequisites  
+- Flyway CLI installed (v9.x)  
+- Read/write access to target SQL Server instance  
+- `flyway.conf` configured with correct `url`, `user`, `password`, `schemas`, and `locations`  
+
+---
+
+## Migration Workflow
+
+### 1. Baseline (V1)  
+- **Purpose**: Capture existing production schema.  
+- **Command**:
+  ```bash
+  flyway -configFiles=flyway.conf baseline
+  ```
+
+### 2. Apply New Migrations  
+- **Command**:
+  ```bash
+  flyway -configFiles=flyway.conf migrate
+  ```
+- **Verify**:
+  ```bash
+  flyway -configFiles=flyway.conf info
+  ```
+  Ensure all pending migrations are marked **“Success”**.
+
+### 3. Smoke Test  
+- Run automated rollback CI job (`db-migrations-rollback.yaml`).  
+- Manually spot-check critical tables:
+  ```sql
+  SELECT TOP 10 * FROM appraisal.Property_val;
+  SELECT TOP 10 * FROM billing.Bill;
+  ```
+
+---
+
+## Rollback Procedure
+
+> **Warning**: Undo should only be used on staging/test environments.
+
+1. **Undo Last Migration**:
+   ```bash
+   flyway -configFiles=flyway.conf undo
+   ```
+2. **Validate State**:
+   ```bash
+   flyway info
+   ```
+   - Last migration should show **“Undone”**.  
+   - Previous migrations remain **“Success”**.
+
+3. **Reapply if Needed**:
+   ```bash
+   flyway -configFiles=flyway.conf migrate
+   ```
+
+---
+
+## Emergency Rollback (Production)
+
+1. **Identify bad migration version** (e.g. V3__add_fks).  
+2. **Temporarily disable application traffic** (drain connections).  
+3. **Run undo**:
+   ```bash
+   flyway -configFiles=flyway.conf undoCount=1
+   ```
+4. **Verify schema** and run regression tests.  
+5. **Re-enable traffic**.
+
+---
+
+## Troubleshooting
+
+| Symptom                                    | Possible Cause                  | Remediation                          |
+|--------------------------------------------|---------------------------------|--------------------------------------|
+| Migration fails with FK violation          | Data violates new constraint    | Clean/separate staging; fix data     |
+| `undo` does not revert changes             | Migration script not undoable   | Manually reverse DDL; mark as undone |
+| CI job times out waiting for SQL Server    | Service health check too strict | Increase retries or timeout          |
+
+---
+
+## Contacts
+
+- **DB Architect**: db-team@terrafusion.local  
+- **DevOps Lead**: ops@terrafusion.local  
+- **On-call Pager**: PagerDuty “terra-db” schedule  
+
+---
+
+_Last updated: {{ date }}_
+```
+
+---
+
+With these in place:
+
+- **CI** auto-tests both migrate and undo for each PR.  
+- **Runbook** guides your team through normal and emergency migrations.  
+
+That completes Phase D. Let me know if you’d like to refine any steps or add more rollback scenarios!

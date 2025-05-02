@@ -1,0 +1,160 @@
+version: 2
+
+models:
+  - name: dim_property
+    description: "Properties dimension table containing property identification and metadata"
+    columns:
+      - name: property_id
+        description: "Unique identifier for the property"
+        tests:
+          - not_null
+          - unique
+      - name: created_at
+        description: "Timestamp when the property record was created"
+      - name: updated_at
+        description: "Timestamp when the property record was last updated"
+      - name: created_by
+        description: "User or process that created the property record"
+      - name: updated_by
+        description: "User or process that last updated the property record"
+
+  - name: dim_levy
+    description: "Tax levy dimension table containing levy rates and authority information"
+    columns:
+      - name: levy_id
+        description: "Unique identifier for the tax levy"
+        tests:
+          - not_null
+          - unique
+      - name: district_code
+        description: "Code representing the tax district"
+        tests:
+          - not_null
+      - name: authority_name
+        description: "Name of the taxing authority"
+        tests:
+          - not_null
+      - name: levy_year
+        description: "Tax year for which the levy applies"
+        tests:
+          - not_null
+      - name: tax_rate
+        description: "Tax rate applied to property valuation"
+        tests:
+          - not_null
+      - name: effective_date
+        description: "Date when the levy rate becomes effective"
+        tests:
+          - not_null
+
+  - name: fact_property_valuation
+    description: "Fact table for property valuations, including land and improvement values"
+    columns:
+      - name: property_id
+        description: "Foreign key to the property dimension"
+        tests:
+          - not_null
+          - unique
+          - relationships:
+              to: ref('dim_property')
+              field: property_id
+      - name: total_land_value
+        description: "Sum of all land parcel valuations for the property"
+      - name: total_improvement_value
+        description: "Sum of all improvement valuations for the property"
+      - name: total_property_value
+        description: "Combined total of land and improvement values"
+        tests:
+          - not_null
+      - name: land_parcel_count
+        description: "Number of land parcels associated with the property"
+        tests:
+          - not_null
+      - name: improvement_count
+        description: "Number of improvements associated with the property"
+        tests:
+          - not_null
+
+  - name: fact_property_tax
+    description: "Fact table for property tax bills, payments, and balances"
+    columns:
+      - name: bill_id
+        description: "Unique identifier for the tax bill"
+        tests:
+          - not_null
+          - unique
+      - name: property_id
+        description: "Foreign key to the property dimension"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_property')
+              field: property_id
+      - name: levy_id
+        description: "Foreign key to the levy dimension"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_levy')
+              field: levy_id
+      - name: levy_year
+        description: "Tax year for which the bill applies"
+        tests:
+          - not_null
+      - name: billed_amount
+        description: "Total amount billed"
+        tests:
+          - not_null
+      - name: total_payments
+        description: "Sum of all payments made toward the bill"
+      - name: balance_due
+        description: "Remaining balance to be paid"
+        tests:
+          - not_null
+      - name: is_paid_in_full
+        description: "Flag indicating if the bill has been paid in full"
+        tests:
+          - not_null
+      - name: is_past_due
+        description: "Flag indicating if the bill is past its due date and not paid in full"
+        tests:
+          - not_null
+
+  - name: fact_special_assessments
+    description: "Fact table for special assessments applied to properties"
+    columns:
+      - name: property_id
+        description: "Foreign key to the property dimension"
+        tests:
+          - not_null
+          - relationships:
+              to: ref('dim_property')
+              field: property_id
+      - name: agency_code
+        description: "Code representing the agency imposing the assessment"
+        tests:
+          - not_null
+      - name: description
+        description: "Description of the special assessment"
+        tests:
+          - not_null
+      - name: assessment_amount
+        description: "Amount of the special assessment"
+        tests:
+          - not_null
+      - name: start_year
+        description: "First year the assessment applies"
+        tests:
+          - not_null
+      - name: end_year
+        description: "Last year the assessment applies"
+        tests:
+          - not_null
+      - name: is_active
+        description: "Flag indicating if the assessment is currently active"
+        tests:
+          - not_null
+      - name: assessment_duration_years
+        description: "Total number of years the assessment is applied"
+        tests:
+          - not_null
