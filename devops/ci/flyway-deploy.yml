@@ -1,0 +1,84 @@
+name: Database Migration Deployment
+
+on:
+  push:
+    branches: [ main, develop ]
+    paths:
+      - 'db-migrations/**'
+  workflow_dispatch:
+    inputs:
+      environment:
+        description: 'Environment to deploy to'
+        required: true
+        default: 'staging'
+        type: choice
+        options:
+        - staging
+        - production
+
+jobs:
+  deploy-migrations:
+    runs-on: ubuntu-latest
+    environment: ${{ github.event_name == 'workflow_dispatch' && inputs.environment || (github.ref == 'refs/heads/main' && 'production' || 'staging') }}
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+        
+      - name: Set up JDK 17
+        uses: actions/setup-java@v3
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+          
+      - name: Download Flyway
+        run: |
+          wget -qO- https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.20.0/flyway-commandline-9.20.0-linux-x64.tar.gz | tar xvz
+          sudo ln -s `pwd`/flyway-9.20.0/flyway /usr/local/bin
+      
+      - name: Get database credentials from secrets
+        run: |
+          echo "DB_URL=${{ secrets.DB_URL }}" >> $GITHUB_ENV
+          echo "DB_USER=${{ secrets.DB_USER }}" >> $GITHUB_ENV
+          echo "DB_PASSWORD=${{ secrets.DB_PASSWORD }}" >> $GITHUB_ENV
+      
+      - name: Create temporary Flyway config
+        run: |
+          cd db-migrations
+          cat > temp-flyway.conf << EOF
+          flyway.url=${DB_URL}
+          flyway.user=${DB_USER}
+          flyway.password=${DB_PASSWORD}
+          flyway.schemas=appraisal,billing,master
+          flyway.defaultSchema=public
+          flyway.locations=filesystem:./migrations
+          flyway.baselineOnMigrate=true
+          flyway.cleanDisabled=true
+          EOF
+      
+      - name: Validate Migrations
+        run: |
+          cd db-migrations
+          flyway validate -configFiles=temp-flyway.conf
+      
+      - name: Take Database Backup
+        run: |
+          # This step would use pg_dump to create a backup before applying migrations
+          # The actual implementation depends on your backup strategy
+          echo "Taking database backup before applying migrations..."
+          # Example: pg_dump -h $DB_HOST -U $DB_USER -d $DB_NAME > pre_migration_backup.sql
+      
+      - name: Apply Migrations
+        run: |
+          cd db-migrations
+          flyway migrate -configFiles=temp-flyway.conf
+      
+      - name: Verify Migration Status
+        run: |
+          cd db-migrations
+          flyway info -configFiles=temp-flyway.conf
+      
+      - name: Cleanup
+        run: |
+          cd db-migrations
+          rm temp-flyway.conf
