@@ -1,0 +1,61 @@
+Fantastic! Here’s how to move forward immediately:
+
+---
+
+## 1. Commit & Validate the DevOps Kit  
+1. **Merge** the `devops/` folder into your `main` branch.  
+2. **Ensure** your two Dockerfiles are present:  
+   - `services/api-gateway/Dockerfile`  
+   - `valuation-wizard/Dockerfile` (or root if that service lives at repo root)  
+3. **Push** to GitHub and watch the Actions run: you should see:  
+   - UI build for the wizard  
+   - Docker images built & pushed  
+   - Terraform apply deploying both Helm releases  
+
+**Verify** in your Kubernetes cluster that:  
+- A “api-gateway” Helm release is deployed, with a Service on port 8000.  
+- A “valuation-wizard” Deployment+Service exists, serving on port 3000.  
+
+---
+
+## 2. Smoke-Test in Staging  
+- **API Gateway**: `curl http://<gateway-host>:8000/health` → should return “OK”.  
+- **Wizard UI**: Open `http://<wizard-host>` in browser → should load the stepper skeleton.  
+
+Add a temporary health-check endpoint in the wizard service if needed.
+
+---
+
+## 3. Wire the Wizard into the Dashboard  
+In your web app’s Dashboard component, add:
+
+```jsx
+import { ValuationWizard } from 'packages/ui/components/ValuationWizard';
+
+function Dashboard() {
+  // …
+  return (
+    <>
+      {/* Quick Actions */}
+      <button onClick={() => navigate('/wizard')}>Run Valuation Wizard</button>
+      {/* Route */}
+      <Routes>
+        <Route path="/wizard" element={<ValuationWizard />} />
+      </Routes>
+    </>
+  );
+}
+```
+
+Deploy the updated web frontend and confirm you can click “Run Valuation Wizard” and see the stepper UI.
+
+---
+
+## 4. Next Sprint: Hook Up Data  
+- **Step 1**: Implement `ParcelSelector` to call `GET /api/parcels?search=` and display results.  
+- **Step 2**: Fetch comparables via `GET /api/assessor/comparables?parcelId=`.  
+- **Step 3**: Allow weight adjustments in `WeightingEditor`, tracking state in the wizard.  
+- **Step 4**: POST to `POST /api/assessor/value` in `ValuationRunner`.  
+- **Step 5**: Render the returned `ValuationResult` in `ValuationReview`.
+
+I can draft those API-integration snippets next—just say the word!

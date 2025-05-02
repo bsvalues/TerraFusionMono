@@ -1,0 +1,49 @@
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, valuation-wizard]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Build UI (if wizard)
+        if: matrix.service == 'valuation-wizard'
+        run: |
+          cd packages/ui
+          npm ci
+          npm run build
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_REPO }}/${{ matrix.service }}:latest ./${{ matrix.service }}
+
+      - name: Push to Registry
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker push ${{ secrets.DOCKER_REPO }}/${{ matrix.service }}:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Terraform Init & Apply
+        run: |
+          cd devops/terraform
+          terraform init
+          terraform apply -auto-approve \
+            -var="kubeconfig=${{ secrets.KUBECONFIG_PATH }}" \
+            -var="api_gateway_image=${{ secrets.DOCKER_REPO }}/api-gateway" \
+            -var="wizard_image=${{ secrets.DOCKER_REPO }}/valuation-wizard"
