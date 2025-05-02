@@ -1,0 +1,416 @@
+To wire Flyway into your GitHub Actions CI so every PR validates your database migrations, add a new job that:
+
+Spins up a SQL Server container
+
+Runs your baseline + V2/V3 migrations via the Flyway CLI
+
+Fails the build if any migration errors occur
+
+Here’s a complete workflow you can drop into .github/workflows/db-migrations.yaml:
+
+yaml
+Copy
+Edit
+name: Database Migrations CI
+
+on:
+  pull_request:
+    paths:
+      - "db-migrations/**"
+
+jobs:
+  flyway-migrate:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="echo 'SELECT 1' | /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P ${{ secrets.MSSQL_SA_PASSWORD }}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Wait for SQL Server to be ready
+        run: |
+          for i in {1..30}; do
+            /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "${{ secrets.MSSQL_SA_PASSWORD }}" -Q "SELECT 1" && break
+            echo "Waiting for SQL Server..."
+            sleep 5
+          done
+
+      - name: Install Flyway CLI
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Run Flyway Migrations
+        env:
+          FLYWAY_URL: "jdbc:sqlserver://localhost:1433;databaseName=master"
+          FLYWAY_USER: "SA"
+          FLYWAY_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+          FLYWAY_SCHEMAS: "master,appraisal,billing"
+          FLYWAY_DEFAULT_SCHEMA: "master"
+        run: |
+          flyway -configFiles=./db-migrations/flyway.conf migrate
+
+      - name: Verify migration history
+        run: |
+          flyway -configFiles=./db-migrations/flyway.conf info
+What this does
+services.sqlserver: brings up a throw-away SQL Server for testing.
+
+Flyway CLI: downloaded and linked so flyway is on PATH.
+
+migrate: applies V1/V2/V3 in order; if any script fails, the job fails.
+
+info: prints applied vs pending migrations for your review.
+
+Required Secrets
+MSSQL_SA_PASSWORD – the SA password for the test container
+
+Once merged, every PR touching db-migrations/ will run this job, guaranteeing your schema-refactoring and FK-adding scripts always apply cleanly.
+
+You said:
+ok
+ChatGPT said:
+Excellent—your DB-migrations CI job is now in place and will validate every Flyway script on each PR.
+
+What’s next?
+We can now move into Phase C: Analytics Layer & Reporting, which will give you that star-schema and dbt pipeline for fast, reliable dashboards. Or, if you’d rather wrap up any remaining Phase B work (e.g. additional FK scripts or smoke-testing the migration job), let me know.
+
+Which would you like to tackle now?
+
+You said:
+lets do it
+ChatGPT said:
+
+Analysis errored
+python
+Always show details
+
+Copy
+import os
+import zipfile
+
+# Base directory for dbt project scaffold
+base_dir = '/mnt/data/analytics'
+os.makedirs(base_dir, exist_ok=True)
+
+# profiles.yml
+profiles_yml = """your_dbt_profile:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: YOUR_DB_HOST
+      user: YOUR_DB_USER
+      password: YOUR_DB_PASSWORD
+      port: 5432
+      dbname: YOUR_DB_NAME
+      schema: analytics
+      threads: 4
+"""
+with open(os.path.join(base_dir, 'profiles.yml'), 'w') as f:
+    f.write(profiles_yml)
+
+# dbt_project.yml
+dbt_project_yml = """name: 'terrafusion_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'your_dbt_profile'
+
+source-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_modules"
+
+models:
+  terrafusion_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+"""
+with open(os.path.join(base_dir, 'dbt_project.yml'), 'w') as f:
+    f.write(dbt_project_yml)
+
+# Create models directory structure
+models_dir = os.path.join(base_dir, 'models')
+staging_dir = os.path.join(models_dir, 'staging')
+marts_dir = os.path.join(models_dir, 'marts')
+os.makedirs(staging_dir, exist_ok=True)
+os.makedirs(marts_dir, exist_ok=True)
+
+# Sample staging model: staging_property.sql
+staging_property_sql = """-- models/staging/staging_property.sql
+with source as (
+    select
+        prop_id,
+        owner_id,
+        effective_date,
+        market_value as property_market_value
+    from
+        {{ source('pacs', 'Property_val') }}
+)
+select
+    prop_id,
+    owner_id,
+    effective_date,
+    property_market_value
+from source
+"""
+with open(os.path.join(staging_dir, 'staging_property.sql'), 'w') as f:
+    f.write(staging_property_sql)
+
+# Sample staging model: staging_matrix_cost.sql
+staging_matrix_cost_sql = """-- models/staging/staging_matrix_cost.sql
+with source as (
+    select
+        matrix_id,
+        description,
+        cost_factor,
+        base_cost
+    from
+        {{ source('pacs', 'Cost_Matrix') }}
+)
+select
+    matrix_id,
+    description,
+    cost_factor,
+    base_cost
+from source
+"""
+with open(os.path.join(staging_dir, 'staging_matrix_cost.sql'), 'w') as f:
+    f.write(staging_matrix_cost_sql)
+
+# Sample mart model: fact_property_valuation.sql
+fact_valuation_sql = """-- models/marts/fact_property_valuation.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+),
+matrix as (
+    select * from {{ ref('staging_matrix_cost') }}
+),
+valuation as (
+    select
+        p.prop_id,
+        date_part('year', p.effective_date) as year,
+        p.property_market_value as market_value,
+        m.base_cost + sum(m.cost_factor) as cost_value
+    from prop p
+    left join matrix m on 1=1
+    group by p.prop_id, p.effective_date, p.property_market_value, m.base_cost
+)
+select
+    prop_id,
+    year,
+    cost_value,
+    market_value,
+    now() as loaded_at
+from valuation
+"""
+with open(os.path.join(marts_dir, 'fact_property_valuation.sql'), 'w') as f:
+    f.write(fact_valuation_sql)
+
+# Sample mart model: dim_property.sql
+dim_property_sql = """-- models/marts/dim_property.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+)
+select distinct
+    prop_id,
+    owner_id,
+    effective_date
+from prop
+"""
+with open(os.path.join(marts_dir, 'dim_property.sql'), 'w') as f:
+    f.write(dim_property_sql)
+
+# Zip the analytics folder
+zip_path = '/mnt/data/analytics_dbt_scaffold.zip'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            zf.write(file_path, os.path.relpath(file_path, base_dir))
+
+zip_path
+
+Analyzing
+python
+Always show details
+
+Copy
+import os
+import zipfile
+
+# Base directory for dbt project scaffold
+base_dir = '/mnt/data/analytics'
+os.makedirs(base_dir, exist_ok=True)
+
+# profiles.yml
+profiles_yml = """your_dbt_profile:
+  target: dev
+  outputs:
+    dev:
+      type: postgres
+      host: YOUR_DB_HOST
+      user: YOUR_DB_USER
+      password: YOUR_DB_PASSWORD
+      port: 5432
+      dbname: YOUR_DB_NAME
+      schema: analytics
+      threads: 4
+"""
+with open(os.path.join(base_dir, 'profiles.yml'), 'w') as f:
+    f.write(profiles_yml)
+
+# dbt_project.yml
+dbt_project_yml = """name: 'terrafusion_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'your_dbt_profile'
+
+source-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_modules"
+
+models:
+  terrafusion_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table
+"""
+with open(os.path.join(base_dir, 'dbt_project.yml'), 'w') as f:
+    f.write(dbt_project_yml)
+
+# Create models directory structure
+models_dir = os.path.join(base_dir, 'models')
+staging_dir = os.path.join(models_dir, 'staging')
+marts_dir = os.path.join(models_dir, 'marts')
+os.makedirs(staging_dir, exist_ok=True)
+os.makedirs(marts_dir, exist_ok=True)
+
+# Sample staging model: staging_property.sql
+staging_property_sql = """-- models/staging/staging_property.sql
+with source as (
+    select
+        prop_id,
+        owner_id,
+        effective_date,
+        market_value as property_market_value
+    from
+        {{ source('pacs', 'Property_val') }}
+)
+select
+    prop_id,
+    owner_id,
+    effective_date,
+    property_market_value
+from source
+"""
+with open(os.path.join(staging_dir, 'staging_property.sql'), 'w') as f:
+    f.write(staging_property_sql)
+
+# Sample staging model: staging_matrix_cost.sql
+staging_matrix_cost_sql = """-- models/staging/staging_matrix_cost.sql
+with source as (
+    select
+        matrix_id,
+        description,
+        cost_factor,
+        base_cost
+    from
+        {{ source('pacs', 'Cost_Matrix') }}
+)
+select
+    matrix_id,
+    description,
+    cost_factor,
+    base_cost
+from source
+"""
+with open(os.path.join(staging_dir, 'staging_matrix_cost.sql'), 'w') as f:
+    f.write(staging_matrix_cost_sql)
+
+# Sample mart model: fact_property_valuation.sql
+fact_valuation_sql = """-- models/marts/fact_property_valuation.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+),
+matrix as (
+    select * from {{ ref('staging_matrix_cost') }}
+),
+valuation as (
+    select
+        p.prop_id,
+        date_part('year', p.effective_date) as year,
+        p.property_market_value as market_value,
+        m.base_cost + sum(m.cost_factor) as cost_value
+    from prop p
+    left join matrix m on 1=1
+    group by p.prop_id, p.effective_date, p.property_market_value, m.base_cost
+)
+select
+    prop_id,
+    year,
+    cost_value,
+    market_value,
+    now() as loaded_at
+from valuation
+"""
+with open(os.path.join(marts_dir, 'fact_property_valuation.sql'), 'w') as f:
+    f.write(fact_valuation_sql)
+
+# Sample mart model: dim_property.sql
+dim_property_sql = """-- models/marts/dim_property.sql
+with prop as (
+    select * from {{ ref('staging_property') }}
+)
+select distinct
+    prop_id,
+    owner_id,
+    effective_date
+from prop
+"""
+with open(os.path.join(marts_dir, 'dim_property.sql'), 'w') as f:
+    f.write(dim_property_sql)
+
+# Zip the analytics folder
+zip_path = '/mnt/data/analytics_dbt_scaffold.zip'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            zf.write(file_path, os.path.relpath(file_path, base_dir))
+
+zip_path
