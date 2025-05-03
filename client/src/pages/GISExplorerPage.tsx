@@ -1,6 +1,6 @@
 import React from 'react';
 import { Helmet } from 'react-helmet';
-import ParcelMap from '../components/map/ParcelMap';
+import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 
 export default function GISExplorerPage() {
   return (
@@ -16,7 +16,14 @@ export default function GISExplorerPage() {
           Select a parcel on the map and use the analysis tools to gain insights.
         </p>
         
-        <ParcelMap height="700px" />
+        <Card className="mb-6">
+          <CardHeader>
+            <CardTitle>GIS Explorer</CardTitle>
+          </CardHeader>
+          <CardContent>
+            <p>Simplified version for testing - map display coming soon!</p>
+          </CardContent>
+        </Card>
       </div>
     </>
   );
