@@ -1,16 +1,11 @@
-import { Loader2 } from "lucide-react";
+import React from "react";
 
-/**
- * Loading screen component displayed during route transitions
- * and initial lazy-loaded component loading
- */
+// Optimized loading screen component with minimal dependencies
 export default function LoadingScreen() {
   return (
-    <div className="flex min-h-[50vh] w-full items-center justify-center">
-      <div className="flex flex-col items-center gap-2">
-        <Loader2 className="h-8 w-8 animate-spin text-primary" />
-        <p className="text-sm text-muted-foreground">Loading...</p>
-      </div>
+    <div className="fixed inset-0 flex items-center justify-center flex-col bg-gray-50 z-50">
+      <div className="w-16 h-16 mb-4 border-4 border-gray-200 border-t-blue-500 rounded-full animate-spin"></div>
+      <h2 className="text-xl font-medium text-gray-600">Loading TerraFusion...</h2>
     </div>
   );
 }
