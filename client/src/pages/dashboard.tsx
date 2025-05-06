@@ -5,6 +5,7 @@ import SystemLogs from "@/components/dashboard/system-logs";
 import AiProviderStatus from "@/components/dashboard/ai-provider-status";
 import PluginStatus from "@/components/dashboard/plugin-status";
 import SystemHealth from "@/components/dashboard/system-health";
+import ApplicationsGrid from "@/components/dashboard/applications-grid";
 import { useQuery } from "@tanstack/react-query";
 
 export default function Dashboard() {
@@ -38,6 +39,11 @@ export default function Dashboard() {
     queryKey: ['/api/plugins'],
   });
 
+  // Fetch applications
+  const { data: applicationsData, isLoading: isLoadingApplications } = useQuery({
+    queryKey: ['/api/applications'],
+  });
+
   // Fetch system health
   const { data: healthData, isLoading: isLoadingHealth } = useQuery({
     queryKey: ['/api/health'],
@@ -53,6 +59,15 @@ export default function Dashboard() {
           metrics={metricsData} 
           isLoading={isLoadingMetrics} 
         />
+
+        {/* Applications Grid Section */}
+        <div className="mt-8">
+          <h2 className="text-lg font-medium text-gray-900 mb-4">TerraFusion Applications</h2>
+          <ApplicationsGrid
+            applications={applicationsData?.applications} 
+            isLoading={isLoadingApplications}
+          />
+        </div>
 
         {/* Services Section */}
         <ServicesTable 

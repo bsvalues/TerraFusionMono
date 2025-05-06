@@ -264,6 +264,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Application endpoints
+  app.get('/api/applications', async (req, res) => {
+    try {
+      const applications = await applicationService.getApplications();
+      res.json({
+        applications,
+        total: applications.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching applications: ${error.message}` });
+    }
+  });
+
+  app.get('/api/applications/:name', async (req, res) => {
+    try {
+      const application = await applicationService.getApplication(req.params.name);
+      if (!application) {
+        return res.status(404).json({ message: `Application ${req.params.name} not found` });
+      }
+      res.json(application);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching application: ${error.message}` });
+    }
+  });
+
   // AI Provider endpoints
   app.get('/api/ai-providers', async (req, res) => {
     try {
