@@ -1,0 +1,527 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>TerraFusion Monorepo Navigator</title>
+    <style>
+        :root {
+            --primary: #004d7a;
+            --secondary: #00b8d4;
+            --dark: #001529;
+            --light: #f0f2f5;
+            --accent: #00e5ff;
+            --success: #52c41a;
+            --warning: #faad14;
+            --error: #f5222d;
+        }
+        
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            margin: 0;
+            padding: 0;
+            background-color: var(--light);
+            color: #333;
+        }
+        
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 20px;
+        }
+        
+        header {
+            background-color: var(--dark);
+            color: white;
+            padding: 20px;
+            text-align: center;
+            box-shadow: 0 2px 5px rgba(0,0,0,0.1);
+        }
+        
+        h1 {
+            margin: 0;
+            font-size: 28px;
+        }
+        
+        .subtitle {
+            font-size: 16px;
+            opacity: 0.8;
+            margin-top: 8px;
+        }
+        
+        .section {
+            margin-top: 30px;
+            background-color: white;
+            border-radius: 8px;
+            padding: 20px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.05);
+        }
+        
+        h2 {
+            color: var(--primary);
+            border-bottom: 2px solid var(--secondary);
+            padding-bottom: 10px;
+            margin-top: 0;
+        }
+        
+        .card-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+            gap: 20px;
+            margin-top: 20px;
+        }
+        
+        .card {
+            background-color: white;
+            border-radius: 8px;
+            border: 1px solid #e8e8e8;
+            padding: 15px;
+            transition: all 0.3s ease;
+            position: relative;
+            overflow: hidden;
+        }
+        
+        .card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 10px 20px rgba(0,0,0,0.1);
+            border-color: var(--secondary);
+        }
+        
+        .card::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 5px;
+            height: 100%;
+            background-color: var(--primary);
+        }
+        
+        .app-name {
+            font-size: 18px;
+            font-weight: bold;
+            margin-top: 0;
+            color: var(--primary);
+        }
+        
+        .app-path {
+            font-size: 14px;
+            color: #666;
+            margin-bottom: 15px;
+        }
+        
+        .card-actions {
+            display: flex;
+            gap: 10px;
+            margin-top: 15px;
+        }
+        
+        .btn {
+            display: inline-block;
+            padding: 8px 12px;
+            border-radius: 4px;
+            text-decoration: none;
+            font-size: 14px;
+            font-weight: 500;
+            cursor: pointer;
+            transition: background-color 0.3s;
+            border: none;
+        }
+        
+        .btn-primary {
+            background-color: var(--primary);
+            color: white;
+        }
+        
+        .btn-primary:hover {
+            background-color: #003a5c;
+        }
+        
+        .btn-secondary {
+            background-color: var(--secondary);
+            color: white;
+        }
+        
+        .btn-secondary:hover {
+            background-color: #0097b2;
+        }
+        
+        .btn-outline {
+            background-color: transparent;
+            border: 1px solid var(--primary);
+            color: var(--primary);
+        }
+        
+        .btn-outline:hover {
+            background-color: #f0f7ff;
+        }
+        
+        .badge {
+            display: inline-block;
+            padding: 3px 8px;
+            border-radius: 12px;
+            font-size: 12px;
+            font-weight: 500;
+            margin-right: 5px;
+        }
+        
+        .badge-app {
+            background-color: #e6f7ff;
+            color: #0070f3;
+        }
+        
+        .badge-lib {
+            background-color: #f6ffed;
+            color: #52c41a;
+        }
+        
+        .badge-plugin {
+            background-color: #fff7e6;
+            color: #fa8c16;
+        }
+        
+        .commands {
+            background-color: #f6f8fa;
+            border-radius: 6px;
+            padding: 15px;
+            margin-top: 20px;
+            font-family: 'Courier New', Courier, monospace;
+        }
+        
+        .command-line {
+            display: flex;
+            margin-bottom: 10px;
+        }
+        
+        .command-prompt {
+            color: var(--primary);
+            margin-right: 10px;
+        }
+        
+        .command-text {
+            color: #333;
+        }
+        
+        .search-box {
+            padding: 10px;
+            width: 100%;
+            max-width: 400px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        
+        footer {
+            margin-top: 40px;
+            text-align: center;
+            padding: 20px;
+            color: #666;
+            font-size: 14px;
+            border-top: 1px solid #eee;
+        }
+        
+        .tabs {
+            display: flex;
+            border-bottom: 1px solid #ddd;
+            margin-bottom: 20px;
+        }
+        
+        .tab {
+            padding: 10px 20px;
+            cursor: pointer;
+            border-bottom: 2px solid transparent;
+            transition: all 0.3s;
+        }
+        
+        .tab.active {
+            border-bottom-color: var(--primary);
+            color: var(--primary);
+            font-weight: 500;
+        }
+        
+        .tab-content {
+            display: none;
+        }
+        
+        .tab-content.active {
+            display: block;
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>TerraFusion Monorepo Navigator</h1>
+        <div class="subtitle">Interactive workspace management tool</div>
+    </header>
+    
+    <div class="container">
+        <div class="section">
+            <input type="text" class="search-box" id="searchBox" placeholder="Search applications, libraries or plugins...">
+            
+            <div class="tabs">
+                <div class="tab active" data-tab="all">All</div>
+                <div class="tab" data-tab="apps">Applications</div>
+                <div class="tab" data-tab="libs">Libraries</div>
+                <div class="tab" data-tab="plugins">Plugins</div>
+                <div class="tab" data-tab="commands">Common Commands</div>
+            </div>
+            
+            <div class="tab-content active" id="all-tab">
+                <h2>All Components</h2>
+                <div class="card-grid" id="all-grid">
+                    <!-- Cards will be generated here -->
+                </div>
+            </div>
+            
+            <div class="tab-content" id="apps-tab">
+                <h2>Applications</h2>
+                <div class="card-grid" id="apps-grid">
+                    <!-- Apps will be generated here -->
+                </div>
+            </div>
+            
+            <div class="tab-content" id="libs-tab">
+                <h2>Libraries & Packages</h2>
+                <div class="card-grid" id="libs-grid">
+                    <!-- Libraries will be generated here -->
+                </div>
+            </div>
+            
+            <div class="tab-content" id="plugins-tab">
+                <h2>Plugins</h2>
+                <div class="card-grid" id="plugins-grid">
+                    <!-- Plugins will be generated here -->
+                </div>
+            </div>
+            
+            <div class="tab-content" id="commands-tab">
+                <h2>Common Commands</h2>
+                <div class="commands">
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx serve app-name</span>
+                    </div>
+                    <p>Start the development server for an application</p>
+                    
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx build app-name</span>
+                    </div>
+                    <p>Build an application for production deployment</p>
+                    
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx test app-name</span>
+                    </div>
+                    <p>Run tests for a specific application</p>
+                    
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx affected:test</span>
+                    </div>
+                    <p>Run tests only for projects affected by recent changes</p>
+                    
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx dep-graph</span>
+                    </div>
+                    <p>Generate a dependency graph visualization of the workspace</p>
+                    
+                    <div class="command-line">
+                        <span class="command-prompt">$</span>
+                        <span class="command-text">nx run-many --target=build --projects=app1,app2</span>
+                    </div>
+                    <p>Run a target against multiple projects</p>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <footer>
+        TerraFusion Monorepo Navigator &copy; 2023
+    </footer>
+    
+    <script>
+        // Application data
+        const applications = [
+            { name: "core-gateway", path: "apps/core-gateway", type: "app", 
+              description: "Apollo Federation Gateway for microservices coordination" },
+            { name: "marketplace-ui", path: "apps/marketplace-ui", type: "app", 
+              description: "User interface for the plugin marketplace" },
+            { name: "citizen-portal", path: "apps/citizen-portal", type: "app", 
+              description: "Public-facing portal for citizen access" },
+            { name: "terraagent", path: "apps/terraagent", type: "app", 
+              description: "AI-driven assistant for property assessment" },
+            { name: "terraf", path: "apps/terraf", type: "app", 
+              description: "Terraform-based infrastructure management" },
+            { name: "terraflow", path: "apps/terraflow", type: "app", 
+              description: "Workflow automation for property data processing" },
+            { name: "terrafusionpro", path: "apps/terrafusionpro", type: "app", 
+              description: "Professional edition with advanced analytics" },
+            { name: "terrafusionsync", path: "apps/terrafusionsync", type: "app", 
+              description: "Data synchronization service for field devices" },
+            { name: "terralegislativepulsepub", path: "apps/terralegislativepulsepub", type: "app", 
+              description: "Legislative tracking and analysis service" },
+            { name: "terraminer", path: "apps/terraminer", type: "app", 
+              description: "Data mining service for property insights" },
+            { name: "bcbscostapp", path: "apps/bcbscostapp", type: "app", 
+              description: "Cost approach application for property valuation" },
+            { name: "bcbsgispro", path: "apps/bcbsgispro", type: "app", 
+              description: "GIS professional tools for mapping and analysis" },
+            { name: "bcbslevy", path: "apps/bcbslevy", type: "app", 
+              description: "Tax levy calculation and management" },
+            { name: "bcbswebhub", path: "apps/bcbswebhub", type: "app", 
+              description: "Web hub for accessing BCBS services" },
+            { name: "bsbcmaster", path: "apps/bsbcmaster", type: "app", 
+              description: "Master data management for property records" },
+            { name: "bsincomevaluation", path: "apps/bsincomevaluation", type: "app", 
+              description: "Income approach for property valuation" },
+            { name: "terrafield-mobile", path: "apps/terrafield-mobile", type: "app", 
+              description: "Mobile app for field data collection" },
+            
+            // Libraries
+            { name: "ui", path: "packages/ui", type: "lib", 
+              description: "Shared UI components for consistency across apps" },
+            { name: "schema", path: "packages/schema", type: "lib", 
+              description: "Common data schema definitions" },
+            { name: "mcp", path: "packages/mcp", type: "lib", 
+              description: "Model Content Protocol implementation" },
+            { name: "testing", path: "packages/testing", type: "lib", 
+              description: "Testing utilities and shared test fixtures" },
+            { name: "crdt", path: "packages/crdt", type: "lib", 
+              description: "Conflict-free replicated data types for sync" },
+            { name: "theme", path: "packages/theme", type: "lib", 
+              description: "Design tokens and theming system" },
+            
+            // Plugins
+            { name: "gis-hub", path: "plugins/gis-hub", type: "plugin", 
+              description: "Geospatial data visualization and analysis" },
+            { name: "levy-calc", path: "plugins/levy-calc", type: "plugin", 
+              description: "Tax levy calculation plugin" },
+            { name: "cost-approach", path: "plugins/cost-approach", type: "plugin", 
+              description: "Cost approach modeling for property valuation" }
+        ];
+        
+        // Generate cards
+        function generateCards() {
+            const allGrid = document.getElementById('all-grid');
+            const appsGrid = document.getElementById('apps-grid');
+            const libsGrid = document.getElementById('libs-grid');
+            const pluginsGrid = document.getElementById('plugins-grid');
+            
+            allGrid.innerHTML = '';
+            appsGrid.innerHTML = '';
+            libsGrid.innerHTML = '';
+            pluginsGrid.innerHTML = '';
+            
+            applications.forEach(item => {
+                const card = createCard(item);
+                
+                // Add to appropriate grids
+                allGrid.appendChild(card.cloneNode(true));
+                
+                if (item.type === 'app') {
+                    appsGrid.appendChild(card.cloneNode(true));
+                } else if (item.type === 'lib') {
+                    libsGrid.appendChild(card.cloneNode(true));
+                } else if (item.type === 'plugin') {
+                    pluginsGrid.appendChild(card.cloneNode(true));
+                }
+            });
+        }
+        
+        function createCard(item) {
+            const card = document.createElement('div');
+            card.className = 'card';
+            card.dataset.name = item.name.toLowerCase();
+            card.dataset.path = item.path.toLowerCase();
+            card.dataset.type = item.type;
+            
+            // Type badge
+            let badgeClass = 'badge-app';
+            let badgeText = 'Application';
+            
+            if (item.type === 'lib') {
+                badgeClass = 'badge-lib';
+                badgeText = 'Library';
+            } else if (item.type === 'plugin') {
+                badgeClass = 'badge-plugin';
+                badgeText = 'Plugin';
+            }
+            
+            const badge = `<span class="badge ${badgeClass}">${badgeText}</span>`;
+            
+            // Card content
+            card.innerHTML = `
+                ${badge}
+                <h3 class="app-name">${item.name}</h3>
+                <div class="app-path">${item.path}</div>
+                <p>${item.description || 'No description available'}</p>
+                <div class="card-actions">
+                    <button class="btn btn-primary" onclick="copyCommand('serve', '${item.name}')">Serve</button>
+                    <button class="btn btn-secondary" onclick="copyCommand('build', '${item.name}')">Build</button>
+                    <button class="btn btn-outline" onclick="copyCommand('test', '${item.name}')">Test</button>
+                </div>
+            `;
+            
+            return card;
+        }
+        
+        // Copy command to clipboard
+        function copyCommand(command, name) {
+            const commandText = `nx ${command} ${name}`;
+            
+            // Copy to clipboard
+            navigator.clipboard.writeText(commandText).then(function() {
+                alert(`Command copied: ${commandText}`);
+            }).catch(function(err) {
+                console.error('Could not copy text: ', err);
+                alert(`Command to run: ${commandText}`);
+            });
+        }
+        
+        // Tab switching
+        document.querySelectorAll('.tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                // Remove active class from all tabs
+                document.querySelectorAll('.tab').forEach(t => {
+                    t.classList.remove('active');
+                });
+                
+                // Add active class to clicked tab
+                tab.classList.add('active');
+                
+                // Hide all tab content
+                document.querySelectorAll('.tab-content').forEach(content => {
+                    content.classList.remove('active');
+                });
+                
+                // Show the corresponding tab content
+                const tabId = tab.getAttribute('data-tab');
+                document.getElementById(`${tabId}-tab`).classList.add('active');
+            });
+        });
+        
+        // Search functionality
+        document.getElementById('searchBox').addEventListener('input', function(e) {
+            const searchTerm = e.target.value.toLowerCase();
+            
+            document.querySelectorAll('.card').forEach(card => {
+                const name = card.dataset.name;
+                const path = card.dataset.path;
+                const description = card.querySelector('p').textContent.toLowerCase();
+                
+                if (name.includes(searchTerm) || path.includes(searchTerm) || description.includes(searchTerm)) {
+                    card.style.display = 'block';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+        
+        // Initialize
+        generateCards();
+    </script>
+</body>
+</html>
