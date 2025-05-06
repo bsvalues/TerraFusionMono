@@ -7,11 +7,11 @@
  * and utilizing AI agents to assist with development tasks.
  */
 
-const fs = require('fs');
-const path = require('path');
-const { execSync, spawn } = require('child_process');
-const readline = require('readline');
-const Anthropic = require('@anthropic-ai/sdk');
+import fs from 'fs';
+import path from 'path';
+import { execSync, spawn } from 'child_process';
+import readline from 'readline';
+import Anthropic from '@anthropic-ai/sdk';
 
 // Initialize Anthropic client - the newest Anthropic model is "claude-3-7-sonnet-20250219" which was released February 24, 2025
 const anthropic = new Anthropic({
