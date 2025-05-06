@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { coreService } from "./services/core";
 import { jobService } from "./services/jobs";
 import { pluginService } from "./services/plugins";
+import { applicationService } from "./services/applications"; 
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
