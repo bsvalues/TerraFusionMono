@@ -1,17 +1,17 @@
 import { Link } from "wouter";
 import { 
-  ServerIcon, 
-  TerminalIcon, 
-  CodeIcon, 
-  AppWindowIcon,
-  PuzzleIcon,
-  BarChartIcon,
-  BookOpenIcon,
-  RefreshCwIcon,
-  DatabaseIcon,
-  UsersIcon,
-  GitMergeIcon,
-  ShoppingCartIcon
+  Server as ServerIcon, 
+  Terminal as TerminalIcon, 
+  Code as CodeIcon, 
+  AppWindow as AppWindowIcon,
+  Puzzle as PuzzleIcon,
+  BarChart as BarChartIcon,
+  BookOpen as BookOpenIcon,
+  RefreshCw as RefreshCwIcon,
+  Database as DatabaseIcon,
+  Users as UsersIcon,
+  GitMerge as GitMergeIcon,
+  ShoppingCart as ShoppingCartIcon
 } from "lucide-react";
 import { Card, CardContent, CardDescription, CardFooter, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
