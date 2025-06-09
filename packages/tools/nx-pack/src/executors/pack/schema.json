@@ -1,0 +1,73 @@
+{
+  "$schema": "http://json-schema.org/schema",
+  "type": "object",
+  "cli": "nx",
+  "title": "TerraFusion Pack executor",
+  "description": "Packages TerraFusion components and bundles for distribution",
+  "properties": {
+    "outputPath": {
+      "type": "string",
+      "description": "The path to output the packaged files to",
+      "default": "dist/pack"
+    },
+    "includeFiles": {
+      "type": "array",
+      "description": "Glob patterns for files to include in the package",
+      "default": ["terra.json", "README.md", "LICENSE"],
+      "items": {
+        "type": "string"
+      }
+    },
+    "excludeFiles": {
+      "type": "array",
+      "description": "Glob patterns for files to exclude from the package",
+      "default": ["node_modules/**/*", "**/*.test.ts", "**/*.spec.ts"],
+      "items": {
+        "type": "string"
+      }
+    },
+    "validateSchema": {
+      "type": "boolean",
+      "description": "Validate terra.json against schema",
+      "default": true
+    },
+    "generateChecksums": {
+      "type": "boolean",
+      "description": "Generate checksums for packaged files",
+      "default": true
+    },
+    "generateSBOM": {
+      "type": "boolean",
+      "description": "Generate Software Bill of Materials",
+      "default": false
+    },
+    "sbomFormat": {
+      "type": "string",
+      "description": "Format for Software Bill of Materials",
+      "enum": ["cyclonedx", "spdx"],
+      "default": "cyclonedx"
+    },
+    "signPackage": {
+      "type": "boolean",
+      "description": "Sign package with GPG",
+      "default": false
+    },
+    "keyId": {
+      "type": "string",
+      "description": "GPG key ID to sign package with"
+    },
+    "compress": {
+      "type": "boolean",
+      "description": "Compress package into an archive",
+      "default": false
+    },
+    "compressFormat": {
+      "type": "string",
+      "description": "Format for package compression",
+      "enum": ["tar", "zip", "tgz"],
+      "default": "tgz"
+    }
+  },
+  "additionalProperties": false,
+  "required": []
+}

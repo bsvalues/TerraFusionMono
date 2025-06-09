@@ -1,0 +1,130 @@
+name: Generate Database Migration
+
+on:
+  workflow_dispatch:
+    inputs:
+      migration_name:
+        description: 'Name of the migration (e.g. add_user_profiles)'
+        required: true
+        type: string
+      migration_description:
+        description: 'Brief description of what this migration does'
+        required: true
+        type: string
+      branch_name:
+        description: 'Name of the branch to create'
+        required: true
+        default: 'db-migration/'
+        type: string
+
+jobs:
+  generate-migration:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+      
+      - name: Create branch
+        run: |
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'actions@github.com'
+          git checkout -b "${{ inputs.branch_name }}${{ inputs.migration_name }}"
+      
+      - name: Get next version number
+        id: next_version
+        run: |
+          cd db-migrations/migrations
+          # List all migration files, extract version numbers, find the highest
+          highest_version=$(ls V*.sql 2>/dev/null | sed -n 's/V\([0-9]\+\)__.*/\1/p' | sort -n | tail -1)
+          
+          # If no migrations exist, start at 1, otherwise increment
+          if [ -z "$highest_version" ]; then
+            next_version=1
+          else
+            next_version=$((highest_version + 1))
+          fi
+          
+          echo "version=$next_version" >> $GITHUB_OUTPUT
+      
+      - name: Generate migration file
+        run: |
+          cd db-migrations/migrations
+          
+          migration_file="V${{ steps.next_version.outputs.version }}__${{ inputs.migration_name }}.sql"
+          
+          cat > "$migration_file" << EOF
+          -- Migration: ${{ inputs.migration_description }}
+          -- Version: ${{ steps.next_version.outputs.version }}
+          -- Created by: ${{ github.actor }}
+          -- Created at: $(date -u +"%Y-%m-%d %H:%M:%S UTC")
+          
+          -- Add your SQL statements below this line
+          -- Use IF EXISTS/IF NOT EXISTS for idempotent operations
+          
+          
+          EOF
+          
+          echo "Created migration file: $migration_file"
+      
+      - name: Update documentation
+        run: |
+          cd db-migrations
+          
+          # Update the README.md file to include the new migration
+          sed -i "/## Migration Script Overview/a \
+          ${{ steps.next_version.outputs.version }}. **V${{ steps.next_version.outputs.version }}__${{ inputs.migration_name }}.sql**\\
+             - ${{ inputs.migration_description }}" README.md
+      
+      - name: Commit changes
+        run: |
+          git add db-migrations/migrations/V${{ steps.next_version.outputs.version }}__${{ inputs.migration_name }}.sql
+          git add db-migrations/README.md
+          git commit -m "Add migration V${{ steps.next_version.outputs.version }}__${{ inputs.migration_name }}.sql"
+          git push --set-upstream origin "${{ inputs.branch_name }}${{ inputs.migration_name }}"
+      
+      - name: Create Pull Request
+        uses: actions/github-script@v6
+        with:
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          script: |
+            const { repo, owner } = context.repo;
+            const result = await github.rest.pulls.create({
+              title: 'Database Migration: ${{ inputs.migration_name }}',
+              owner,
+              repo,
+              head: '${{ inputs.branch_name }}${{ inputs.migration_name }}',
+              base: '${{ github.ref_name }}',
+              body: `# Database Migration: ${{ inputs.migration_name }}
+              
+              ## Description
+              ${{ inputs.migration_description }}
+              
+              ## Checklist
+              - [ ] SQL statements are idempotent (use IF EXISTS/IF NOT EXISTS)
+              - [ ] Migration has been tested locally
+              - [ ] README.md has been updated
+              - [ ] Documentation has been updated (if needed)
+              
+              ## Rollback Procedure
+              *Please document the steps to roll back this migration if needed:*
+              
+              1. ...
+              
+              ## Testing Instructions
+              *How can reviewers test this migration?*
+              
+              1. Run \`./run-local-migration.sh info\` to see migration status
+              2. Run \`./run-local-migration.sh migrate\` to apply the migration
+              3. Verify...
+              `
+            });
+            
+            console.log(`Pull Request created: ${result.data.html_url}`);
+            
+            await github.rest.issues.addLabels({
+              owner,
+              repo,
+              issue_number: result.data.number,
+              labels: ['database', 'migration']
+            });

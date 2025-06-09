@@ -1,0 +1,59 @@
+name: CI / Build-Pack-Publish
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  build-test:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - run: pnpm install
+      - run: pnpm nx affected --target=lint --all
+      - run: pnpm nx affected --target=test --all
+
+  pack:
+    needs: build-test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v2
+      - run: pnpm install
+      - run: |
+          pnpm nx affected --target=build --parallel
+          pnpm nx affected --target=docker --parallel
+          pnpm nx affected --target=pack --parallel
+      - name: Publish artefacts to OCI
+        env:
+          OCI_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          for dir in dist/pack/*; do
+            id=$(basename "$dir")
+            oras push ghcr.io/bsvalues/terra/$id:${{ github.sha }} $dir/*
+          done
+
+  kind-e2e:
+    needs: pack
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: engineerd/setup-kind@v0.5.0
+        with:
+          name: tf-ci
+          wait: 60s
+      - uses: actions/checkout@v4
+      - run: |
+          chmod +x scripts/pacs_wizard.sh
+          scripts/pacs_wizard.sh --env ci --bundle pacs-migration-pack --namespace tf-ci
+          kubectl wait --for=condition=ready pod -A -l app.kubernetes.io/instance=agentmesh --timeout=180s
+
+  refresh-marketplace:
+    needs: kind-e2e
+    runs-on: ubuntu-latest
+    if: github.ref == 'refs/heads/main'
+    steps:
+      - run: curl -XPOST https://marketplace.terrafusion.io/api/refresh -H "Authorization: Bearer ${{ secrets.MARKETPLACE_TOKEN }}"

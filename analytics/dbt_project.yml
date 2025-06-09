@@ -1,0 +1,25 @@
+name: 'terrafusion_analytics'
+version: '1.0.0'
+config-version: 2
+
+profile: 'terrafusion_analytics'
+
+source-paths: ["models"]
+analysis-paths: ["analysis"]
+test-paths: ["tests"]
+data-paths: ["data"]
+macro-paths: ["macros"]
+
+target-path: "target"
+clean-targets:
+  - "target"
+  - "dbt_modules"
+
+models:
+  terrafusion_analytics:
+    staging:
+      +schema: staging
+      +materialized: view
+    marts:
+      +schema: marts
+      +materialized: table

@@ -1,0 +1,163 @@
+name: Package CI/CD Matrix
+
+on:
+  push:
+    branches: [ main ]
+    paths:
+      - 'services/mcps-agentmesh/**'
+      - 'bundles/pacs-migration-pack/**'
+      - 'packages/tools/nx-pack/**'
+      - 'scripts/pacs_wizard.sh'
+  pull_request:
+    branches: [ main ]
+    paths:
+      - 'services/mcps-agentmesh/**'
+      - 'bundles/pacs-migration-pack/**'
+      - 'packages/tools/nx-pack/**'
+      - 'scripts/pacs_wizard.sh'
+  workflow_dispatch:
+    inputs:
+      component:
+        description: 'Component to build and package'
+        required: true
+        default: 'all'
+        type: choice
+        options:
+          - all
+          - mcps-agentmesh
+          - pacs-migration-pack
+
+jobs:
+  detect-changes:
+    runs-on: ubuntu-latest
+    outputs:
+      mcps-agentmesh: ${{ steps.filter.outputs.mcps-agentmesh }}
+      pacs-migration-pack: ${{ steps.filter.outputs.pacs-migration-pack }}
+      nx-pack: ${{ steps.filter.outputs.nx-pack }}
+      pacs-wizard: ${{ steps.filter.outputs.pacs-wizard }}
+    steps:
+      - uses: actions/checkout@v3
+      - uses: dorny/paths-filter@v2
+        id: filter
+        with:
+          filters: |
+            mcps-agentmesh:
+              - 'services/mcps-agentmesh/**'
+            pacs-migration-pack:
+              - 'bundles/pacs-migration-pack/**'
+            nx-pack:
+              - 'packages/tools/nx-pack/**'
+            pacs-wizard:
+              - 'scripts/pacs_wizard.sh'
+
+  build-and-test:
+    needs: detect-changes
+    if: ${{ needs.detect-changes.outputs.mcps-agentmesh == 'true' || needs.detect-changes.outputs.pacs-migration-pack == 'true' || needs.detect-changes.outputs.nx-pack == 'true' || needs.detect-changes.outputs.pacs-wizard == 'true' || github.event_name == 'workflow_dispatch' }}
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
+        include:
+          - component: mcps-agentmesh
+            path: services/mcps-agentmesh
+          - component: pacs-migration-pack
+            path: bundles/pacs-migration-pack
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Lint
+        run: npx nx lint ${{ matrix.component }}
+      
+      - name: Build
+        if: ${{ matrix.component == 'mcps-agentmesh' }}
+        run: npx nx build ${{ matrix.component }}
+      
+      - name: Test
+        if: ${{ matrix.component == 'mcps-agentmesh' }}
+        run: npx nx test ${{ matrix.component }}
+
+  package:
+    needs: build-and-test
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
+    steps:
+      - uses: actions/checkout@v3
+      
+      - name: Setup Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: '18'
+          cache: 'npm'
+      
+      - name: Install dependencies
+        run: npm ci
+      
+      - name: Package Component
+        run: npx nx run ${{ matrix.component }}:pack
+      
+      - name: SBOM Security Scan
+        uses: aquasecurity/trivy-action@master
+        with:
+          scan-type: 'fs'
+          scan-ref: './dist/pack/${{ matrix.component }}'
+          format: 'sarif'
+          output: 'trivy-results.sarif'
+          severity: 'CRITICAL,HIGH'
+      
+      - name: Upload SBOM Scan Results
+        uses: github/codeql-action/upload-sarif@v2
+        with:
+          sarif_file: 'trivy-results.sarif'
+      
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v3
+        with:
+          name: ${{ matrix.component }}-package
+          path: dist/pack/${{ matrix.component }}
+          if-no-files-found: error
+          retention-days: 7
+
+  publish:
+    needs: package
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        component: ['mcps-agentmesh', 'pacs-migration-pack']
+    steps:
+      - name: Download Artifact
+        uses: actions/download-artifact@v3
+        with:
+          name: ${{ matrix.component }}-package
+          path: ./package
+      
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v2
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      
+      - name: Build and push Docker image
+        uses: docker/build-push-action@v4
+        with:
+          context: ./package
+          push: true
+          tags: |
+            ghcr.io/${{ github.repository }}/${{ matrix.component }}:latest
+            ghcr.io/${{ github.repository }}/${{ matrix.component }}:${{ github.sha }}
+          labels: |
+            org.opencontainers.image.source=${{ github.server_url }}/${{ github.repository }}
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.created=${{ steps.meta.outputs.created }}

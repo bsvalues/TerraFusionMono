@@ -1,0 +1,83 @@
+name: Deploy Database Migrations
+
+on:
+  push:
+    branches:
+      - main
+    paths:
+      - "db-migrations/**"
+
+jobs:
+  deploy-migrations:
+    runs-on: ubuntu-latest
+    environment: production  # Use GitHub environments for production deployments
+    
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Install Flyway
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Validate migrations
+        env:
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: |
+          # Validate migration scripts before applying
+          flyway validate
+
+      - name: Apply migrations
+        env:
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+          FLYWAY_LOCATIONS: "filesystem:./db-migrations/migrations"
+        run: |
+          # Apply migrations
+          flyway migrate
+      
+      - name: Create deployment record
+        env:
+          FLYWAY_URL: ${{ secrets.FLYWAY_URL }}
+          FLYWAY_USER: ${{ secrets.FLYWAY_USER }}
+          FLYWAY_PASSWORD: ${{ secrets.FLYWAY_PASSWORD }}
+          FLYWAY_SCHEMAS: "public,appraisal,billing,master"
+          FLYWAY_DEFAULT_SCHEMA: "public"
+        run: |
+          # Get current state
+          MIGRATION_INFO=$(flyway info -table)
+          
+          # Save deployment record
+          cat > deployment-record.md << EOF
+          # Database Migration Deployment
+          
+          **Date:** $(date)
+          **Git Commit:** ${{ github.sha }}
+          **Workflow:** ${{ github.workflow }}
+          **Environment:** production
+          
+          ## Applied Migrations
+          \`\`\`
+          $MIGRATION_INFO
+          \`\`\`
+          EOF
+          
+          # Archive deployment record
+          mkdir -p deployment-records
+          cp deployment-record.md deployment-records/$(date +%Y%m%d-%H%M%S)-migration-record.md
+      
+      - name: Notify deployment
+        # This could be a Slack, Teams, or email notification
+        run: |
+          echo "Database migration successfully deployed to production!"
+          echo "See deployment record for details."

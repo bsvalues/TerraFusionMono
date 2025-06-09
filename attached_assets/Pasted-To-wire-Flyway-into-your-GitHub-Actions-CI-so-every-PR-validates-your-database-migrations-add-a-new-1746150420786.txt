@@ -1,0 +1,81 @@
+To wire Flyway into your GitHub Actions CI so every PR validates your database migrations, add a new job that:
+
+1. Spins up a SQL Server container  
+2. Runs your baseline + V2/V3 migrations via the Flyway CLI  
+3. Fails the build if any migration errors occur  
+
+Here’s a complete workflow you can drop into `.github/workflows/db-migrations.yaml`:
+
+```yaml
+name: Database Migrations CI
+
+on:
+  pull_request:
+    paths:
+      - "db-migrations/**"
+
+jobs:
+  flyway-migrate:
+    runs-on: ubuntu-latest
+    services:
+      sqlserver:
+        image: mcr.microsoft.com/mssql/server:2019-latest
+        env:
+          ACCEPT_EULA: "Y"
+          SA_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+        ports:
+          - 1433:1433
+        options: >-
+          --health-cmd="echo 'SELECT 1' | /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P ${{ secrets.MSSQL_SA_PASSWORD }}"
+          --health-interval=10s
+          --health-timeout=5s
+          --health-retries=10
+
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Wait for SQL Server to be ready
+        run: |
+          for i in {1..30}; do
+            /opt/mssql-tools/bin/sqlcmd -S localhost -U SA -P "${{ secrets.MSSQL_SA_PASSWORD }}" -Q "SELECT 1" && break
+            echo "Waiting for SQL Server..."
+            sleep 5
+          done
+
+      - name: Install Flyway CLI
+        run: |
+          curl -L https://repo1.maven.org/maven2/org/flywaydb/flyway-commandline/9.22.0/flyway-commandline-9.22.0-linux-x64.tar.gz \
+            | tar xz
+          sudo ln -s "$(pwd)/flyway-9.22.0/flyway" /usr/local/bin/flyway
+
+      - name: Run Flyway Migrations
+        env:
+          FLYWAY_URL: "jdbc:sqlserver://localhost:1433;databaseName=master"
+          FLYWAY_USER: "SA"
+          FLYWAY_PASSWORD: "${{ secrets.MSSQL_SA_PASSWORD }}"
+          FLYWAY_SCHEMAS: "master,appraisal,billing"
+          FLYWAY_DEFAULT_SCHEMA: "master"
+        run: |
+          flyway -configFiles=./db-migrations/flyway.conf migrate
+
+      - name: Verify migration history
+        run: |
+          flyway -configFiles=./db-migrations/flyway.conf info
+```
+
+### What this does
+
+- **`services.sqlserver`**: brings up a throw-away SQL Server for testing.  
+- **Flyway CLI**: downloaded and linked so `flyway` is on PATH.  
+- **`migrate`**: applies V1/V2/V3 in order; if any script fails, the job fails.  
+- **`info`**: prints applied vs pending migrations for your review.
+
+---
+
+#### Required Secrets
+
+- `MSSQL_SA_PASSWORD` – the SA password for the test container
+
+---
+
+Once merged, every PR touching `db-migrations/` will run this job, guaranteeing your schema-refactoring and FK-adding scripts always apply cleanly.

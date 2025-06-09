@@ -1,0 +1,34 @@
+{
+  "id": "pacs-migration-pack",
+  "type": "bundle",
+  "name": "PACS Migration Pack",
+  "version": "1.0.0",
+  "description": "Picture Archiving and Communication System (PACS) migration tools and utilities for TerraFusion platform",
+  "license": "MIT",
+  "author": "TerraFusion Team",
+  "dependencies": [
+    "terrafusion-core@1.0.0"
+  ],
+  "settings": {
+    "batchSize": 500,
+    "concurrency": 5,
+    "retryDelay": 30,
+    "maxRetries": 3,
+    "logLevel": "info"
+  },
+  "requirements": {
+    "memory": "4Gi",
+    "cpu": "1.0",
+    "storage": "20Gi"
+  },
+  "metadata": {
+    "category": "migration",
+    "tags": ["pacs", "migration", "dicom", "imaging"]
+  },
+  "scripts": {
+    "install": "./scripts/pacs_wizard.sh --install",
+    "uninstall": "./scripts/pacs_wizard.sh --uninstall",
+    "start": "./scripts/pacs_wizard.sh --start",
+    "stop": "./scripts/pacs_wizard.sh --stop"
+  }
+}

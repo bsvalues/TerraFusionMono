@@ -4,6 +4,9 @@
   "affected": {
     "defaultBase": "main"
   },
+  "plugins": [
+    "@terrafusion/nx-pack"
+  ],
   "tasksRunnerOptions": {
     "default": {
       "runner": "nx/tasks-runners/default",

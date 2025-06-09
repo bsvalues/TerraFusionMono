@@ -1,0 +1,202 @@
+Below is your “TerraFusion DevOps Kit” — a ready-to-use collection of IaC, Helm charts, and CI/CD pipelines to deploy both the API-Gateway and the Valuation-Wizard UI service. You can copy these into your monorepo under a top-level `devops/` folder.
+
+---
+
+## 📂 devops/terraform
+
+**main.tf**
+```hcl
+provider "kubernetes" {
+  config_path = var.kubeconfig
+}
+
+provider "helm" {
+  kubernetes {
+    config_path = var.kubeconfig
+  }
+}
+
+resource "helm_release" "api_gateway" {
+  name       = "api-gateway"
+  repository = "https://example.com/charts"
+  chart      = "api-gateway"
+  version    = "0.1.0"
+  values = [
+    yamlencode({
+      image   = { repository = var.api_gateway_image, tag = "latest" }
+      service = { port       = 8000 }
+    })
+  ]
+}
+
+resource "helm_release" "valuation_wizard" {
+  name       = "valuation-wizard"
+  repository = "https://example.com/charts"
+  chart      = "valuation-wizard"
+  version    = "0.1.0"
+  values = [
+    yamlencode({
+      image   = { repository = var.wizard_image, tag = "latest" }
+      service = { port       = 3000 }
+    })
+  ]
+}
+```
+
+**variables.tf**
+```hcl
+variable "kubeconfig" {
+  description = "Path to kubeconfig file"
+  type        = string
+}
+
+variable "api_gateway_image" {
+  description = "Docker image for API Gateway"
+  type        = string
+}
+
+variable "wizard_image" {
+  description = "Docker image for Valuation Wizard"
+  type        = string
+}
+```
+
+---
+
+## 📂 devops/helm/valuation-wizard
+
+**Chart.yaml**
+```yaml
+apiVersion: v2
+name: valuation-wizard
+version: 0.1.0
+description: Valuation Wizard UI service
+```
+
+**values.yaml**
+```yaml
+replicaCount: 1
+image:
+  repository: yourrepo/valuation-wizard
+  tag: latest
+service:
+  port: 3000
+ingress:
+  enabled: true
+  hosts:
+    - host: wizard.terrafusion.local
+      paths: ["/"]
+```
+
+**templates/deployment.yaml**
+```yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: valuation-wizard
+spec:
+  replicas: {{ .Values.replicaCount }}
+  selector:
+    matchLabels:
+      app: valuation-wizard
+  template:
+    metadata:
+      labels:
+        app: valuation-wizard
+    spec:
+      containers:
+        - name: wizard
+          image: "{{ .Values.image.repository }}:{{ .Values.image.tag }}"
+          ports:
+            - containerPort: {{ .Values.service.port }}
+```
+
+**templates/service.yaml**
+```yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: valuation-wizard
+spec:
+  type: ClusterIP
+  ports:
+    - port: {{ .Values.service.port }}
+      targetPort: {{ .Values.service.port }}
+  selector:
+    app: valuation-wizard
+```
+
+---
+
+## 📂 devops/.github/workflows/ci-cd.yaml
+
+```yaml
+name: CI/CD Pipeline
+
+on:
+  push:
+    branches: [ main ]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        service: [api-gateway, valuation-wizard]
+    steps:
+      - uses: actions/checkout@v3
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v3
+        with:
+          node-version: 18
+
+      - name: Build UI (if wizard)
+        if: matrix.service == 'valuation-wizard'
+        run: |
+          cd packages/ui
+          npm ci
+          npm run build
+
+      - name: Build Docker image
+        run: |
+          docker build -t ${{ secrets.DOCKER_REPO }}/${{ matrix.service }}:latest ./${{ matrix.service }}
+
+      - name: Push to Registry
+        run: |
+          echo "${{ secrets.DOCKER_PASSWORD }}" | docker login -u "${{ secrets.DOCKER_USERNAME }}" --password-stdin
+          docker push ${{ secrets.DOCKER_REPO }}/${{ matrix.service }}:latest
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v3
+      - name: Terraform Init & Apply
+        run: |
+          cd devops/terraform
+          terraform init
+          terraform apply -auto-approve \
+            -var="kubeconfig=${{ secrets.KUBECONFIG_PATH }}" \
+            -var="api_gateway_image=${{ secrets.DOCKER_REPO }}/api-gateway" \
+            -var="wizard_image=${{ secrets.DOCKER_REPO }}/valuation-wizard"
+```
+
+---
+
+## How to Use
+
+1. **Place** these folders under your repo root as:
+   ```
+   /devops
+     /terraform
+     /helm/valuation-wizard
+     /.github/workflows/ci-cd.yaml
+   ```
+2. **Set** GitHub Secrets:  
+   - `DOCKER_REPO`, `DOCKER_USERNAME`, `DOCKER_PASSWORD`  
+   - `KUBECONFIG_PATH` (path to kubeconfig on runner)
+3. **Configure** your Dockerfiles in `services/api-gateway/` and root for `valuation-wizard` so that `docker build` context matches the workflow.
+4. **Commit & Push** to `main` – GitHub Actions will build, push images, then Terraform will deploy your Helm releases.
+
+This “DevOps Kit” gives you end-to-end CI/CD, container builds, Helm charts, and Terraform orchestration—ready to drop in and deploy your API Gateway and Valuation Wizard with zero manual steps.

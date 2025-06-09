@@ -1,0 +1,68 @@
+# 👋  You are the TerraFusion Automation Agent.
+# Your mission: completely implement the “Bundle-or-Standalone” packaging
+# infrastructure inside the existing **TerraFusionMono** repo, end-to-end,
+# with ZERO further human interaction.
+
+## 0. Guardrails
+– Work ONLY in the repo root mounted at /workspace/TerraFusionMono  
+– Use TypeScript for Node code, Bash for scripts, Markdown for docs  
+– Keep lint + type-check green (run `pnpm lint && pnpm type-check`)  
+– Every PR must pass `nx affected --target=test --all` before commit
+
+## 1. Create the pack executor
+1. Scaffold a new Nx plugin `@terrafusion/nx-pack`
+   ↳ path: `packages/tools/nx-pack`
+2. Implement executor **pack**      
+   ↳ copies `terra.json` ➜ `dist/pack/<project>`  
+   ↳ emits `<project>.sha256` hash of build output  
+   ↳ prints `📦 packed <project>`
+3. Register the plugin in `nx.json` (`"plugins"` array)
+
+## 2. Add MCPS Agent-Mesh contract
+1. Path: `services/mcps-agentmesh/terra.json`
+2. Content (fill `${VERSION}` from package.json version):
+   {
+     "id":"agentmesh",
+     "name":"MCPS Agent-Mesh",
+     "type":"backend",
+     "entry":"docker://ghcr.io/bsvalues/agentmesh:${VERSION}",
+     "version":"${VERSION}",
+     "dependencies":["shared>=1.0.0"],
+     "exposes":["grpc://agentmesh:9000"],
+     "infra":{"helmChart":"https://charts.terrafusion.io/agentmesh-${VERSION}.tgz",
+              "k8sNamespace":"tf-agentmesh"},
+     "tags":["pacs-migration"],
+     "license":"EULA-commercial"
+   }
+3. Update `services/mcps-agentmesh/project.json`
+   ↳ add `"pack"` target using the new executor
+
+## 3. Add PACS Migration Pack bundle
+1. Path: `bundles/pacs-migration-pack/terra.json`
+2. Content:
+   {
+     "id":"pacs-migration-pack",
+     "type":"bundle",
+     "name":"PACS Migration Pack",
+     "contains":[
+       "cdc-etl@>=0.1.0",
+       "agentmesh@>=0.1.0",
+       "levy-service@>=0.1.0",
+       "levy-ui@>=0.1.0"
+     ],
+     "postInstall":"scripts/pacs_wizard.sh",
+     "license":"EULA-commercial"
+   }
+3. Create `bundles/pacs-migration-pack/README.md`
+   ↳ include quick-start snippet (see design doc)
+
+4. Add `bundles/pacs-migration-pack/project.json`
+   ↳ `type: application`, `pack` target as above
+
+## 4. Bootstrap script
+1. Create `scripts/pacs_wizard.sh`
+   ↳ Bash helper described in design doc  
+   ↳ make executable (`chmod +x`)
+
+## 5. CI integration
+1. Append to `.github/workflows/infra-matrix.yml`

@@ -1,0 +1,55 @@
+{
+    "project": "TerraFusion Platform \u2013 Kickoff Checklist",
+    "sprint": "Week 1 \u2013 Foundation Sprint",
+    "engineers": {
+        "setup_local_dev": [
+            "Clone the repo and run `pnpm install`",
+            "Verify project graph: `pnpm nx graph`",
+            "Start the app locally and confirm API connectivity",
+            "Launch Storybook: `pnpm storybook`"
+        ],
+        "code_quality": [
+            "Run unit tests: `pnpm test`",
+            "Open Cypress and run e2e: `pnpm cypress open`",
+            "Lint codebase: `pnpm lint`",
+            "Add or refactor at least 1 atomic component"
+        ],
+        "devops_integration": [
+            "Validate CI/CD pipeline in `.github/workflows`",
+            "Add GitHub Secrets if running on forks",
+            "Configure Chromatic & connect to Storybook",
+            "Validate `scripts/deploy.sh` with local Docker/K8s env",
+            "Trigger Lighthouse CI once and store baseline report"
+        ]
+    },
+    "designers": {
+        "design_system_alignment": [
+            "Review all existing components via Storybook",
+            "Validate spacing, color, and typography token usage",
+            "Identify at least 3 inconsistent UI patterns across modules"
+        ],
+        "flow_mapping": [
+            "Map user journey for: Field registration, Crop health prediction, Real-time sync feedback",
+            "Identify opportunities for progressive disclosure"
+        ],
+        "interaction_design": [
+            "Propose microinteraction ideas for 1 async workflow",
+            "Submit recommendations for modal/dialog consistency",
+            "Review tooltips and inline help copy for clarity"
+        ]
+    },
+    "joint_tasks": {
+        "documentation_onboarding": [
+            "Engineers: write README for at least one new component",
+            "Designers: document design guidelines and component usage"
+        ],
+        "ux_health_setup": [
+            "Define success criteria for accessibility",
+            "Install and baseline `axe-core` checks in CI"
+        ],
+        "weekly_demo_prep": [
+            "Engineer: atomic refactor demo",
+            "Designer: component audit or wireframe feedback"
+        ]
+    }
+}

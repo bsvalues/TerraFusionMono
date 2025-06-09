@@ -1,0 +1,390 @@
+Always show details
+
+Copy
+import os
+import zipfile
+
+# Base directory for scaffolding
+base_dir = '/mnt/data/MatrixIncomeWizardScaffold'
+components_base = os.path.join(base_dir, 'packages', 'ui', 'src', 'components')
+matrix_dir = os.path.join(components_base, 'MatrixWizard')
+income_dir = os.path.join(components_base, 'IncomeWizard')
+
+# Create directories
+os.makedirs(matrix_dir, exist_ok=True)
+os.makedirs(income_dir, exist_ok=True)
+
+# 3.1 TS/Zod models for cost-matrix and income schedules (schemas)
+schemas_dir = os.path.join(base_dir, 'packages', 'ui', 'src', 'schemas')
+os.makedirs(schemas_dir, exist_ok=True)
+schemas_ts = """import { z } from 'zod';
+
+// Cost Matrix definition
+export const CostMatrixSchema = z.object({
+  matrixId: z.string().uuid().optional(),
+  name: z.string(),
+  baseCost: z.number().nonnegative(),
+  modifiers: z.array(z.object({
+    description: z.string(),
+    factor: z.number().nonnegative(),
+  })),
+});
+
+// Income Schedule definition
+export const IncomeScheduleSchema = z.object({
+  scheduleId: z.string().uuid().optional(),
+  propertyType: z.string(),
+  grossIncome: z.number().nonnegative(),
+  vacancyRate: z.number().min(0).max(1),
+  operatingExpenses: z.number().nonnegative(),
+  capRate: z.number().min(0).max(1),
+});
+
+export type CostMatrix = z.infer<typeof CostMatrixSchema>;
+export type IncomeSchedule = z.infer<typeof IncomeScheduleSchema>;
+"""
+with open(os.path.join(schemas_dir, 'wizardSchemas.ts'), 'w') as f:
+    f.write(schemas_ts)
+
+# Stepper component (shared)
+stepper_tsx = """import React from 'react';
+
+interface StepperProps {
+  steps: string[];
+  currentStep: number;
+  onStepClick?: (index: number) => void;
+}
+
+export const Stepper: React.FC<StepperProps> = ({ steps, currentStep, onStepClick }) => (
+  <div className="flex space-x-4 mb-6">
+    {steps.map((label, idx) => (
+      <div
+        key={idx}
+        className={`flex-1 text-center p-3 cursor-pointer border-b-2 ${
+          idx === currentStep
+            ? 'border-blue-600 font-semibold text-blue-600'
+            : 'border-gray-300 text-gray-500'
+        } hover:text-blue-500 transition-colors`}
+        onClick={() => onStepClick && onStepClick(idx)}
+      >
+        <div className="step-index">{idx + 1}</div>
+        <div className="step-label">{label}</div>
+      </div>
+    ))}
+  </div>
+);
+"""
+# Write stepper in both directories
+for d in [matrix_dir, income_dir]:
+    with open(os.path.join(d, 'Stepper.tsx'), 'w') as f:
+        f.write(stepper_tsx)
+
+# Scaffold MatrixWizard
+matrix_wizard_tsx = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { CostMatrix } from '../../schemas/wizardSchemas';
+import { MatrixEditor } from './MatrixEditor';
+import { PreviewChart } from './PreviewChart';
+
+const steps = ['Define Matrix', 'Edit Grid', 'Preview', 'Save'];
+
+export const MatrixWizard: React.FC = () => {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [matrix, setMatrix] = useState<CostMatrix>({ name: '', baseCost: 0, modifiers: [] });
+  const [sampleParcelId, setSampleParcelId] = useState<string>('');
+  const [previewValue, setPreviewValue] = useState<number | null>(null);
+
+  return (
+    <div className="max-w-full md:max-w-3xl mx-auto bg-white p-4 md:p-6 rounded-lg shadow-lg">
+      <Stepper steps={steps} currentStep={currentStep} onStepClick={setCurrentStep} />
+      <div className="wizard-content">
+        {currentStep === 0 && <div>{/* Form to set name & baseCost */}</div>}
+        {currentStep === 1 && <MatrixEditor matrix={matrix} onChange={setMatrix} />}
+        {currentStep === 2 && <PreviewChart parcelId={sampleParcelId} matrix={matrix} />}
+        {currentStep === 3 && <button className="px-4 py-2 bg-green-600 text-white rounded">Save Matrix</button>}
+      </div>
+      <div className="flex justify-between mt-6">
+        <button onClick={() => setCurrentStep(s => Math.max(s-1,0))}>Back</button>
+        <button onClick={() => setCurrentStep(s => Math.min(s+1, steps.length-1))}>Next</button>
+      </div>
+    </div>
+);
+};
+"""
+with open(os.path.join(matrix_dir, 'MatrixWizard.tsx'), 'w') as f:
+    f.write(matrix_wizard_tsx)
+
+# Scaffold IncomeWizard
+income_wizard_tsx = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { IncomeSchedule } from '../../schemas/wizardSchemas';
+import { IncomeEditor } from './IncomeEditor';
+import { PreviewChart } from './PreviewChart';
+
+const steps = ['Define Schedule', 'Edit Details', 'Preview', 'Save'];
+
+export const IncomeWizard: React.FC = () => {
+  const [currentStep, setCurrentStep] = useState(0);
+  const [schedule, setSchedule] = useState<IncomeSchedule>({ propertyType:'', grossIncome:0, vacancyRate:0, operatingExpenses:0, capRate:0 });
+  const [sampleParcelId, setSampleParcelId] = useState<string>('');
+  const [previewValue, setPreviewValue] = useState<number | null>(null);
+
+  return (
+    <div className="max-w-full md:max-w-3xl mx-auto bg-white p-4 md:p-6 rounded-lg shadow-lg">
+      <Stepper steps={steps} currentStep={currentStep} onStepClick={setCurrentStep} />
+      <div className="wizard-content">
+        {currentStep === 0 && <div>{/* Form to set propertyType & rates */}</div>}
+        {currentStep === 1 && <IncomeEditor schedule={schedule} onChange={setSchedule} />}
+        {currentStep === 2 && <PreviewChart parcelId={sampleParcelId} income={schedule} />}
+        {currentStep === 3 && <button className="px-4 py-2 bg-green-600 text-white rounded">Save Schedule</button>}
+      </div>
+      <div className="flex justify-between mt-6">
+        <button onClick={() => setCurrentStep(s => Math.max(s-1,0))}>Back</button>
+        <button onClick={() => setCurrentStep(s => Math.min(s+1, steps.length-1))}>Next</button>
+      </div>
+    </div>
+);
+};
+"""
+with open(os.path.join(income_dir, 'IncomeWizard.tsx'), 'w') as f:
+    f.write(income_wizard_tsx)
+
+# Editor placeholders and PreviewChart
+for d, editor in [(matrix_dir, 'MatrixEditor.tsx'), (income_dir, 'IncomeEditor.tsx')]:
+    content = f"""import React from 'react';
+import {{}} from '../../schemas/wizardSchemas';
+
+interface Props {{ /* TODO: define props */ }}
+
+export const {os.path.splitext(editor)[0]}: React.FC<Props> = (props) => (
+  <div>{os.path.splitext(editor)[0]} Component</div>
+);
+"""
+    with open(os.path.join(d, editor), 'w') as f:
+        f.write(content)
+
+# Shared PreviewChart in both
+preview_tsx = """import React from 'react';
+
+interface Props {
+  parcelId: string;
+  matrix?: any;
+  income?: any;
+}
+
+export const PreviewChart: React.FC<Props> = ({ parcelId, matrix, income }) => (
+  <div>PreviewChart for parcel {parcelId}</div>
+);
+"""
+for d in [matrix_dir, income_dir]:
+    with open(os.path.join(d, 'PreviewChart.tsx'), 'w') as f:
+        f.write(preview_tsx)
+
+# index.ts for each
+for d in [matrix_dir, income_dir]:
+    files = ['Stepper.tsx', os.path.basename(d)+'Wizard.tsx', 
+             'MatrixEditor.tsx' if 'Matrix' in d else 'IncomeEditor.tsx', 'PreviewChart.tsx']
+    exports = "\n".join([f"export * from './{os.path.splitext(f)[0]}'" for f in files])
+    with open(os.path.join(d, 'index.ts'), 'w') as f:
+        f.write(exports)
+
+# Create zip
+zip_path = '/mnt/data/MatrixIncomeWizardScaffold.zip'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            arcname = os.path.relpath(file_path, base_dir)
+            zf.write(file_path, arcname)
+
+zip_path
+
+Analysis errored
+python
+Always show details
+
+Copy
+import os
+import zipfile
+
+# Base directory for scaffolding
+base_dir = '/mnt/data/MatrixIncomeWizardScaffold'
+matrix_dir = os.path.join(base_dir, 'MatrixWizard')
+income_dir = os.path.join(base_dir, 'IncomeWizard')
+
+# Create directories
+for d in [matrix_dir, income_dir]:
+    os.makedirs(d, exist_ok=True)
+
+# Create types.ts for schemas
+schemas_ts = """// TS types for Matrix & Income Wizards
+export interface CostMatrix {
+  name: string;
+  baseCost: number;
+  modifiers: { description: string; factor: number }[];
+}
+export interface IncomeSchedule {
+  propertyType: string;
+  grossIncome: number;
+  vacancyRate: number;
+  operatingExpenses: number;
+  capRate: number;
+}
+"""
+with open(os.path.join(base_dir, 'wizardTypes.ts'), 'w') as f:
+    f.write(schemas_ts)
+
+# Stepper.tsx
+stepper = """import React from 'react';
+export const Stepper = ({ steps, currentStep, onClick }) => (
+  <div className="flex space-x-4">
+    {steps.map((s,i) => (
+      <div key={i} className={i===currentStep?'font-bold':''} onClick={()=>onClick(i)}>{s}</div>
+    ))}
+  </div>
+);
+"""
+with open(os.path.join(base_dir, 'Stepper.tsx'), 'w') as f:
+    f.write(stepper)
+
+# MatrixWizard.tsx
+matrix = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { CostMatrix } from './wizardTypes';
+
+export const MatrixWizard = () => {
+  const steps = ['Define', 'Edit', 'Preview', 'Save'];
+  const [step, setStep] = useState(0);
+  const [matrix, setMatrix] = useState<CostMatrix>({ name:'', baseCost:0, modifiers:[] });
+  return (
+    <div><Stepper steps={steps} currentStep={step} onClick={setStep}/>
+      <div>Step {step+1} content here</div>
+    </div>
+  );
+};
+"""
+with open(os.path.join(matrix_dir, 'MatrixWizard.tsx'), 'w') as f:
+    f.write(matrix)
+
+# IncomeWizard.tsx
+income = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { IncomeSchedule } from './wizardTypes';
+
+export const IncomeWizard = () => {
+  const steps = ['Define', 'Edit', 'Preview', 'Save'];
+  const [step, setStep] = useState(0);
+  const [schedule, setSchedule] = useState<IncomeSchedule>({ propertyType:'', grossIncome:0, vacancyRate:0, operatingExpenses:0, capRate:0 });
+  return (
+    <div><Stepper steps={steps} currentStep={step} onClick={setStep}/>
+      <div>Step {step+1} content here</div>
+    </div>
+  );
+};
+"""
+with open(os.path.join(income_dir, 'IncomeWizard.tsx'), 'w') as f:
+    f.write(income)
+
+# Zip only the scaffold directory
+zip_path = '/mnt/data/MatrixIncomeWizardScaffold.zip'
+with zipfile.ZipFile(zip_path, 'w') as zf:
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            zf.write(os.path.join(root, file), os.path.relpath(os.path.join(root, file), base_dir))
+zip_path
+
+Analyzing
+python
+Always show details
+
+Copy
+import os
+import zipfile
+
+# Recreate base_dir
+base_dir = '/mnt/data/MatrixIncomeWizardScaffold'
+if os.path.exists(base_dir):
+    import shutil
+    shutil.rmtree(base_dir)
+os.makedirs(base_dir)
+
+# wizardTypes.ts
+schemas_ts = """// TS types for Matrix & Income Wizards
+export interface CostMatrix {
+  name: string;
+  baseCost: number;
+  modifiers: { description: string; factor: number }[];
+}
+export interface IncomeSchedule {
+  propertyType: string;
+  grossIncome: number;
+  vacancyRate: number;
+  operatingExpenses: number;
+  capRate: number;
+}
+"""
+with open(os.path.join(base_dir, 'wizardTypes.ts'), 'w') as f:
+    f.write(schemas_ts)
+
+# Stepper.tsx
+stepper = """import React from 'react';
+interface Props { steps: string[]; currentStep: number; onClick: (i:number)=>void; }
+export const Stepper: React.FC<Props> = ({steps,currentStep,onClick}) => (
+  <div className="flex space-x-4 mb-4">
+    {steps.map((s,i)=>(
+      <div key={i} className={i===currentStep?'font-bold text-blue-600':'text-gray-500'} onClick={()=>onClick(i)}>
+        {i+1}. {s}
+      </div>
+    ))}
+  </div>
+);
+"""
+with open(os.path.join(base_dir, 'Stepper.tsx'), 'w') as f:
+    f.write(stepper)
+
+# MatrixWizard.tsx
+matrix = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { CostMatrix } from './wizardTypes';
+
+export const MatrixWizard: React.FC = () => {
+  const steps = ['Define Matrix','Edit Grid','Preview','Save'];
+  const [step,setStep] = useState(0);
+  const [matrix,setMatrix] = useState<CostMatrix>({name:'',baseCost:0,modifiers:[]});
+  return (
+    <div className="p-4 border">
+      <Stepper steps={steps} currentStep={step} onClick={setStep}/>
+      <div>MatrixWizard Step {step+1}</div>
+    </div>
+  );
+};
+"""
+with open(os.path.join(base_dir, 'MatrixWizard.tsx'), 'w') as f:
+    f.write(matrix)
+
+# IncomeWizard.tsx
+income = """import React, { useState } from 'react';
+import { Stepper } from './Stepper';
+import { IncomeSchedule } from './wizardTypes';
+
+export const IncomeWizard: React.FC = () => {
+  const steps = ['Define Schedule','Edit Details','Preview','Save'];
+  const [step,setStep] = useState(0);
+  const [sched,setSched] = useState<IncomeSchedule>({propertyType:'',grossIncome:0,vacancyRate:0,operatingExpenses:0,capRate:0});
+  return (
+    <div className="p-4 border">
+      <Stepper steps={steps} currentStep={step} onClick={setStep}/>
+      <div>IncomeWizard Step {step+1}</div>
+    </div>
+  );
+};
+"""
+with open(os.path.join(base_dir, 'IncomeWizard.tsx'), 'w') as f:
+    f.write(income)
+
+# Zip scaffold
+zip_path = '/mnt/data/MatrixIncomeWizardScaffold.zip'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for f in os.listdir(base_dir):
+        zf.write(os.path.join(base_dir, f), f)
+zip_path

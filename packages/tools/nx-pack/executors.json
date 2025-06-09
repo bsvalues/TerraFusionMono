@@ -1,0 +1,9 @@
+{
+  "executors": {
+    "pack": {
+      "implementation": "./src/executors/pack",
+      "schema": "./src/executors/pack/schema.json",
+      "description": "Packages components and bundles for distribution"
+    }
+  }
+}

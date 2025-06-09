@@ -1,0 +1,65 @@
+import os
+import zipfile
+
+# Create a Phase B migrations scaffold
+base_dir = '/mnt/data/db-migrations'
+os.makedirs(base_dir, exist_ok=True)
+
+# Flyway configuration file
+flyway_conf = """flyway.url=jdbc:sqlserver://jcharrispacs;databaseName=pacs_training
+flyway.user=bjs
+flyway.password=YourPasswordHere
+flyway.schemas=appraisal,billing,master
+flyway.defaultSchema=master
+flyway.locations=filesystem:./migrations
+"""
+with open(os.path.join(base_dir, 'flyway.conf'), 'w') as f:
+    f.write(flyway_conf)
+
+# Create migrations folder
+migrations_dir = os.path.join(base_dir, 'migrations')
+os.makedirs(migrations_dir, exist_ok=True)
+
+# Baseline migration V1__baseline.sql
+baseline_sql = """-- V1__baseline.sql
+-- Baseline of existing schema. All tables as currently defined.
+-- Flyway baseline
+"""
+# Include reference to existing DDL file
+baseline_sql += "/* See docs/db-schema/ddl.sql for full baseline schema */\n"
+with open(os.path.join(migrations_dir, 'V1__baseline.sql'), 'w') as f:
+    f.write(baseline_sql)
+
+# V2__schema_namespaces.sql
+v2_sql = """-- V2__schema_namespaces.sql
+-- Create new schemas
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'appraisal') EXEC('CREATE SCHEMA appraisal');
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'billing') EXEC('CREATE SCHEMA billing');
+IF NOT EXISTS (SELECT * FROM sys.schemas WHERE name = 'master') EXEC('CREATE SCHEMA master');
+
+-- Move tables into schemas (example)
+ALTER SCHEMA appraisal TRANSFER dbo.Property_val;
+ALTER SCHEMA appraisal TRANSFER dbo.Land_detail;
+ALTER SCHEMA appraisal TRANSFER dbo.Imprv_detail;
+
+ALTER SCHEMA billing TRANSFER dbo.Levy;
+ALTER SCHEMA billing TRANSFER dbo.Bill;
+ALTER SCHEMA billing TRANSFER dbo.Payment;
+
+ALTER SCHEMA master TRANSFER dbo.Account;
+ALTER SCHEMA master TRANSFER dbo.Address;
+-- Add more TRANSFER statements for all tables...
+"""
+with open(os.path.join(migrations_dir, 'V2__schema_namespaces.sql'), 'w') as f:
+    f.write(v2_sql)
+
+# Zip the migrations scaffold
+zip_path = '/mnt/data/db-migrations.zip'
+with zipfile.ZipFile(zip_path, 'w', zipfile.ZIP_DEFLATED) as zf:
+    for root, dirs, files in os.walk(base_dir):
+        for file in files:
+            file_path = os.path.join(root, file)
+            arcname = os.path.relpath(file_path, base_dir)
+            zf.write(file_path, arcname)
+
+zip_path

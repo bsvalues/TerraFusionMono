@@ -1,0 +1,99 @@
+# TerraFusion Agent Coordination Manifest
+# This is the source of truth for agent scheduling, logic tuning, and autonomy flags
+
+agents:
+  - name: CurveTrainer
+    version: "1.2.1"
+    mode: autonomous
+    schedule: "0 2 * * *"  # Run at 2 AM daily
+    memory: persistent
+    sensitivity: medium
+    on_anomaly: suggest_correction
+    description: >
+      Autonomously trains machine learning models on property valuation curves. 
+      Analyzes historical pricing trends, seasonal adjustments, and local market factors.
+      Identifies outliers and anomalies that may indicate valuation errors.
+
+  - name: ScenarioAgent
+    version: "0.9.7"
+    mode: suggestive
+    trigger_on: user_interest
+    max_outputs: 3
+    feedback_loop: true
+    description: >
+      Generates property valuation scenarios based on different market conditions.
+      Produces what-if analyses for tax implications, zoning changes, and infrastructure developments.
+      Requires user approval and feedback for suggestions to improve over time.
+
+  - name: BenchmarkGuard
+    version: "2.0.0"
+    mode: watchdog
+    source:
+      - rsmeans
+      - corelogic
+    alert_threshold: 5%
+    description: >
+      Monitors valuation benchmarks against industry standards and market data.
+      Notifies when property assessments deviate significantly from expected ranges.
+      Integrates with external data sources to maintain current reference points.
+
+  - name: GeoSpatialAnalyzer
+    version: "1.5.2"
+    mode: scheduled
+    schedule: "0 4 * * 1-5"  # Run at 4 AM Monday-Friday
+    dependencies:
+      - PostGIS
+    data_sources:
+      - property_boundaries
+      - zoning_maps
+      - flood_plains
+    description: >
+      Performs spatial analysis on property data to identify location-based factors.
+      Calculates proximity scores to amenities, environmental risks, and infrastructure.
+      Updates property attributes with geospatial insights for more accurate valuations.
+
+  - name: TaxProjector
+    version: "1.1.0"
+    mode: on_demand
+    trigger_on: tax_season
+    accuracy_target: 99%
+    description: >
+      Projects tax implications based on current assessments and local tax policies.
+      Simulates potential tax changes and their impact on different property classes.
+      Generates reports for stakeholder communication and budget planning.
+
+workflows:
+  - name: QuarterlyAssessment
+    schedule: "0 0 1 1,4,7,10 *"  # First day of each quarter
+    agents:
+      - CurveTrainer
+      - BenchmarkGuard
+      - GeoSpatialAnalyzer
+    outputs:
+      - valuation_report
+      - anomaly_list
+      - spatial_factor_update
+    notification: email
+
+  - name: TaxSeasonPrep
+    trigger: "60 days before tax_filing_deadline"
+    agents:
+      - TaxProjector
+      - ScenarioAgent
+    approval_required: true
+    outputs:
+      - tax_projection_report
+      - what_if_scenarios
+    notification: dashboard
+
+settings:
+  global:
+    log_level: info
+    metrics_retention: 90 days
+    coordination_strategy: orchestrated
+    fallback_mode: human_approval
+
+  security:
+    data_access: role_based
+    encryption: aes256
+    audit_trail: enabled

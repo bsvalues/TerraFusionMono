@@ -1,0 +1,44 @@
+{
+  "id": "mcps-agentmesh",
+  "type": "service",
+  "name": "MCPS Agent Mesh",
+  "version": "1.0.0",
+  "description": "Multi-Cloud Provider Service Agent Mesh for TerraFusion platform",
+  "license": "MIT",
+  "author": "TerraFusion Team",
+  "dependencies": [
+    "terrafusion-core@1.0.0"
+  ],
+  "settings": {
+    "logLevel": "info",
+    "maxRetries": 3,
+    "timeout": 30
+  },
+  "requirements": {
+    "memory": "1Gi",
+    "cpu": "0.5",
+    "storage": "2Gi"
+  },
+  "ports": [
+    {
+      "name": "grpc",
+      "port": 9090,
+      "protocol": "TCP"
+    },
+    {
+      "name": "health",
+      "port": 8080,
+      "protocol": "TCP"
+    }
+  ],
+  "metadata": {
+    "category": "integration",
+    "tags": ["mcps", "cloud", "mesh", "agent"]
+  },
+  "scripts": {
+    "install": "./scripts/install.sh",
+    "uninstall": "./scripts/uninstall.sh",
+    "start": "./scripts/start.sh",
+    "stop": "./scripts/stop.sh"
+  }
+}

@@ -7,6 +7,7 @@ import { storage } from "./storage";
 import { coreService } from "./services/core";
 import { jobService } from "./services/jobs";
 import { pluginService } from "./services/plugins";
+import { applicationService } from "./services/applications"; 
 import { metricsService } from "./services/metrics";
 import { logsService } from "./services/logs";
 import { marketplaceService } from "./services/marketplace";
@@ -27,6 +28,9 @@ import cropAnalysisRoutes from "./routes/crop-analysis";
 import collaborationRoutes from "./routes/collaboration";
 import fieldReportRoutes from "./routes/field-reports";
 import pacsMigrationRoutes from "./routes/pacs-migration";
+import importRoutes from "./routes/import";
+import valuationRoutes from "./routes/valuation";
+import gisRoutes from "./routes/gis.routes";
 import { searchHandler, getMetricsHandler } from "./routes/geocode";
 import { versionGuard } from "./middleware/api-versioning";
 import mcpRoutes from "./routes/mcp";
@@ -258,6 +262,31 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(logs);
     } catch (error: any) {
       res.status(500).json({ message: `Error fetching logs: ${error.message}` });
+    }
+  });
+
+  // Application endpoints
+  app.get('/api/applications', async (req, res) => {
+    try {
+      const applications = await applicationService.getApplications();
+      res.json({
+        applications,
+        total: applications.length
+      });
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching applications: ${error.message}` });
+    }
+  });
+
+  app.get('/api/applications/:name', async (req, res) => {
+    try {
+      const application = await applicationService.getApplication(req.params.name);
+      if (!application) {
+        return res.status(404).json({ message: `Application ${req.params.name} not found` });
+      }
+      res.json(application);
+    } catch (error: any) {
+      res.status(500).json({ message: `Error fetching application: ${error.message}` });
     }
   });
 
@@ -1098,9 +1127,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
   
   // Main PACS Migration routes with authentication
   app.use('/api/pacs-migration', isAuthenticated, pacsMigrationRoutes);
-  
-  // MCP Agent routes
-  app.use('/api/mcp', mcpRoutes);
   
   // WebSocket monitoring endpoints
   app.get('/api/websocket/connections', async (req, res) => {

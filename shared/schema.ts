@@ -2,6 +2,9 @@ import { pgTable, text, serial, integer, timestamp, json, boolean, varchar, deci
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
+// For PostGIS geometry, we'll use a standard text column that can be cast to geometry in SQL
+// This avoids ORM compatibility issues while still allowing us to use PostGIS functions
+
 // Enums for crop health
 export const cropHealthStatusEnum = pgEnum('crop_health_status', [
   'excellent', 'good', 'fair', 'poor', 'critical'
@@ -319,6 +322,9 @@ export type InsertPluginProduct = z.infer<typeof insertPluginProductSchema>;
 export type UserPlugin = typeof userPlugins.$inferSelect;
 export type InsertUserPlugin = z.infer<typeof insertUserPluginSchema>;
 
+// export type Parcel = typeof parcels.$inferSelect; // Defined elsewhere
+export type InsertParcel = z.infer<typeof insertParcelSchema>;
+
 // Geocode call tracking for metered billing
 export const geocodeCalls = pgTable("geocode_calls", {
   id: serial("id").primaryKey(),
@@ -358,6 +364,7 @@ export const parcels = pgTable("parcels", {
   centerLat: decimal("center_lat", { precision: 10, scale: 6 }),
   centerLng: decimal("center_lng", { precision: 10, scale: 6 }),
   areaHectares: decimal("area_hectares", { precision: 10, scale: 2 }),
+  geomWkb: text("geom"), // PostGIS geometry column stored as WKB text, will be cast to geometry in SQL
   // Agricultural data
   soilType: text("soil_type"),
   soilPh: decimal("soil_ph", { precision: 4, scale: 2 }),
@@ -393,7 +400,7 @@ export const parcels = pgTable("parcels", {
 });
 
 export const insertParcelSchema = createInsertSchema(parcels)
-  .omit({ id: true, createdAt: true, updatedAt: true })
+  .omit({ id: true, createdAt: true, updatedAt: true, geomWkb: true }) // Exclude geometry from inserts as it's derived from boundary
   .extend({
     boundary: z.any().optional(),
     accessRights: z.any().optional(),
@@ -690,8 +697,9 @@ export const insertWeatherDataSchema = createInsertSchema(weatherData)
   });
 
 // Export types for all schemas
-export type Parcel = typeof parcels.$inferSelect;
-export type InsertParcel = z.infer<typeof insertParcelSchema>;
+// Parcel types already defined above
+// // export type Parcel = typeof parcels.$inferSelect; // Defined elsewhere
+// export type InsertParcel = z.infer<typeof insertParcelSchema>;
 
 export type ParcelNote = typeof parcelNotes.$inferSelect;
 export type InsertParcelNote = z.infer<typeof insertParcelNoteSchema>;
@@ -1355,5 +1363,41 @@ export type InsertPluginCategory = z.infer<typeof insertPluginCategorySchema>;
 
 export type PluginCategoryRelation = typeof pluginCategoryRelations.$inferSelect;
 export type InsertPluginCategoryRelation = z.infer<typeof insertPluginCategoryRelationSchema>;
+
+// Cost Matrix for property valuations
+export const costMatrices = pgTable("cost_matrices", {
+  matrixId: text("matrix_id").primaryKey().notNull(),
+  name: text("name").notNull(),
+  baseCost: decimal("base_cost", { precision: 10, scale: 2 }).notNull(),
+  modifiers: json("modifiers").notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const insertCostMatrixSchema = createInsertSchema(costMatrices).omit({
+  updatedAt: true,
+});
+
+// Income Schedules for property valuations
+export const incomeSchedules = pgTable("income_schedules", {
+  scheduleId: text("schedule_id").primaryKey().notNull(),
+  propertyType: text("property_type").notNull(),
+  grossIncome: decimal("gross_income", { precision: 12, scale: 2 }).notNull(),
+  vacancyRate: decimal("vacancy_rate", { precision: 5, scale: 4 }).notNull(),
+  operatingExpenses: decimal("operating_expenses", { precision: 12, scale: 2 }).notNull(),
+  capRate: decimal("cap_rate", { precision: 5, scale: 4 }).notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at"),
+});
+
+export const insertIncomeScheduleSchema = createInsertSchema(incomeSchedules).omit({
+  updatedAt: true,
+});
+
+export type CostMatrix = typeof costMatrices.$inferSelect;
+export type InsertCostMatrix = z.infer<typeof insertCostMatrixSchema>;
+
+export type IncomeSchedule = typeof incomeSchedules.$inferSelect;
+export type InsertIncomeSchedule = z.infer<typeof insertIncomeScheduleSchema>;
 
 // Type exports are already defined above
