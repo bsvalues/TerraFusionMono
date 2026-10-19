@@ -17,7 +17,7 @@ eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvbWpmYnd
 Copy
 This key is safe to use in a browser if you have enabled Row Level Security for your tables and configured policies.
 service_rolesecret
-eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvbWpmYndrdHl4bGp2Z2N0aG1rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NDQ5Mzc4OSwiZXhwIjoyMDYwMDY5Nzg5fQ.UWhLtKDfjQnmUjzx0CM7PWAXl_BPIj2gGiR27031fgU
+[REDACTED: exposed Supabase service_role credential removed]
 
 Copy
 This key has the ability to bypass Row Level Security. Never share it publicly. If leaked, generate a new JWT secret immediately.

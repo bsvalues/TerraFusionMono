@@ -31,13 +31,11 @@ export function getSupabaseAnonKey(): string {
 }
 
 /**
- * Get the Supabase service key from environment variables or use the hardcoded value
+ * Get the Supabase service key from environment variables
  * @returns The Supabase service key
  */
 export function getSupabaseServiceKey(): string {
-  // If we get a service key from environment, use it, otherwise use anon key or fallback
-  return process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY ||
-    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6InJvbWpmYndrdHl4bGp2Z2N0aG1rIiwicm9sZSI6InNlcnZpY2Vfcm9sZSIsImlhdCI6MTc0NDQ5Mzc4OSwiZXhwIjoyMDYwMDY5Nzg5fQ.UWhLtKDfjQnmUjzx0CM7PWAXl_BPIj2gGiR27031fgU';
+  return process.env.SUPABASE_SERVICE_KEY || process.env.SUPABASE_API_KEY || '';
 }
 
 /**
